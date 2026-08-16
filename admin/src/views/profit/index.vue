@@ -1,0 +1,118 @@
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from 'vue'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { Delete, Edit, Refresh, Search, Setting, View } from '@element-plus/icons-vue'
+import { useProfitStore } from '@/stores/profit'
+import type { ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, PromotionBinding, PromotionBindingSource, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit } from '@/types/profit'
+
+const store = useProfitStore()
+const activeTab = ref('promotion')
+const poolDetailVisible = ref(false)
+const adjustPoolVisible = ref(false)
+const adjustDailyVisible = ref(false)
+const rebindVisible = ref(false)
+const adjustPoolFormRef = ref<FormInstance>()
+const adjustDailyFormRef = ref<FormInstance>()
+const adjustPoolForm = reactive<ProfitAdjustPoolDTO>({ totalAmount: 0, userCount: 0 })
+const adjustDailyForm = reactive<ProfitAdjustDailyDTO>({ dailyAmount: 0, dailyUserCount: 0 })
+const poolFormRules: FormRules = { totalAmount: [{ required: true, message: '请输入奖池总金额', trigger: 'blur' }], userCount: [{ required: true, message: '请输入用户数', trigger: 'blur' }] }
+const dailyFormRules: FormRules = { dailyAmount: [{ required: true, message: '请输入每日金额', trigger: 'blur' }], dailyUserCount: [{ required: true, message: '请输入每日用户数', trigger: 'blur' }] }
+const poolId = ref('')
+const dailyId = ref('')
+const rebindRow = ref<PromotionBinding | null>(null)
+const promoterId = ref('')
+const settleForm = reactive({ startDate: '', endDate: '' })
+
+const relationKeyword = computed({ get: () => store.relationFilters.keyword, set: (value: string) => { store.relationFilters.keyword = value } })
+const relationSource = computed<PromotionBindingSource | ''>({ get: () => store.relationFilters.source, set: (value) => { store.relationFilters.source = value } })
+
+function money(value: number): string { return `¥ ${Number(value || 0).toFixed(2)}` }
+function statusType(status: string): 'success' | 'warning' | 'info' | 'danger' { return /CONFIRMED|SETTLED|SUCCESS|BOUND/i.test(status) ? 'success' : /REJECT|BLOCK|FAIL/i.test(status) ? 'danger' : /PENDING|WAIT/i.test(status) ? 'warning' : 'info' }
+function statusText(status: string): string { return ({ PENDING: '待处理', CONFIRMED: '已确认', SETTLED: '已结算', BOUND: '已绑定' } as Record<string, string>)[status] || status || '未知' }
+function showError(error: unknown, fallback: string): void { ElMessage.error(error instanceof Error ? error.message : fallback) }
+
+async function load(): Promise<void> { try { await store.fetchAll() } catch (error) { showError(error, '资金数据加载失败') } }
+async function loadRelations(): Promise<void> { try { await store.fetchRelations() } catch (error) { showError(error, '推广关系加载失败') } }
+function searchRelations(): void { store.relationPage = 1; void loadRelations() }
+function relationPageChange(page: number): void { store.relationPage = page; void loadRelations() }
+function relationSizeChange(size: number): void { store.relationSize = size; store.relationPage = 1; void loadRelations() }
+function pendingPageChange(page: number): void { store.pendingPage = page; void load() }
+function pendingSizeChange(size: number): void { store.pendingSize = size; store.pendingPage = 1; void load() }
+
+function openRebind(row: PromotionBinding): void { rebindRow.value = row; promoterId.value = row.promoterUserId; rebindVisible.value = true }
+async function rebindPromotionRelation(): Promise<void> {
+  if (!rebindRow.value || !/^[1-9]\d*$/.test(promoterId.value)) { ElMessage.warning('推广员 ID 必须为正整数'); return }
+  try {
+    await ElMessageBox.confirm('重绑仅影响后续订单，历史账务不回滚。确认继续吗？', '确认重新绑定', { type: 'warning' })
+    await store.rebindRelation(rebindRow.value.buyerUserId, promoterId.value)
+    rebindVisible.value = false
+    ElMessage.success('推广关系已重新绑定')
+  } catch (error) { if (error !== 'cancel' && error !== 'close') showError(error, '重新绑定失败') }
+}
+async function unbindPromotionRelation(row: PromotionBinding): Promise<void> {
+  try {
+    await ElMessageBox.confirm('解除绑定仅影响后续订单，历史账务不回滚。确认继续吗？', '确认解除绑定', { type: 'warning' })
+    await store.unbindRelation(row.buyerUserId)
+    ElMessage.success('推广关系已解除')
+  } catch (error) { if (error !== 'cancel' && error !== 'close') showError(error, '解除绑定失败') }
+}
+
+async function settlePool(): Promise<void> {
+  if (!settleForm.startDate || !settleForm.endDate) { ElMessage.warning('请选择结算日期范围'); return }
+  try { await store.settle(settleForm.startDate, settleForm.endDate); ElMessage.success('奖池结算已完成') } catch (error) { showError(error, '奖池结算失败') }
+}
+async function showPoolDetails(pool: SevenDayBonusPool): Promise<void> { try { await store.fetchPoolDetails(pool.id); poolDetailVisible.value = true } catch (error) { showError(error, '奖池明细加载失败') } }
+function openPoolAdjust(pool: SevenDayBonusPool): void { poolId.value = pool.id; Object.assign(adjustPoolForm, { totalAmount: pool.totalAmount, userCount: pool.settledUserCount }); adjustPoolVisible.value = true }
+async function submitPoolAdjust(): Promise<void> { if (!(await adjustPoolFormRef.value?.validate().catch(() => false))) return; try { await store.adjust(poolId.value, { ...adjustPoolForm }); adjustPoolVisible.value = false; ElMessage.success('奖池已调整') } catch (error) { showError(error, '奖池调整失败') } }
+function openDailyAdjust(detail: SevenDayBonusDetail): void { dailyId.value = detail.id; Object.assign(adjustDailyForm, { dailyAmount: detail.dailyAmount, dailyUserCount: detail.dailyUserCount }); adjustDailyVisible.value = true }
+async function submitDailyAdjust(): Promise<void> { if (!(await adjustDailyFormRef.value?.validate().catch(() => false))) return; try { await store.adjustDetail(dailyId.value, { ...adjustDailyForm }); adjustDailyVisible.value = false; ElMessage.success('每日奖池已调整') } catch (error) { showError(error, '每日奖池调整失败') } }
+async function confirmPool(pool: SevenDayBonusPool): Promise<void> { try { await ElMessageBox.confirm(`确认并发放 ${pool.startDate} 至 ${pool.endDate} 的奖池吗？`, '确认并发放', { type: 'warning' }); await store.confirm(pool.id); ElMessage.success('奖池已确认并发放') } catch (error) { if (error !== 'cancel' && error !== 'close') showError(error, '确认发放失败') } }
+async function resetLimit(row: UserDividendLimit): Promise<void> { try { await ElMessageBox.confirm(`确认重置用户 ${row.userId} 的分红额度吗？`, '重置额度', { type: 'warning' }); await store.resetLimit(row.userId); ElMessage.success('分红额度已重置') } catch (error) { if (error !== 'cancel' && error !== 'close') showError(error, '重置失败') } }
+
+onMounted(() => { void load(); void loadRelations() })
+</script>
+
+<template>
+  <section class="page-container page-enter">
+    <div class="page-heading"><div><h1>推广资金管理</h1><p>推广金、奖池结算、用户分红额度与推广绑定关系。</p></div><el-button :loading="store.loading" @click="load"><el-icon><Refresh /></el-icon>刷新</el-button></div>
+    <el-tabs v-model="activeTab" class="profit-tabs">
+      <el-tab-pane label="待推广金" name="promotion">
+        <el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>待推广金</strong><span class="toolbar-count">共 {{ store.pendingTotal }} 条</span></div></div>
+          <el-table :data="store.pendingPromotion" v-loading="store.loading" border stripe><el-table-column prop="id" label="记录 ID" width="110" /><el-table-column prop="orderNo" label="订单号" min-width="180" /><el-table-column prop="promoterUserId" label="推广用户" width="120" /><el-table-column prop="buyerUserId" label="购买用户" width="120" /><el-table-column label="金额" width="120"><template #default="{ row }">{{ money(row.amount) }}</template></el-table-column><el-table-column prop="createdAt" label="创建时间" min-width="180" /></el-table>
+          <div class="table-pagination"><span>共 {{ store.pendingTotal }} 条</span><el-pagination background layout="total, sizes, prev, pager, next" :current-page="store.pendingPage" :page-size="store.pendingSize" :total="store.pendingTotal" @current-change="pendingPageChange" @size-change="pendingSizeChange" /></div>
+        </el-card>
+      </el-tab-pane>
+      <el-tab-pane label="推广关系" name="relations">
+        <el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>推广关系</strong><span class="toolbar-count">共 {{ store.relationTotal }} 条</span></div><div class="toolbar-actions"><el-input v-model="relationKeyword" placeholder="买家或推广员关键词" clearable class="relationKeyword" @keyup.enter="searchRelations" /><el-select v-model="relationSource" clearable placeholder="来源" class="relationSource"><el-option label="扫码绑定" value="SCAN" /><el-option label="手动绑定" value="MANUAL" /><el-option label="未知来源" value="UNKNOWN" /></el-select><el-button type="primary" :icon="Search" @click="searchRelations">搜索</el-button></div></div>
+          <el-table :data="store.relations" v-loading="store.relationLoading" border stripe><el-table-column prop="buyerUserId" label="买家 ID" width="110" /><el-table-column prop="buyerName" label="买家" min-width="130" /><el-table-column prop="promoterUserId" label="推广员 ID" width="120" /><el-table-column prop="promoterName" label="推广员" min-width="130" /><el-table-column prop="bindTime" label="绑定时间" min-width="170" /><el-table-column prop="sourceDesc" label="来源" width="110" /><el-table-column label="状态" width="95"><template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.statusDesc || statusText(row.status) }}</el-tag></template></el-table-column><el-table-column label="操作" width="190" fixed="right"><template #default="{ row }"><div class="operator-actions"><el-button size="small" type="primary" :loading="store.relationActionLoading" @click="openRebind(row)"><el-icon><Edit /></el-icon>重新绑定</el-button><el-button size="small" type="danger" :loading="store.relationActionLoading" @click="unbindPromotionRelation(row)"><el-icon><Delete /></el-icon>解除绑定</el-button></div></template></el-table-column></el-table>
+          <div class="table-pagination"><span>共 {{ store.relationTotal }} 条</span><el-pagination background layout="total, sizes, prev, pager, next" :current-page="store.relationPage" :page-size="store.relationSize" :total="store.relationTotal" @current-change="relationPageChange" @size-change="relationSizeChange" /></div>
+        </el-card>
+      </el-tab-pane>
+      <el-tab-pane label="7 天奖池" name="pools">
+        <el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>7 天奖池</strong><span class="toolbar-count">按周期管理奖池</span></div><div class="toolbar-actions"><el-date-picker v-model="settleForm.startDate" type="date" value-format="YYYY-MM-DD" placeholder="开始日期" /><el-date-picker v-model="settleForm.endDate" type="date" value-format="YYYY-MM-DD" placeholder="结束日期" /><el-button type="primary" :loading="store.actionLoading" @click="settlePool">结算周期</el-button></div></div>
+          <el-table :data="store.sevenDayPools" v-loading="store.loading" border stripe><el-table-column prop="id" label="奖池 ID" width="110" /><el-table-column label="周期" min-width="200"><template #default="{ row }">{{ row.startDate }} 至 {{ row.endDate }}</template></el-table-column><el-table-column label="总金额" width="140"><template #default="{ row }">{{ money(row.totalAmount) }}</template></el-table-column><el-table-column prop="settledUserCount" label="已结算人数" width="120" /><el-table-column prop="settleTime" label="结算时间" min-width="180" /><el-table-column label="操作" width="250" fixed="right"><template #default="{ row }"><div class="operator-actions"><el-button size="small" @click="showPoolDetails(row)"><el-icon><View /></el-icon>明细</el-button><el-button size="small" @click="openPoolAdjust(row)"><el-icon><Setting /></el-icon>调整</el-button><el-button size="small" type="primary" @click="confirmPool(row)">确认并发放</el-button></div></template></el-table-column></el-table>
+        </el-card>
+        <el-card shadow="never" class="content-card"><div class="toolbar"><strong>未结算每日奖池</strong></div><el-table :data="store.unsettledDaily" v-loading="store.loading" border stripe><el-table-column prop="id" label="明细 ID" width="110" /><el-table-column prop="poolDate" label="日期" width="160" /><el-table-column label="每日金额" width="140"><template #default="{ row }">{{ money(row.dailyAmount) }}</template></el-table-column><el-table-column prop="dailyUserCount" label="用户数" width="120" /><el-table-column label="操作" width="110"><template #default="{ row }"><el-button size="small" @click="openDailyAdjust(row)"><el-icon><Setting /></el-icon>调整</el-button></template></el-table-column></el-table></el-card>
+      </el-tab-pane>
+      <el-tab-pane label="用户分红额度" name="limits"><el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>用户分红额度</strong><span class="toolbar-count">共 {{ store.dividendLimits.length }} 条</span></div></div><el-table :data="store.dividendLimits" v-loading="store.loading" border stripe><el-table-column prop="userId" label="用户 ID" width="120" /><el-table-column label="商品价格" width="120"><template #default="{ row }">{{ money(row.productPrice) }}</template></el-table-column><el-table-column label="封顶额度" width="120"><template #default="{ row }">{{ money(row.capAmount) }}</template></el-table-column><el-table-column label="已领取" width="120"><template #default="{ row }">{{ money(row.totalReceived) }}</template></el-table-column><el-table-column prop="purchaseLimit" label="购买上限" width="110" /><el-table-column prop="totalPurchases" label="累计购买" width="110" /><el-table-column label="状态" width="100"><template #default="{ row }"><el-tag :type="row.blocked ? 'danger' : 'success'">{{ row.blocked ? '已阻断' : '正常' }}</el-tag></template></el-table-column><el-table-column label="操作" width="110"><template #default="{ row }"><el-button size="small" type="warning" @click="resetLimit(row)">重置</el-button></template></el-table-column></el-table></el-card></el-tab-pane>
+    </el-tabs>
+    <el-dialog v-model="rebindVisible" title="重新绑定推广员" width="460px"><p v-if="rebindRow" class="dialog-context">买家：{{ rebindRow.buyerName || rebindRow.buyerUserId }}</p><el-input v-model="promoterId" placeholder="请输入推广员 ID" inputmode="numeric" /><template #footer><el-button @click="rebindVisible = false">取消</el-button><el-button type="primary" :loading="store.relationActionLoading" @click="rebindPromotionRelation">重新绑定</el-button></template></el-dialog>
+    <el-dialog v-model="poolDetailVisible" title="每日奖池明细" width="760px"><el-table :data="store.poolDetails" border><el-table-column prop="poolDate" label="日期" /><el-table-column label="每日金额"><template #default="{ row }">{{ money(row.dailyAmount) }}</template></el-table-column><el-table-column prop="dailyUserCount" label="用户数" /><el-table-column prop="updateTime" label="更新时间" /></el-table></el-dialog>
+    <el-dialog v-model="adjustPoolVisible" title="调整 7 天奖池" width="460px"><el-form ref="adjustPoolFormRef" :model="adjustPoolForm" :rules="poolFormRules" label-width="100px"><el-form-item label="总金额" prop="totalAmount"><el-input-number v-model="adjustPoolForm.totalAmount" :min="0" :precision="2" /></el-form-item><el-form-item label="用户数" prop="userCount"><el-input-number v-model="adjustPoolForm.userCount" :min="0" /></el-form-item></el-form><template #footer><el-button @click="adjustPoolVisible = false">取消</el-button><el-button type="primary" :loading="store.actionLoading" @click="submitPoolAdjust">保存</el-button></template></el-dialog>
+    <el-dialog v-model="adjustDailyVisible" title="调整每日奖池" width="460px"><el-form ref="adjustDailyFormRef" :model="adjustDailyForm" :rules="dailyFormRules" label-width="110px"><el-form-item label="每日金额" prop="dailyAmount"><el-input-number v-model="adjustDailyForm.dailyAmount" :min="0" :precision="2" /></el-form-item><el-form-item label="每日用户数" prop="dailyUserCount"><el-input-number v-model="adjustDailyForm.dailyUserCount" :min="0" /></el-form-item></el-form><template #footer><el-button @click="adjustDailyVisible = false">取消</el-button><el-button type="primary" :loading="store.actionLoading" @click="submitDailyAdjust">保存</el-button></template></el-dialog>
+  </section>
+</template>
+
+<style scoped>
+.profit-tabs { min-width: 0; }
+.profit-tabs :deep(.el-tabs__content) { overflow: visible; }
+.operator-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.operator-actions :deep(.el-button) { margin-left: 0; padding: 5px 8px; }
+.operator-actions :deep(.el-icon) { margin-right: 4px; }
+.toolbar-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.relationKeyword { width: 220px; }
+.relationSource { width: 140px; }
+.table-pagination { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-top: 16px; }
+.dialog-context { color: var(--el-text-color-secondary); margin: 0 0 12px; }
+@media (max-width: 900px) { .toolbar-actions, .table-pagination { align-items: stretch; flex-direction: column; } .relationKeyword, .relationSource { width: 100%; } }
+</style>
