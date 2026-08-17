@@ -16,6 +16,7 @@ export interface ProductListItem {
   originPlace: string
   status: ProductStatusValue
   isRecommended: ProductStatusValue
+  recommendTextEnabled: ProductStatusValue
   sortOrder: number
 }
 
@@ -57,6 +58,7 @@ export interface AdminProductSaveDTO {
   dividendEnabled: ProductStatus
   status: ProductStatus
   isRecommended: ProductStatus
+  recommendTextEnabled: ProductStatus
   sortOrder: number
   skuList: ProductSku[]
 }

@@ -37,6 +37,10 @@ const heroImages = computed(() => homepageMedia.value?.imageUrl || [])
 const heroVideo = computed(() => homepageMedia.value?.videoUrl?.[0] || '')
 const bottomImages = computed(() => homepageMedia.value?.bottomImageUrl || [])
 
+function isRecommendTextEnabled(value: HomepageProduct['recommendTextEnabled']): boolean {
+  return value === 1 || value === '1' || value === true
+}
+
 async function loadHomepage(): Promise<void> {
   try {
     const data = await getHomepageData()
@@ -140,9 +144,9 @@ onMounted(() => {
       <view v-for="(item, index) in products" :key="item.id || index" class="product-card" @click="goProduct(item.id)">
         <image v-if="item.mainImage" class="card-img" :src="item.mainImage" mode="widthFix" />
         <view v-else class="card-img-ph" />
-        <view class="card-text">
+        <view v-if="isRecommendTextEnabled(item.recommendTextEnabled)" class="card-text">
           <text class="card-title">{{ item.name }}</text>
-          <text class="card-desc">{{ item.descriptionTitle || '' }}</text>
+          <text v-if="isRecommendTextEnabled(item.recommendTextEnabled)" class="card-desc">{{ item.descriptionTitle || '' }}</text>
           <view class="card-bar">
             <view class="price-group">
               <text class="price-yuan">¥</text>
@@ -211,7 +215,7 @@ onMounted(() => {
 .logo-mark { width: 102rpx; height: 54rpx; background: rgba(0,0,0,.08); border-radius: 6rpx; }
 
 /* ===== 品牌文案 ===== */
-.brand-title { color: #232423; font-size: 40rpx; letter-spacing: 13rpx; text-align: center; margin: 48rpx 110rpx 0 144rpx; line-height: 56rpx; }
+.brand-title { display: block; width: 100%; box-sizing: border-box; padding: 0 24rpx; color: #232423; font-size: 40rpx; letter-spacing: 13rpx; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 48rpx 0 0; line-height: 56rpx; }
 .brand-slogan { display: flex; justify-content: center; color: #bebebe; font-size: 28rpx; margin-top: 4rpx; gap: 4rpx; }
 
 /* ===== 商品卡片（图片 + 下方文字样式） ===== */

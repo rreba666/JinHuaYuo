@@ -7,6 +7,12 @@ export interface EnabledShop {
   phone?: string
   status?: number
   createTime?: string
+  /** 营业时间（如 06:00-23:00） */
+  openTime?: string
+  /** 纬度（点地图时调 uni.openLocation 导航） */
+  latitude?: number
+  /** 经度 */
+  longitude?: number
 }
 
 /** 查询 C 端可选的启用门店。 */

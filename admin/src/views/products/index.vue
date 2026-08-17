@@ -33,7 +33,7 @@ const mediaUploading = computed(() => store.uploading || detailUploadCount.value
 
 /** 创建新增商品的默认表单。 */
 function createEmptyForm(): AdminProductSaveDTO {
-  return { id: undefined, name: '', categoryId: '', mainImage: '', images: [], videoUrl: '', description: '', descriptionTitle: '', originPlace: '', detailImages: [], promotionFund: 0, promotionEnabled: 1, dividendFund: 0, dividendEnabled: 1, status: 1, isRecommended: 0, sortOrder: 0, skuList: [] }
+  return { id: undefined, name: '', categoryId: '', mainImage: '', images: [], videoUrl: '', description: '', descriptionTitle: '', originPlace: '', detailImages: [], promotionFund: 0, promotionEnabled: 1, dividendFund: 0, dividendEnabled: 1, status: 1, isRecommended: 0, recommendTextEnabled: 0, sortOrder: 0, skuList: [] }
 }
 
 function getMinSkuPrice(skuList: AdminProductSaveDTO['skuList'] = form.skuList): number {
@@ -78,7 +78,7 @@ function flattenCategories(nodes: CategoryNode[], parent = ''): Array<{ id: stri
 /** 复制详情数据到编辑表单，避免弹窗修改列表原数据。 */
 function fillForm(detail?: ProductDetail): void {
   const status = normalizeBinary(detail?.status ?? 1)
-  Object.assign(form, detail ? { id: detail.id, name: detail.name, categoryId: detail.categoryId, mainImage: detail.mainImage, images: [...(detail.images || [])], videoUrl: detail.videoUrl || '', description: detail.description || '', descriptionTitle: detail.descriptionTitle || '', originPlace: detail.originPlace || '', detailImages: [...(detail.detailImages || [])], promotionFund: detail.promotionFund ?? 0, promotionEnabled: normalizeBinary(detail.promotionEnabled), dividendFund: detail.dividendFund ?? 0, dividendEnabled: normalizeBinary(detail.dividendEnabled), status, isRecommended: status === 1 ? normalizeBinary(detail.isRecommended) : 0, sortOrder: detail.sortOrder || 0, skuList: (detail.skuList || []).map((sku) => ({ ...sku, id: sku.id == null ? undefined : String(sku.id), enabled: normalizeBinary(sku.enabled) })) } : createEmptyForm())
+  Object.assign(form, detail ? { id: detail.id, name: detail.name, categoryId: detail.categoryId, mainImage: detail.mainImage, images: [...(detail.images || [])], videoUrl: detail.videoUrl || '', description: detail.description || '', descriptionTitle: detail.descriptionTitle || '', originPlace: detail.originPlace || '', detailImages: [...(detail.detailImages || [])], promotionFund: detail.promotionFund ?? 0, promotionEnabled: normalizeBinary(detail.promotionEnabled), dividendFund: detail.dividendFund ?? 0, dividendEnabled: normalizeBinary(detail.dividendEnabled), status, isRecommended: status === 1 ? normalizeBinary(detail.isRecommended) : 0, recommendTextEnabled: status === 1 && normalizeBinary(detail.isRecommended) === 1 ? normalizeBinary(detail.recommendTextEnabled) : 0, sortOrder: detail.sortOrder || 0, skuList: (detail.skuList || []).map((sku) => ({ ...sku, id: sku.id == null ? undefined : String(sku.id), enabled: normalizeBinary(sku.enabled) })) } : createEmptyForm())
   promotionFundTouched.value = false
   dividendFundTouched.value = false
   autoFillFundsFromSku.value = !detail
@@ -111,13 +111,21 @@ watch(() => form.status, (status, previousStatus) => {
   }
 })
 
+/** 推荐文本依赖首页推荐，关闭首页推荐时同步隐藏文本。 */
+watch(() => form.isRecommended, (isRecommended, previousIsRecommended) => {
+  if (normalizeBinary(isRecommended) === 0 && normalizeBinary(form.recommendTextEnabled) === 1) {
+    form.recommendTextEnabled = 0
+    if (normalizeBinary(previousIsRecommended) === 1) ElMessage.info('关闭首页推荐后将自动隐藏推荐文本')
+  }
+})
+
 watch(() => form.skuList.map((sku) => sku.price), syncDefaultFunds)
 
 async function openForm(product?: ProductListItem): Promise<void> {
   editingId.value = product?.id
   try {
     if (product) await store.fetchDetail(product.id)
-    fillForm(store.detail || undefined)
+    fillForm(product ? store.detail || undefined : undefined)
     formVisible.value = true
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '商品详情加载失败')
@@ -147,6 +155,7 @@ async function submitForm(): Promise<void> {
       promotionEnabled: normalizeBinary(form.promotionEnabled),
       dividendEnabled: normalizeBinary(form.dividendEnabled),
       isRecommended: normalizeBinary(form.status) === 1 ? normalizeBinary(form.isRecommended) : 0,
+      recommendTextEnabled: normalizeBinary(form.status) === 1 && normalizeBinary(form.isRecommended) === 1 ? normalizeBinary(form.recommendTextEnabled) : 0,
       ...(editingId.value ? { id: editingId.value } : { id: undefined }),
     }
     await store.saveProduct(payload)
@@ -202,7 +211,7 @@ async function uploadFile(options: UploadRequestOptions, field: 'mainImage' | 'i
   const isDetailImage = field === 'detailImages'
   if (field === 'mainImage' && form.mainImage) { ElMessage.warning('主图最多上传1张'); return }
   if (field === 'images' && form[field].length >= 5) { ElMessage.warning('商品轮播图最多上传5张图片'); return }
-  if (isDetailImage && form[field].length + detailUploadCount.value >= 10) { ElMessage.warning('商品详情图最多上传10张图片'); return }
+  if (isDetailImage && form[field].length + detailUploadCount.value >= 15) { ElMessage.warning('商品详情图最多上传15张图片'); return }
   if (isVideo ? file.type !== 'video/mp4' && !file.name.toLowerCase().endsWith('.mp4') : !file.type.startsWith('image/')) { ElMessage.error(isVideo ? '商品视频仅支持 MP4' : '请上传图片文件'); return }
   if (isDetailImage) detailUploadCount.value += 1
   try {
@@ -257,13 +266,14 @@ onMounted(() => {
           <div class="media-edit"><el-input v-model="form.videoUrl" /><el-upload :show-file-list="false" :http-request="onVideoUpload" accept="video/mp4"><el-button :loading="mediaUploading">上传 MP4</el-button></el-upload></div>
         </el-form-item>
         <el-form-item label="详情图" class="form-item-full">
-          <ImageGridUpload v-model="form.detailImages" :max="10" :multiple="true" :display-limit="3" thumbnail-mode="long" :uploading="mediaUploading" @upload="onDetailImagesUpload" @remove="form.detailImages.splice($event, 1)" />
+          <ImageGridUpload v-model="form.detailImages" :max="15" :multiple="true" :display-limit="3" thumbnail-mode="long" :uploading="mediaUploading" @upload="onDetailImagesUpload" @remove="form.detailImages.splice($event, 1)" />
         </el-form-item>
         <el-form-item label="产地"><el-input v-model="form.originPlace" /></el-form-item>
         <el-form-item label="排序权重"><el-input-number v-model="form.sortOrder" :min="0" /></el-form-item>
         <div class="fund-config-row form-item-full"><el-form-item label="推广资金"><div class="fund-control"><el-input-number v-model="form.promotionFund" :min="0" :precision="2" @change="markPromotionFundTouched" /><el-switch v-model="form.promotionEnabled" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="禁用" /><span class="form-hint">默认 20%</span></div></el-form-item><el-form-item label="分红资金"><div class="fund-control"><el-input-number v-model="form.dividendFund" :min="0" :precision="2" @change="markDividendFundTouched" /><el-switch v-model="form.dividendEnabled" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="禁用" /><span class="form-hint">默认 26%</span></div></el-form-item></div>
         <el-form-item label="商品状态"><el-switch v-model="form.status" :active-value="1" :inactive-value="0" active-text="上架" inactive-text="下架" /></el-form-item>
         <el-form-item label="首页推荐"><el-switch v-model="form.isRecommended" :disabled="normalizeBinary(form.status) === 0" :active-value="1" :inactive-value="0" /></el-form-item>
+        <el-form-item label="推荐文本"><el-switch v-model="form.recommendTextEnabled" :disabled="normalizeBinary(form.status) === 0 || normalizeBinary(form.isRecommended) === 0" :active-value="1" :inactive-value="0" /></el-form-item>
         <el-form-item label="详情描述" class="form-item-full"><el-input v-model="form.description" type="textarea" :rows="5" placeholder="请输入 HTML 商品描述" /></el-form-item>
         <el-form-item label="SKU" class="form-item-full"><div class="sku-editor"><el-button size="small" @click="addSku">新增 SKU</el-button><el-table :data="form.skuList" border><el-table-column label="规格名称"><template #default="{ row }"><el-input v-model="row.skuName" /></template></el-table-column><el-table-column label="价格"><template #default="{ row }"><el-input-number v-model="row.price" :min="0.01" :precision="2" /></template></el-table-column><el-table-column label="库存"><template #default="{ row }"><el-input-number v-model="row.stock" :min="0" /></template></el-table-column><el-table-column label="启用"><template #default="{ row }"><el-switch v-model="row.enabled" :active-value="1" :inactive-value="0" /></template></el-table-column><el-table-column label="操作" width="90"><template #default="{ $index }"><el-button size="small" type="danger" @click="removeSku($index)"><el-icon><Delete /></el-icon>删除</el-button></template></el-table-column></el-table></div></el-form-item>
       </el-form>
@@ -286,8 +296,9 @@ onMounted(() => {
 .product-form > .el-form-item { align-self: start; min-width: 0; }
 .product-form :deep(.el-form-item__content) { min-width: 0; }
 .product-form :deep(.el-select) { width: 100%; }
-.detail-images { display: flex; flex-direction: column; gap: 12px; }
-.detail-image { width: 100%; max-height: 480px; }
+.detail-images { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+.detail-image { display: block; width: 100%; height: auto; max-height: none; }
+.detail-image :deep(.el-image__inner) { display: block; width: 100%; height: auto; max-height: none; object-fit: contain; }
 .media-edit-list, .sku-editor { width: 100%; min-width: 0; }
 .media-edit { display: flex; gap: 8px; width: 100%; margin-bottom: 8px; }
 .media-edit .el-input { min-width: 0; flex: 1; }

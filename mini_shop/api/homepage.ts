@@ -21,6 +21,7 @@ export interface HomepageProduct {
   tag?: string
   soldCount?: number
   descriptionTitle?: string
+  recommendTextEnabled?: 0 | 1 | '0' | '1' | boolean
 }
 
 export interface HomepageData {

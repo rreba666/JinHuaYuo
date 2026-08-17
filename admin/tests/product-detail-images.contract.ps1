@@ -18,8 +18,8 @@ Assert-Marker $component '+{{' 'ImageGridUpload must render a collapsed count en
 Assert-Marker $component "thumbnailMode?: 'square' | 'long'" 'ImageGridUpload must expose a long-thumbnail mode'
 Assert-Marker $component 'image-preview--long' 'ImageGridUpload must style long thumbnails separately'
 
-Assert-Marker $products 'isDetailImage && form[field].length + detailUploadCount.value >= 10' 'detailImages upload limit must include pending uploads'
-Assert-Marker $products ':max="10"' 'detailImages uploader must allow at most 10 images'
+Assert-Marker $products 'isDetailImage && form[field].length + detailUploadCount.value >= 15' 'detailImages upload limit must include pending uploads'
+Assert-Marker $products ':max="15"' 'detailImages uploader must allow at most 15 images'
 Assert-Marker $products ':multiple="true"' 'detailImages uploader must allow selecting multiple files'
 Assert-Marker $products ':display-limit="3"' 'detailImages uploader must collapse after 3 previews'
 Assert-Marker $products 'thumbnail-mode="long"' 'detailImages uploader must use the long-thumbnail mode'

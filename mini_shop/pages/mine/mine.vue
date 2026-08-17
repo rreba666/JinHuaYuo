@@ -40,6 +40,20 @@ const incomeEntries = computed(() => [
   { label: '平台红包', value: wallet.value?.pendingBonus },
 ])
 
+/** 待领取分红积分（红包金额）。 */
+const pendingBonus = computed(() => Number(wallet.value?.pendingBonus || 0))
+/** 上次已查看的分红金额（本地缓存，用于红点提示新分红）。 */
+const lastSeenBonus = ref(Number(uni.getStorageSync('bonus_last_seen') || 0))
+/** 是否有未查看的新分红红包（红点显示条件）。 */
+const hasUnseenBonus = computed(() => pendingBonus.value > lastSeenBonus.value)
+/** 红包弹窗展示金额（纯数字积分，不含货币符号）。 */
+const redPacketAmount = computed(() => {
+  const value = pendingBonus.value
+  return value.toFixed(2).replace(/\.00$/, '').replace(/\.(\d)0$/, '.$1')
+})
+/** 红包弹窗可见状态。 */
+const redPacketVisible = ref(false)
+
 function formatIncome(value?: number): string {
   return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(2) : '0.00'
 }
@@ -77,7 +91,7 @@ function goMenu(key: string): void {
   uni.showToast({ title: `${item?.label || '功能'} - 功能开发中`, icon: 'none' })
 }
 
-/** 处理收益卡点击，推广收益进入独立推广页，其他收益暂不伪造明细。 */
+/** 处理收益卡点击，推广收益进入独立推广页，平台红包弹窗展示。 */
 function goIncome(index: number): void {
   if (!registeredUser.value) return
   if (index === 0) {
@@ -89,8 +103,26 @@ function goIncome(index: number): void {
     return
   }
   if (index === 2) {
-    uni.showToast({ title: '平台红包详情接口待后端提供', icon: 'none' })
+    openRedPacket()
   }
+}
+
+/** 打开红包弹窗并标记本次分红已查看（红点消失，直到下次新分红）。 */
+function openRedPacket(): void {
+  redPacketVisible.value = true
+  lastSeenBonus.value = pendingBonus.value
+  uni.setStorageSync('bonus_last_seen', pendingBonus.value)
+}
+
+/** 关闭红包弹窗。 */
+function closeRedPacket(): void {
+  redPacketVisible.value = false
+}
+
+/** 点击「开心收下」进入红包页。 */
+function openRedPacketPage(): void {
+  redPacketVisible.value = false
+  uni.navigateTo({ url: '/pages/redpacket/redpacket' })
 }
 
 function goAllOrders(): void {
@@ -172,7 +204,7 @@ onShow(() => { void loadData() })
           <view v-for="(item, index) in incomeEntries" :key="item.label" class="income-item" @click="goIncome(index)">
             <text class="income-value">{{ formatIncome(item.value) }}</text>
             <text class="income-label">{{ item.label }}</text>
-            <view v-if="index === 2" class="income-dot" />
+            <view v-if="index === 2 && hasUnseenBonus" class="income-dot" />
           </view>
         </view>
       </view>
@@ -210,6 +242,17 @@ onShow(() => { void loadData() })
         <input v-model="profileForm.phone" class="sheet-input" type="number" maxlength="11" placeholder="请输入手机号" />
         <input v-model="profileForm.avatarUrl" class="sheet-input" placeholder="头像地址（可选）" />
         <button class="sheet-submit" :disabled="profileSaving" @click="saveProfile">{{ profileSaving ? '保存中...' : '保存资料' }}</button>
+      </view>
+    </view>
+
+    <!-- 平台红包弹窗 -->
+    <view v-show="redPacketVisible" class="mask redpacket-mask" @click="closeRedPacket">
+      <view class="redpacket-sheet" @click.stop>
+        <image class="redpacket-bg" src="/static/my/红包_slices/编组.png" mode="aspectFit" />
+        <view class="redpacket-title"><text>今华有·优肽甄选</text><text>平台现金红包</text></view>
+        <text class="redpacket-amount">{{ redPacketAmount }}</text>
+        <view class="redpacket-btn" @click="openRedPacketPage">开心收下</view>
+        <text class="redpacket-tip">*可在平台红包页面提现</text>
       </view>
     </view>
   </view>
@@ -281,4 +324,11 @@ onShow(() => { void loadData() })
 .sheet-head { display: flex; align-items: center; justify-content: center; min-height: 54rpx; }.sheet-title { font-size: 30rpx; font-weight: 700; }.sheet-close { position: absolute; right: 30rpx; color: #888; font-size: 42rpx; }
 .sheet-input { height: 78rpx; margin-top: 20rpx; padding: 0 22rpx; background: #f7f7f7; box-sizing: border-box; color: #333; font-size: 25rpx; }.balance { display: block; margin-top: 22rpx; color: #555; font-size: 26rpx; }
 .sheet-submit { height: 78rpx; margin: 28rpx 0 0; color: #fff; background: #222; border-radius: 4rpx; font-size: 27rpx; }.sheet-submit::after { border: 0; }
+.redpacket-mask { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.81); }
+.redpacket-sheet { position: relative; width: 620rpx; height: 1104rpx; }
+.redpacket-bg { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; }
+.redpacket-title { position: absolute; left: 0; right: 0; top: 38%; z-index: 1; display: flex; flex-direction: column; align-items: center; color: #916448; font-size: 26rpx; font-weight: 600; line-height: 1.5; }
+.redpacket-amount { position: absolute; left: 0; right: 0; top: 51%; z-index: 1; color: #916448; font-size: 60rpx; font-weight: 700; text-align: center; line-height: 1; }
+.redpacket-btn { position: absolute; left: 50%; top: 62%; z-index: 1; display: flex; align-items: center; justify-content: center; width: 224rpx; height: 80rpx; color: #fff; font-size: 30rpx; font-weight: 600; transform: translateX(-50%); }
+.redpacket-tip { position: absolute; left: 0; right: 0; top: 75%; z-index: 1; color: #fff; font-size: 22rpx; text-align: center; }
 </style>
