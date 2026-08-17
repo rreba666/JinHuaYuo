@@ -3,7 +3,6 @@ import { computed, onMounted, ref } from 'vue'
 import { onLoad, onShareAppMessage } from '@dcloudio/uni-app'
 import { addToCart } from '@/api/cart'
 import { favoriteProduct, unfavoriteProduct } from '@/api/favorite'
-import { createOrder } from '@/api/order'
 import { getUserProfile, type UserProfile } from '@/api/user'
 import { getProductDetail, type ProductDetail } from '@/api/product'
 import { isRegisteredUser } from '@/utils/auth'
@@ -131,7 +130,7 @@ async function addProductToCart(): Promise<void> {
   }
 }
 
-/** 创建当前默认 SKU 的待支付订单，并进入确认订单页。 */
+/** 立即购买：静默加入购物车后跳转确认订单页，由支付页用购物车结算（复用已验证的结算流程）。 */
 async function buyNow(): Promise<void> {
   if (!product.value || actionLoading.value) return
   const skuId = selectedSku.value?.id
@@ -141,10 +140,9 @@ async function buyNow(): Promise<void> {
   }
   actionLoading.value = true
   try {
-    const created = await createOrder({ items: [{ skuId: Number(skuId), quantity: 1 }], pickupType: 0 })
-    const orderId = created.orderId ?? created.id
-    if (orderId == null) throw new Error('创建订单未返回订单 ID')
-    uni.navigateTo({ url: `/pages/payment/payment?orderId=${orderId}` })
+    // 静默加购物车，让「立即支付」走购物车结算，避免直接下单缺收货地址等问题
+    await addToCart({ productId: Number(product.value.id), skuId: Number(skuId), quantity: 1 })
+    uni.navigateTo({ url: `/pages/payment/payment?productId=${product.value.id}&skuId=${skuId}&quantity=1` })
   } catch (error) {
     uni.showToast({ title: error instanceof Error ? error.message : '立即支付失败', icon: 'none' })
   } finally {

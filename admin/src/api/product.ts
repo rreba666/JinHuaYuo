@@ -64,6 +64,7 @@ function normalizeProductDetail(detail: ProductDetail): ProductDetail {
     promotionEnabled: normalizeProductBinaryOrNull(detail.promotionEnabled),
     dividendFund: resolveDividendFund(detail.dividendFund, detail.minPrice),
     dividendEnabled: normalizeProductBinaryOrNull(detail.dividendEnabled),
+    recommendTextEnabled: normalizeProductBinary(detail.recommendTextEnabled),
     mainImage: resolveMediaUrl(detail.mainImage),
     images: resolveMediaArray(normalizeStringArray(detail.images)),
     videoUrl: detail.videoUrl || '',

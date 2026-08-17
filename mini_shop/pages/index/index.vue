@@ -36,9 +36,35 @@ const systemWidth = ref(0)
 const heroImages = computed(() => homepageMedia.value?.imageUrl || [])
 const heroVideo = computed(() => homepageMedia.value?.videoUrl?.[0] || '')
 const bottomImages = computed(() => homepageMedia.value?.bottomImageUrl || [])
+const heroHeightPx = ref(0)
+const heroHeightStyle = computed(() => heroHeightPx.value > 0 ? `${heroHeightPx.value}px` : '720rpx')
 
 function isRecommendTextEnabled(value: HomepageProduct['recommendTextEnabled']): boolean {
   return value === 1 || value === '1' || value === true
+}
+
+function useDefaultHeroHeight(): void {
+  heroHeightPx.value = systemWidth.value > 0 ? systemWidth.value * 720 / 750 : 0
+}
+
+/** 根据当前轮播图原始尺寸自适应容器高度，避免 aspectFill 裁剪海报内容。 */
+function updateHeroHeight(index = 0): void {
+  const image = heroImages.value[index]
+  if (!image) return
+  useDefaultHeroHeight()
+  uni.getImageInfo({
+    src: image,
+    success: (result) => {
+      if (!result.width || !result.height) return
+      const width = systemWidth.value || 375
+      heroHeightPx.value = width * result.height / result.width
+    },
+    fail: () => useDefaultHeroHeight(),
+  })
+}
+
+function handleHeroChange(event: { detail?: { current?: number } }): void {
+  updateHeroHeight(event.detail?.current ?? 0)
 }
 
 async function loadHomepage(): Promise<void> {
@@ -48,6 +74,7 @@ async function loadHomepage(): Promise<void> {
     homepageMedia.value = enabled || null
     if (enabled?.description) brandName.value = enabled.description
     products.value = (data.recommendedProducts || []).slice(0, 6)
+    updateHeroHeight(0)
   } catch { /* 接口失败使用默认展示 */ }
   finally { loading.value = false }
 }
@@ -113,9 +140,9 @@ onMounted(() => {
   <view class="page">
 
     <!-- ====== 首屏轮播（从页面顶部开始） ====== -->
-    <swiper v-if="heroImages.length" class="hero-swiper" circular autoplay interval="4500" duration="450">
-      <swiper-item v-for="(image, index) in heroImages" :key="image">
-        <image class="hero-image" :src="image" mode="aspectFill" @click="goHero(index)" />
+    <swiper v-if="heroImages.length" class="hero-swiper" :style="{ height: heroHeightStyle }" circular autoplay interval="4500" duration="450" @change="handleHeroChange">
+      <swiper-item v-for="(image, index) in heroImages" :key="image" class="hero-swiper-item" :style="{ height: heroHeightStyle }">
+        <image class="hero-image" :src="image" mode="widthFix" @click="goHero(index)" />
       </swiper-item>
     </swiper>
     <video v-else-if="heroVideo" class="hero-video" :src="heroVideo" :poster="homepageMedia?.coverUrl?.[0]" autoplay loop muted />
@@ -205,8 +232,9 @@ onMounted(() => {
 .nav-search-text { color: #999; font-size: 26rpx; }
 
 /* ===== 首屏轮播 ===== */
-.hero-swiper { width: 100%; height: 720rpx; margin-top: 0; }
-.hero-image { width: 100%; height: 100%; }
+.hero-swiper { width: 100%; margin-top: 0; overflow: hidden; }
+.hero-swiper-item { width: 100%; overflow: hidden; }
+.hero-image { width: 100%; height: auto; display: block; }
 .hero-video { width: 100%; height: 720rpx; margin-top: 0; }
 .hero-placeholder { width: 100%; height: 720rpx; background: #d8d8d8; }
 

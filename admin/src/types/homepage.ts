@@ -40,6 +40,7 @@ export interface HomepageProductCard {
   tag?: string
   soldCount?: number
   descriptionTitle?: string
+  recommendTextEnabled?: HomepageEnabledValue
 }
 
 export interface HomepageVO {

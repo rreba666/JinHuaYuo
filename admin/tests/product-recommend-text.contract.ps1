@@ -3,8 +3,12 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $path = Join-Path $root "src/views/products/index.vue"
 $typesPath = Join-Path $root "src/types/product.ts"
+$homepageTypesPath = Join-Path $root "src/types/homepage.ts"
+$apiPath = Join-Path $root "src/api/product.ts"
 $source = Get-Content -Raw -Encoding utf8 -LiteralPath $path
 $types = Get-Content -Raw -Encoding utf8 -LiteralPath $typesPath
+$homepageTypes = Get-Content -Raw -Encoding utf8 -LiteralPath $homepageTypesPath
+$api = Get-Content -Raw -Encoding utf8 -LiteralPath $apiPath
 
 function Assert-Marker([string]$content, [string]$marker, [string]$message) {
   if ($content.IndexOf($marker, [StringComparison]::Ordinal) -lt 0) {
@@ -19,5 +23,7 @@ Assert-Marker $source 'recommendTextEnabled: normalizeBinary(form.status) === 1 
 Assert-Marker $source 'v-model="form.recommendTextEnabled"' 'product form must expose a recommendation text switch'
 Assert-Marker $source ':disabled="normalizeBinary(form.status) === 0 || normalizeBinary(form.isRecommended) === 0"' 'recommendation text switch must be disabled when homepage recommendation is off'
 Assert-Marker $types 'recommendTextEnabled: ProductStatusValue' 'product models must include the recommendation text status'
+Assert-Marker $homepageTypes 'recommendTextEnabled?: HomepageEnabledValue' 'homepage product card model must include the recommendation text status'
+Assert-Marker $api 'recommendTextEnabled: normalizeProductBinary(detail.recommendTextEnabled)' 'product detail response must normalize the recommendation text status'
 
 Write-Output "product recommendation text contract: PASS"

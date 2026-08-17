@@ -23,6 +23,10 @@ const bodyTop = computed(() => menuTop.value + menuHeight.value + 10)
 
 const items = ref<CartItem[]>([])
 const selectedCartIds = ref<number[]>([])
+/** 直接购买模式参数（从商品详情「立即支付」进入）。 */
+const directSkuId = ref<number | null>(null)
+const directProductId = ref<number | null>(null)
+const directQuantity = ref(1)
 const loading = ref(true)
 const loadError = ref(false)
 
@@ -122,6 +126,25 @@ async function loadSelectedItems(): Promise<void> {
   }
 }
 
+/** 立即购买模式：商品详情已静默加购物车，从购物车匹配该商品（productId+skuId）构造结算条目。 */
+async function loadDirectItem(): Promise<void> {
+  if (!directSkuId.value || !directProductId.value) return
+  loading.value = true
+  loadError.value = false
+  try {
+    const allItems = await getCartList()
+    const matched = allItems.filter((item) => item.productId === directProductId.value && item.skuId === directSkuId.value)
+    if (!matched.length) throw new Error('购物车未找到该商品，请重新加入购物车')
+    items.value = matched
+    selectedCartIds.value = matched.map((item) => item.cartId)
+  } catch (error) {
+    loadError.value = true
+    console.error('立即购买商品加载失败', error)
+  } finally {
+    loading.value = false
+  }
+}
+
 /** 加载历史待付款订单，避免从订单列表进入时再次按购物车创建新订单。 */
 async function loadExistingOrder(): Promise<void> {
   if (!orderId.value) return
@@ -189,6 +212,10 @@ function reloadCheckout(): void {
     void loadExistingOrder()
     return
   }
+  if (directSkuId.value && directProductId.value) {
+    void loadDirectItem()
+    return
+  }
   void loadSelectedItems()
 }
 
@@ -205,8 +232,20 @@ onLoad(async (options?: Record<string, string | undefined>) => {
     .split(',')
     .map((value) => Number(value))
     .filter((value) => Number.isFinite(value) && value > 0)
+  // 直接购买模式：商品详情「立即支付」进入，带 skuId + productId
+  const skuId = Number(options?.skuId)
+  const productId = Number(options?.productId)
+  if (Number.isFinite(skuId) && skuId > 0 && Number.isFinite(productId) && productId > 0) {
+    directSkuId.value = skuId
+    directProductId.value = productId
+    directQuantity.value = Number(options?.quantity || 1) || 1
+  }
   if (orderId.value) {
     await loadExistingOrder()
+    return
+  }
+  if (directSkuId.value && directProductId.value) {
+    await Promise.all([loadDirectItem(), loadShops()])
     return
   }
   await Promise.all([loadSelectedItems(), loadShops()])
