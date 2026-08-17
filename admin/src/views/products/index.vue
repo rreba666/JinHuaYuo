@@ -20,6 +20,7 @@ const dividendFundTouched = ref(false)
 const autoFillFundsFromSku = ref(false)
 const previousDefaultPromotionFund = ref(0)
 const previousDefaultDividendFund = ref(0)
+const detailUploadCount = ref(0)
 const rules: FormRules = {
   name: [{ required: true, message: '请输入商品名称', trigger: 'blur' }],
   categoryId: [{ required: true, message: '请选择商品分类', trigger: 'change' }],
@@ -28,6 +29,7 @@ const rules: FormRules = {
 
 const hasSelection = computed(() => selected.value.length > 0)
 const categoryOptions = computed(() => flattenCategories(store.categories))
+const mediaUploading = computed(() => store.uploading || detailUploadCount.value > 0)
 
 /** 创建新增商品的默认表单。 */
 function createEmptyForm(): AdminProductSaveDTO {
@@ -197,15 +199,19 @@ function removeSku(index: number): void { form.skuList.splice(index, 1) }
 async function uploadFile(options: UploadRequestOptions, field: 'mainImage' | 'images' | 'videoUrl' | 'detailImages'): Promise<void> {
   const file = options.file as File
   const isVideo = field === 'videoUrl'
+  const isDetailImage = field === 'detailImages'
   if (field === 'mainImage' && form.mainImage) { ElMessage.warning('主图最多上传1张'); return }
-  if ((field === 'images' || field === 'detailImages') && form[field].length >= 5) { ElMessage.warning('最多上传5张图片'); return }
+  if (field === 'images' && form[field].length >= 5) { ElMessage.warning('商品轮播图最多上传5张图片'); return }
+  if (isDetailImage && form[field].length + detailUploadCount.value >= 10) { ElMessage.warning('商品详情图最多上传10张图片'); return }
   if (isVideo ? file.type !== 'video/mp4' && !file.name.toLowerCase().endsWith('.mp4') : !file.type.startsWith('image/')) { ElMessage.error(isVideo ? '商品视频仅支持 MP4' : '请上传图片文件'); return }
+  if (isDetailImage) detailUploadCount.value += 1
   try {
     const url = await store.uploadFile(file)
     if (field === 'mainImage' || field === 'videoUrl') form[field] = url
     else form[field].push(url)
     ElMessage.success('文件上传成功')
   } catch (error) { ElMessage.error(error instanceof Error ? error.message : '文件上传失败') }
+  finally { if (isDetailImage) detailUploadCount.value = Math.max(detailUploadCount.value - 1, 0) }
 }
 
 async function loadList(): Promise<void> { try { await store.fetchList() } catch (error) { ElMessage.error(error instanceof Error ? error.message : '商品列表查询失败') } }
@@ -241,17 +247,17 @@ onMounted(() => {
         <el-form-item label="描述标题"><el-input v-model="form.descriptionTitle" placeholder="首页卡片商品描述文字" /></el-form-item>
         <el-form-item label="商品分类" prop="categoryId"><el-select v-model="form.categoryId" placeholder="请选择分类"><el-option v-for="option in categoryOptions" :key="option.id" :label="option.label" :value="option.id" /></el-select></el-form-item>
         <el-form-item label="主图" prop="mainImage" class="form-item-full media-form-item">
-          <ImageGridUpload :model-value="form.mainImage ? [form.mainImage] : []" :max="1" :uploading="store.uploading" @upload="onMainImageUpload" @remove="form.mainImage = ''" />
+          <ImageGridUpload :model-value="form.mainImage ? [form.mainImage] : []" :max="1" :uploading="mediaUploading" @upload="onMainImageUpload" @remove="form.mainImage = ''" />
           <p class="upload-hint">建议尺寸 750×750px（1:1 正方形），首页卡片中图片将撑满显示，文字叠于底部</p>
         </el-form-item>
         <el-form-item label="轮播图" class="form-item-full">
-          <ImageGridUpload v-model="form.images" :max="5" :uploading="store.uploading" @upload="onImagesUpload" @remove="form.images.splice($event, 1)" />
+          <ImageGridUpload v-model="form.images" :max="5" :uploading="mediaUploading" @upload="onImagesUpload" @remove="form.images.splice($event, 1)" />
         </el-form-item>
         <el-form-item label="视频" class="form-item-full media-form-item">
-          <div class="media-edit"><el-input v-model="form.videoUrl" /><el-upload :show-file-list="false" :http-request="onVideoUpload" accept="video/mp4"><el-button :loading="store.uploading">上传 MP4</el-button></el-upload></div>
+          <div class="media-edit"><el-input v-model="form.videoUrl" /><el-upload :show-file-list="false" :http-request="onVideoUpload" accept="video/mp4"><el-button :loading="mediaUploading">上传 MP4</el-button></el-upload></div>
         </el-form-item>
         <el-form-item label="详情图" class="form-item-full">
-          <ImageGridUpload v-model="form.detailImages" :max="5" :uploading="store.uploading" @upload="onDetailImagesUpload" @remove="form.detailImages.splice($event, 1)" />
+          <ImageGridUpload v-model="form.detailImages" :max="10" :multiple="true" :display-limit="3" thumbnail-mode="long" :uploading="mediaUploading" @upload="onDetailImagesUpload" @remove="form.detailImages.splice($event, 1)" />
         </el-form-item>
         <el-form-item label="产地"><el-input v-model="form.originPlace" /></el-form-item>
         <el-form-item label="排序权重"><el-input-number v-model="form.sortOrder" :min="0" /></el-form-item>

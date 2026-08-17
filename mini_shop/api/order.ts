@@ -32,6 +32,22 @@ export interface OrderSummary {
   buyerName?: string
   buyerPhone?: string
   shopName?: string
+  /** 收货人姓名（物流订单，待后端在列表接口补字段） */
+  receiverName?: string
+  /** 收货人电话（物流订单） */
+  receiverPhone?: string
+  /** 收货地址（物流订单） */
+  receiverAddress?: string
+  /** 商品明细列表（列表接口补字段后展示设计稿商品卡片） */
+  items?: OrderDetailItem[]
+  /** 配送费（元） */
+  freightAmount?: number
+  /** 支付截止时间（格式 yyyy-MM-dd HH:mm:ss，仅待付款订单有值，前端据此倒计时） */
+  payExpireTime?: string
+  /** 第一件商品名（列表卡片标题，待后端在列表接口补字段） */
+  firstProductName?: string
+  /** 物流送达状态（待收货订单）：0=已发货(运输中)，1=已送达(待确认收货) */
+  deliveryStatus?: number
 }
 
 export interface OrderDetailItem {
@@ -44,9 +60,6 @@ export interface OrderDetailItem {
 }
 
 export interface OrderDetail extends OrderSummary {
-  receiverName?: string
-  receiverPhone?: string
-  receiverAddress?: string
   remark?: string
   pickupShopId?: number
   pickupStatus?: number
@@ -54,7 +67,6 @@ export interface OrderDetail extends OrderSummary {
   pickupCode?: string
   /** 自提二维码内容（形如 {PICKUP_BASE_URL}?c=自提码），前端据此生成二维码。 */
   pickupUrl?: string
-  items?: OrderDetailItem[]
 }
 
 /** 自提二维码信息（独立接口 GET /api/order/pickup-code/{orderId} 返回）。 */
@@ -84,8 +96,8 @@ export function createOrder(data: CreateOrderDTO): Promise<CreateOrderResult> {
   return request<CreateOrderResult>({ url: '/api/order/create', method: 'POST', data })
 }
 
-/** 查询当前用户订单列表，支持多状态筛选（后端 statuses 数组参数）。 */
-export function getOrderList(params: { page?: number; pageSize?: number; statuses?: OrderStatus[] } = {}): Promise<OrderPageResult> {
+/** 查询当前用户订单列表，支持多状态筛选（后端 statuses 数组参数）与配送方式筛选。 */
+export function getOrderList(params: { page?: number; pageSize?: number; statuses?: OrderStatus[]; pickupType?: PickupType } = {}): Promise<OrderPageResult> {
   const query = [
     `page=${encodeURIComponent(String(params.page || 1))}`,
     `pageSize=${encodeURIComponent(String(params.pageSize || 10))}`,
@@ -93,6 +105,7 @@ export function getOrderList(params: { page?: number; pageSize?: number; statuse
   if (params.statuses && params.statuses.length) {
     for (const status of params.statuses) query.push(`statuses=${encodeURIComponent(String(status))}`)
   }
+  if (params.pickupType !== undefined) query.push(`pickupType=${encodeURIComponent(String(params.pickupType))}`)
   return request<OrderPageResult>({ url: `/api/order/list?${query.join('&')}`, method: 'GET' })
 }
 

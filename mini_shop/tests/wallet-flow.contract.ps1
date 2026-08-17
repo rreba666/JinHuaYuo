@@ -10,12 +10,13 @@ if (-not (Select-String -InputObject $pagesJson -Pattern "pages/wallet/withdraw"
 
 $mineSource = Get-Content -Raw -Encoding utf8 (Join-Path $root "pages/mine/mine.vue")
 foreach ($marker in @(
-  (T 0x6211,0x7684,0x4F59,0x989D),
-  (T 0x8F6C,0x4F59,0x989D),
+  'if (index === 0)',
+  'goWallet()',
   "/pages/wallet/withdraw"
 )) {
   if (-not (Select-String -InputObject $mineSource -Pattern $marker -SimpleMatch)) { throw "mine wallet marker missing: $marker" }
 }
+if ($mineSource.Contains('wallet-entry')) { throw 'mine page should not expose the standalone wallet entry panel' }
 foreach ($marker in @("walletEditorVisible", "RealnameVerifySheet", "getRealnameStatus", "withdrawWallet(")) {
   if (Select-String -InputObject $mineSource -Pattern $marker -SimpleMatch) { throw "mine page still exposes old wallet modal marker: $marker" }
 }

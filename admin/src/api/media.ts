@@ -23,3 +23,9 @@ export function extractMediaUrl(value: unknown): string {
 export function resolveMediaArray(value: unknown): string[] {
   return Array.isArray(value) ? value.map(resolveMediaUrl).filter(Boolean) : []
 }
+
+/** 将需要依赖固定下标的媒体数组归一化，并保留空槽位。 */
+export function resolveMediaSlots(value: unknown, size: number): string[] {
+  const source = Array.isArray(value) ? value : []
+  return Array.from({ length: size }, (_, index) => resolveMediaUrl(source[index]))
+}

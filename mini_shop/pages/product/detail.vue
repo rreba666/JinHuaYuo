@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { onLoad, onShareAppMessage } from '@dcloudio/uni-app'
 import { addToCart } from '@/api/cart'
+import { favoriteProduct, unfavoriteProduct } from '@/api/favorite'
 import { createOrder } from '@/api/order'
 import { getUserProfile, type UserProfile } from '@/api/user'
 import { getProductDetail, type ProductDetail } from '@/api/product'
@@ -15,6 +16,10 @@ const product = ref<ProductDetail | null>(null)
 const loading = ref(true)
 const errorMessage = ref('')
 const actionLoading = ref(false)
+/** 当前商品是否已收藏（进页从详情 favorite 字段初始化）。 */
+const favorite = ref(false)
+/** 收藏操作进行中，防止连点重复请求。 */
+const favoriteLoading = ref(false)
 
 const navStyle = computed(() => ({ top: `${menuTop.value}px`, height: `${menuHeight.value}px` }))
 const bodyTop = computed(() => menuTop.value + menuHeight.value + 10)
@@ -62,6 +67,7 @@ onLoad(async (options) => {
   try { user.value = await getUserProfile() } catch { user.value = null }
   try {
     product.value = await getProductDetail(String(options.id))
+    favorite.value = Boolean(product.value.favorite)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '商品详情加载失败'
   } finally {
@@ -89,6 +95,25 @@ function goBack(): void {
 /** 返回购物车 TabBar 页面。 */
 function goCart(): void {
   uni.switchTab({ url: '/pages/cart/cart' })
+}
+
+/** 切换收藏状态：已收藏→取消，未收藏→收藏。 */
+async function toggleFavorite(): Promise<void> {
+  if (!product.value || favoriteLoading.value) return
+  favoriteLoading.value = true
+  try {
+    if (favorite.value) {
+      await unfavoriteProduct(product.value.id)
+      favorite.value = false
+    } else {
+      await favoriteProduct(product.value.id)
+      favorite.value = true
+    }
+  } catch (error) {
+    uni.showToast({ title: error instanceof Error ? error.message : '操作失败', icon: 'none' })
+  } finally {
+    favoriteLoading.value = false
+  }
 }
 
 /** 将当前商品默认 SKU 加入购物车。 */
@@ -161,7 +186,10 @@ onMounted(() => {
           <text class="price">¥{{ formatAmount(displayPrice) }}</text>
           <view class="title-row">
             <text class="name">{{ product?.name }}</text>
-            <view class="title-squares"><view /><view /></view>
+            <view class="title-icons">
+              <image class="title-icon" :src="favorite ? '/static/ProductDetails/已收藏_slices/已收藏.png' : '/static/ProductDetails/收藏_slices/收藏.png'" mode="aspectFit" @click="toggleFavorite" />
+              <image class="title-icon" src="/static/ProductDetails/分享_slices/分享.png" mode="aspectFit" />
+            </view>
           </view>
           <text class="description">{{ product?.description || product?.descriptionTitle || '' }}</text>
 
@@ -169,12 +197,12 @@ onMounted(() => {
             <text class="promotion-label">分享本商品成功可得</text>
             <text class="promotion-value">{{ promotionFundText }}</text>
             <text class="promotion-label">推广金</text>
-            <view class="promotion-box" />
+            <image class="promotion-arrow" src="/static/ProductDetails/右备份_slices/右备份.png" mode="aspectFit" />
           </view>
 
           <view class="tag-row">
-            <view class="tag"><view class="tag-box" /><text>包邮</text></view>
-            <view class="tag"><view class="tag-box" /><text>七天无理由</text></view>
+            <view class="tag"><image class="tag-icon" src="/static/ProductDetails/包邮_slices/包邮.png" mode="aspectFit" /><text>包邮</text></view>
+            <view class="tag"><image class="tag-icon" src="/static/ProductDetails/七天无理由_slices/七天无理由.png" mode="aspectFit" /><text>七天无理由</text></view>
           </view>
         </view>
 
@@ -186,7 +214,7 @@ onMounted(() => {
     </scroll-view>
 
     <view v-show="!loading && !errorMessage && product" class="product-detail-actions">
-      <view class="cart-action" @click="goCart"><view class="cart-icon" /><text>购物车</text></view>
+      <view class="cart-action" @click="goCart"><image class="cart-icon" src="/static/ProductDetails/购物车_slices/购物车.png" mode="aspectFit" /><text>购物车</text></view>
       <view class="action-button add-button" @click="addProductToCart">加入购物车</view>
       <view class="action-button buy-button" @click="buyNow">立即支付</view>
     </view>
@@ -206,24 +234,22 @@ onMounted(() => {
 .price { display: block; color: #d40000; font-size: 40rpx; font-weight: 700; line-height: 1.2; }
 .title-row { display: flex; align-items: flex-start; justify-content: space-between; margin-top: 22rpx; gap: 18rpx; }
 .name { flex: 1; min-width: 0; color: #222; font-size: 32rpx; font-weight: 600; line-height: 1.35; }
-.title-squares { display: flex; flex-shrink: 0; gap: 18rpx; padding-top: 4rpx; }
-.title-squares view { width: 40rpx; height: 40rpx; background: #d8d8d8; }
+.title-icons { display: flex; flex-shrink: 0; align-items: center; gap: 36rpx; padding-top: 4rpx; }
+.title-icon { width: 40rpx; height: 40rpx; flex-shrink: 0; }
 .description { display: block; margin-top: 16rpx; color: #999; font-size: 24rpx; line-height: 1.45; }
 .promotion-row { display: flex; align-items: center; min-height: 74rpx; margin-top: 24rpx; padding: 0 18rpx; background: #fff0e6; box-sizing: border-box; }
 .promotion-label { color: #444; font-size: 23rpx; white-space: nowrap; }
 .promotion-value { margin: 0 10rpx; color: #df1919; font-size: 34rpx; font-weight: 700; line-height: 1; }
-.promotion-box { width: 36rpx; height: 36rpx; margin-left: auto; border: 2rpx solid #999; background: #d8d8d8; box-sizing: border-box; }
+.promotion-arrow { width: 22rpx; height: 26rpx; margin-left: auto; flex-shrink: 0; }
 .tag-row { display: flex; align-items: center; gap: 32rpx; padding: 24rpx 0 28rpx; border-bottom: 1px solid #eee; }
 .tag { display: flex; align-items: center; color: #555; font-size: 23rpx; }
-.tag-box { width: 32rpx; height: 32rpx; margin-right: 12rpx; border: 2rpx solid #999; background: #d8d8d8; box-sizing: border-box; }
+.tag-icon { width: 36rpx; height: 36rpx; margin-right: 12rpx; flex-shrink: 0; }
 .detail-heading { display: flex; align-items: center; justify-content: center; height: 116rpx; color: #555; background: #fff; font-size: 25rpx; }
 .detail-media { min-height: 520rpx; background: #d6d6d6; }
 .product-detail-image { display: block; width: 100%; height: auto; }
 .product-detail-actions { position: fixed; right: 0; bottom: 0; left: 0; z-index: 40; display: flex; align-items: center; gap: 12rpx; padding: 12rpx 20rpx calc(12rpx + env(safe-area-inset-bottom)); background: #fff; box-sizing: border-box; }
 .cart-action { display: flex; width: 124rpx; flex-shrink: 0; flex-direction: column; align-items: center; justify-content: center; color: #333; font-size: 22rpx; }
-.cart-icon { position: relative; width: 42rpx; height: 34rpx; margin-bottom: 6rpx; border: 4rpx solid #333; border-top: 0; box-sizing: border-box; transform: skew(-8deg); }
-.cart-icon::before { position: absolute; top: -10rpx; left: -8rpx; width: 14rpx; height: 4rpx; background: #333; content: ''; }
-.cart-icon::after { position: absolute; bottom: -12rpx; left: 3rpx; width: 8rpx; height: 8rpx; border-radius: 50%; background: #333; box-shadow: 24rpx 0 #333; content: ''; }
+.cart-icon { width: 64rpx; height: 64rpx; margin-bottom: 2rpx; flex-shrink: 0; }
 .action-button { display: flex; align-items: center; justify-content: center; height: 82rpx; font-size: 28rpx; box-sizing: border-box; }
 .add-button { flex: 1; border: 2rpx solid #222; color: #222; background: #fff; }
 .buy-button { flex: 1; color: #fff; background: #050505; }

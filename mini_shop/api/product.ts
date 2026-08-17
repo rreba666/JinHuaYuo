@@ -4,6 +4,8 @@ export interface ProductDetail {
   id: string
   name: string
   mainImage: string
+  /** 当前用户是否已收藏该商品（未登录恒为 false） */
+  favorite?: boolean
   images?: string[]
   videoUrl?: string
   description: string

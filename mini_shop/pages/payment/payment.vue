@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getCartList, type CartItem } from '@/api/cart'
-import { createOrder, getOrderDetail, type OrderDetail } from '@/api/order'
+import { cancelOrder, createOrder, getOrderDetail, type OrderDetail } from '@/api/order'
 import { createPrepay, requestPayment } from '@/api/payment'
 import { getEnabledShops, type EnabledShop } from '@/api/shop'
 import { submitInvoice } from '@/api/invoice'
@@ -35,6 +35,9 @@ const shops = ref<EnabledShop[]>([])
 const orderId = ref<string | null>(null)
 const existingOrder = ref<OrderDetail | null>(null)
 const paying = ref(false)
+/** 倒计时基准时间，定时器每秒刷新驱动剩余时间重算。 */
+const now = ref(Date.now())
+let countdownTimer: ReturnType<typeof setInterval> | null = null
 
 const addressSheetVisible = ref(false)
 const shopSheetVisible = ref(false)
@@ -56,7 +59,7 @@ const remarkExpanded = ref(false)
 const remark = ref('')
 
 const subtotal = computed(() => items.value.reduce((sum, item) => sum + Number(item.price || 0) * item.quantity, 0))
-const deliveryFee = computed(() => 0)
+const deliveryFee = computed(() => Number(existingOrder.value?.freightAmount || 0))
 const total = computed(() => subtotal.value + deliveryFee.value)
 const itemCount = computed(() => items.value.reduce((sum, item) => sum + item.quantity, 0))
 const canRenderCheckout = computed(() => !loading.value && !loadError.value && (items.value.length > 0 || Boolean(existingOrder.value)))
@@ -68,6 +71,31 @@ const invoiceSummary = computed(() => {
     : `公司 · ${invoiceForm.companyName}`
 })
 const remarkSummary = computed(() => remark.value.trim() || '添加备注')
+
+/** 是否展示「取消订单」按钮：仅从订单列表进入的待付款历史订单。 */
+const showCancelOrder = computed(() => Boolean(orderId.value) && existingOrder.value?.status === 0)
+
+/** 解析支付截止时间字符串（yyyy-MM-dd HH:mm:ss）为毫秒时间戳，iOS 需把 '-' 换成 '/'。 */
+function parseExpireTime(value?: string): number {
+  if (!value) return 0
+  const normalized = String(value).replace(/-/g, '/')
+  const t = new Date(normalized).getTime()
+  return Number.isFinite(t) ? t : 0
+}
+
+/** 支付剩余秒数（仅待付款历史订单，依赖后端 payExpireTime 字符串）。 */
+const payRemainingSeconds = computed(() => {
+  if (!showCancelOrder.value) return 0
+  const expire = parseExpireTime(existingOrder.value?.payExpireTime)
+  if (!expire) return 0
+  return Math.max(0, Math.floor((expire - now.value) / 1000))
+})
+/** 倒计时文案 HH:MM:SS。 */
+const countdownText = computed(() => {
+  const s = payRemainingSeconds.value
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`
+})
 
 /** 格式化金额，统一保留两位小数。 */
 function formatMoney(value: number): string {
@@ -199,6 +227,12 @@ onMounted(() => {
   } catch (error) {
     console.warn('获取微信胶囊位置失败', error)
   }
+  // 待付款订单的支付倒计时：每秒刷新基准时间
+  countdownTimer = setInterval(() => { now.value = Date.now() }, 1000)
+})
+
+onUnmounted(() => {
+  if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null }
 })
 
 /** 切换配送方式，保留两种方式下已经填写的本地内容。 */
@@ -350,6 +384,23 @@ async function submitPayment(): Promise<void> {
   } finally { paying.value = false }
 }
 
+/** 取消当前待付款订单（二次确认后调用后端取消接口并返回）。 */
+async function cancelExistingOrder(): Promise<void> {
+  if (!orderId.value || paying.value) return
+  const confirmed = await new Promise<boolean>((resolve) => {
+    uni.showModal({ title: '提示', content: '确定取消该订单吗？', success: (res) => resolve(res.confirm), fail: () => resolve(false) })
+  })
+  if (!confirmed) return
+  paying.value = true
+  try {
+    await cancelOrder(orderId.value)
+    uni.showToast({ title: '订单已取消', icon: 'success' })
+    setTimeout(() => { uni.navigateBack() }, 500)
+  } catch (error) {
+    uni.showToast({ title: error instanceof Error ? error.message : '取消订单失败', icon: 'none' })
+  } finally { paying.value = false }
+}
+
 /** 返回购物车重新选择商品。 */
 function backToCart(): void {
   const pages = getCurrentPages()
@@ -494,8 +545,12 @@ function backToCart(): void {
     </view>
 
     <view v-show="canRenderCheckout" class="paybar">
-      <view class="total-block"><text class="currency">¥</text><text class="total-price">{{ formatMoney(total) }}</text><text class="count-label">共{{ itemCount }}件</text></view>
-      <view class="pay-now" :class="{ disabled: !items.length || paying }" @click="submitPayment">{{ paying ? '处理中...' : '立即支付' }}</view>
+      <view v-if="showCancelOrder" class="cancel-order" @click="cancelExistingOrder"><view class="cancel-icon" /><text>取消</text></view>
+      <view class="total-block"><text class="currency">¥</text><text class="total-price">{{ formatMoney(total) }}</text><text v-if="!showCancelOrder" class="count-label">共{{ itemCount }}件</text></view>
+      <view class="pay-now" :class="{ disabled: !items.length || paying }" @click="submitPayment">
+        <text v-if="showCancelOrder && countdownText" class="countdown">{{ countdownText }}</text>
+        <text>{{ paying ? '处理中...' : '立即支付' }}</text>
+      </view>
     </view>
 
     <view v-show="addressSheetVisible" class="mask" @click="addressSheetVisible = false">
@@ -599,8 +654,14 @@ function backToCart(): void {
 .currency { color: #222; font-size: 28rpx; font-weight: 700; }
 .total-price { margin-left: 4rpx; color: #222; font-size: 34rpx; font-weight: 700; }
 .count-label { margin-left: 12rpx; color: #999; font-size: 22rpx; }
-.pay-now { display: flex; align-items: center; justify-content: center; width: 420rpx; height: 82rpx; background: #050505; color: #fff; font-size: 28rpx; }
+.pay-now { display: flex; align-items: center; justify-content: center; gap: 12rpx; width: 420rpx; height: 82rpx; background: #050505; color: #fff; font-size: 28rpx; }
 .pay-now.disabled { background: #aaa; }
+.cancel-order { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 96rpx; flex-shrink: 0; color: #959595; font-size: 22rpx; }
+.cancel-icon { position: relative; width: 40rpx; height: 40rpx; margin-bottom: 6rpx; border: 2rpx solid #c4c4c4; border-radius: 50%; box-sizing: border-box; }
+.cancel-icon::before, .cancel-icon::after { content: ''; position: absolute; left: 50%; top: 50%; width: 22rpx; height: 2rpx; background: #999; }
+.cancel-icon::before { transform: translate(-50%, -50%) rotate(45deg); }
+.cancel-icon::after { transform: translate(-50%, -50%) rotate(-45deg); }
+.countdown { font-size: 26rpx; font-weight: 600; }
 .mask { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; background: rgba(0, 0, 0, .68); }
 .sheet { width: 100%; max-height: 86vh; padding: 30rpx 28rpx calc(30rpx + env(safe-area-inset-bottom)); background: #fff; box-sizing: border-box; overflow-y: auto; }
 .sheet-head { display: flex; align-items: center; justify-content: center; min-height: 54rpx; }

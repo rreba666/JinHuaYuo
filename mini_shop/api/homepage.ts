@@ -28,9 +28,23 @@ export interface HomepageData {
   recommendedProducts: HomepageProduct[]
 }
 
+/** 保留底部推荐两个固定位置，避免缺失图片后下标发生位移。 */
+export function normalizeBottomRecommendationSlots(value: unknown): string[] {
+  const source = Array.isArray(value) ? value : []
+  return [0, 1].map((index) => (typeof source[index] === 'string' ? source[index] : ''))
+}
+
 /** 获取小程序首页聚合数据。 */
-export function getHomepageData(): Promise<HomepageData> {
-  return request<HomepageData>({ url: '/api/homepage', method: 'GET' })
+export async function getHomepageData(): Promise<HomepageData> {
+  const data = await request<HomepageData>({ url: '/api/homepage', method: 'GET' })
+  return {
+    ...data,
+    mediaList: (data.mediaList || []).map((item) => ({
+      ...item,
+      bottomImageUrl: normalizeBottomRecommendationSlots(item.bottomImageUrl),
+      bottomLinkTarget: normalizeBottomRecommendationSlots(item.bottomLinkTarget),
+    })),
+  }
 }
 
 /** 获取商品分类树。 */

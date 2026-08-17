@@ -92,6 +92,14 @@
         "navigationBarTitleText": "订单详情",
         "navigationBarBackgroundColor": "#FFFFFF"
       }
+    },
+    {
+      "path": "pages/favorite/list",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "我的收藏",
+        "navigationBarBackgroundColor": "#FFFFFF"
+      }
     }
   ],
   "tabBar": {

@@ -288,8 +288,7 @@ onShow(() => {
         </view>
 
         <view class="balance-card">
-          <view class="card-shine" />
-          <text class="balance-label">我的推广积分</text>
+          <image class="promotion-background" src="/static/Promotion/推广背景_slices/推广背景.png" mode="scaleToFill" />
           <text class="balance-value">{{ formatMoney(pendingPromotion) }}</text>
           <view class="card-actions">
             <view class="wallet-button" :class="{ disabled: converting }" @click="handleConvertPromotion">转余额</view>
@@ -304,14 +303,14 @@ onShow(() => {
 
         <view class="stats-row">
           <view class="stat-card">
-            <view class="stat-icon" />
+            <image class="stat-icon-image" src="/static/Promotion/推广金_slices/推广金.png" mode="aspectFit" />
             <view class="stat-copy">
               <text class="stat-value">{{ totalPromotionText }}</text>
-              <text class="stat-label">累计推广积分</text>
+              <text class="stat-label">累计推广（元）</text>
             </view>
           </view>
           <view class="stat-card">
-            <view class="stat-icon" />
+            <image class="stat-icon-image" src="/static/Promotion/绑定人数_slices/绑定人数.png" mode="aspectFit" />
             <view class="stat-copy">
               <text class="stat-value">{{ boundUserCountText }}</text>
               <text class="stat-label">绑定总数（人）</text>
@@ -368,18 +367,17 @@ onShow(() => {
 .nav { position: fixed; right: 0; left: 0; z-index: 20; display: flex; align-items: center; padding-left: 40rpx; background: #fff; box-sizing: border-box; }
 .back-button { width: 40rpx; height: 40rpx; background: #282828; }
 .page-scroll { position: absolute; inset: 0; width: 100%; height: 100%; box-sizing: border-box; }
-.page-content { padding: 0 34rpx 100rpx; box-sizing: border-box; }
+.page-content { padding: 0 0 100rpx; box-sizing: border-box; }
 .share-heading { display: flex; align-items: baseline; height: 40rpx; }
+.share-heading { margin-left: 40rpx; }
 .share-title { color: #000; font-size: 26.72rpx; line-height: 26.72rpx; }
 .share-subtitle { margin-left: 10rpx; color: #959595; font-size: 22.9rpx; line-height: 22.9rpx; }
-.balance-card { position: relative; height: 158rpx; margin: 20rpx 0 0; overflow: visible; border-radius: 24rpx; background: linear-gradient(112deg, #464646 0%, #1a1a1a 45%, #303030 100%); box-shadow: 0 6rpx 12rpx rgba(0, 0, 0, .28), 0 14rpx 18rpx rgba(0, 0, 0, .12); }
-.balance-card::before { position: absolute; right: 10rpx; bottom: -8rpx; left: 10rpx; z-index: 0; height: 14rpx; border-radius: 50%; background: linear-gradient(180deg, rgba(255, 255, 255, .9), rgba(188, 188, 188, .75)); box-shadow: 0 5rpx 8rpx rgba(0, 0, 0, .18); content: ''; }
-.balance-card::after { position: absolute; right: -30rpx; bottom: -26rpx; z-index: 0; width: 170rpx; height: 120rpx; border-left: 2rpx solid rgba(251, 214, 157, .28); content: ''; transform: rotate(28deg); }
-.card-shine { position: absolute; top: -50rpx; left: 170rpx; z-index: 1; width: 40rpx; height: 180rpx; background: linear-gradient(100deg, rgba(255, 255, 255, .02), rgba(255, 255, 255, .16), rgba(255, 255, 255, .02)); transform: rotate(28deg); }
-.balance-label { position: absolute; top: 28rpx; left: 44rpx; z-index: 1; color: #fbd69d; font-size: 22.9rpx; }
-.balance-value { position: absolute; bottom: 18rpx; left: 44rpx; z-index: 1; color: #fbd69d; font-size: 45.8rpx; font-weight: 600; line-height: 54.96rpx; }
-.card-actions { position: absolute; right: 40rpx; bottom: 26rpx; z-index: 1; display: flex; align-items: center; gap: 24rpx; }
-.wallet-button { display: flex; align-items: center; justify-content: center; width: 170rpx; height: 54rpx; box-sizing: border-box; color: #fff; background: linear-gradient(135deg, #2aab55, #149347); font-size: 22.9rpx; white-space: nowrap; border-radius: 28rpx; }
+.balance-card { position: relative; width: 756rpx; max-width: calc(100% - 32rpx); height: 176rpx; margin: 24rpx 16rpx 0; overflow: hidden; }
+.promotion-background { position: absolute; inset: 0; z-index: 0; display: block; width: 100%; height: 100%; }
+.balance-value { position: absolute; bottom: 34rpx; left: 64rpx; z-index: 1; color: #fbd69d; font-size: 45.8rpx; font-weight: 600; line-height: 54.96rpx; }
+.card-actions { position: absolute; right: 62rpx; bottom: 40rpx; z-index: 1; display: flex; align-items: center; gap: 24rpx; }
+.wallet-button { display: flex; align-items: center; justify-content: center; width: 136rpx; height: 56rpx; box-sizing: border-box; border: 1rpx solid #fbd69d; color: #fbd69d; background: transparent; font-size: 22.9rpx; white-space: nowrap; }
+.wallet-button.wallet-link { color: #000; background: #fbd69d; }
 .wallet-button.disabled { opacity: .65; }
 .share-button { display: flex; align-items: center; justify-content: center; width: 445rpx; height: 64rpx; margin: 52rpx auto 0; padding: 0; border: 1rpx solid #000; border-radius: 0; color: #000; background: #fff; font-size: 22.9rpx; line-height: 64rpx; }
 .share-button::after { border: 0; }
@@ -388,21 +386,21 @@ onShow(() => {
 .code-button { display: flex; align-items: center; justify-content: center; width: 104rpx; height: 64rpx; border: 1rpx solid #000; color: #000; background: #fff; font-size: 22.9rpx; box-sizing: border-box; }
 .share-arrow { position: relative; width: 28rpx; height: 1rpx; margin-left: 12rpx; background: #000; }
 .share-arrow::after { position: absolute; top: -4rpx; right: 0; width: 8rpx; height: 8rpx; border-top: 1rpx solid #000; border-right: 1rpx solid #000; content: ''; transform: rotate(45deg); }
-.stats-row { display: flex; gap: 23rpx; margin: 48rpx 6rpx 0; }
-.stat-card { display: flex; flex: 1; align-items: center; width: auto; min-width: 0; height: 130rpx; padding: 0 24rpx; box-sizing: border-box; background: #f6f6f6; }
-.stat-icon { width: 88rpx; height: 88rpx; flex-shrink: 0; background: #d8d8d8; }
-.stat-copy { display: flex; min-width: 0; height: 88rpx; flex-direction: column; justify-content: space-between; margin-left: 18rpx; }
-.stat-value { color: #fbd69d; font-size: 45.8rpx; font-weight: 600; line-height: 54.96rpx; }
+.stats-row { display: flex; gap: 26rpx; margin: 48rpx 40rpx 0; }
+.stat-card { display: flex; flex: none; align-items: center; width: 340rpx; height: 136rpx; padding: 0 28rpx; box-sizing: border-box; background: #f6f6f6; }
+.stat-icon-image { width: 88rpx; height: 88rpx; flex-shrink: 0; }
+.stat-copy { display: flex; min-width: 0; height: 88rpx; flex-direction: column; justify-content: space-between; margin-left: 28rpx; }
+.stat-value { color: #4f4f4f; font-size: 45.8rpx; font-weight: 600; line-height: 54.96rpx; }
 .stat-label { color: #959595; font-size: 22.9rpx; line-height: 28rpx; white-space: nowrap; }
-.promotion-section { margin-top: 96rpx; }
-.promotion-title { display: block; margin-left: 8rpx; color: #000; font-size: 26.72rpx; line-height: 26.72rpx; }
-.table-head { display: grid; grid-template-columns: 1.15fr 1.35fr 1.25fr 1fr; margin-top: 22rpx; color: #959595; font-size: 22.9rpx; line-height: 22.9rpx; }
+.promotion-section { margin-top: 94rpx; }
+.promotion-title { display: block; margin-left: 56rpx; color: #000; font-size: 26.72rpx; line-height: 40rpx; }
+.table-head { display: grid; grid-template-columns: 200rpx 194rpx 212rpx 72rpx; width: 678rpx; margin: 32rpx 0 0 56rpx; color: #959595; font-size: 22.9rpx; line-height: 34rpx; }
 .table-head text:nth-child(n + 2) { text-align: center; }
 .table-head text:last-child { text-align: right; }
-.table-line { height: 1rpx; margin: 14rpx 0 0; background: #f6f6f6; }
+.table-line { height: 1rpx; margin: 14rpx 40rpx 0; background: #f6f6f6; }
 .promotion-empty { display: flex; align-items: center; justify-content: center; height: 120rpx; color: #959595; font-size: 22.9rpx; }
 .promotion-list { margin-top: 12rpx; }
-.promotion-row { display: grid; grid-template-columns: 1.15fr 1.35fr 1.25fr 1fr; min-height: 68rpx; align-items: center; border-bottom: 1rpx solid #f6f6f6; color: #959595; font-size: 20rpx; line-height: 26rpx; }
+.promotion-row { display: grid; grid-template-columns: 202rpx 216rpx 190rpx 98rpx; min-height: 100rpx; margin: 0 40rpx; align-items: center; border-bottom: 1rpx solid #f6f6f6; color: #959595; font-size: 20rpx; line-height: 26rpx; }
 .promotion-cell { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre-line; }
 .order-time, .order-amount { text-align: center; }
 .promotion-amount { color: #010101; text-align: right; }

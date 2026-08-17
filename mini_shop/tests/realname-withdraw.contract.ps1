@@ -103,9 +103,10 @@ $dividendSource = Assert-Marker 'pages/dividend/dividend.vue' @(
 
 $mineSource = Assert-Marker 'pages/mine/mine.vue' @(
   '/pages/wallet/withdraw',
-  'wallet-entry',
-  (T 0x6211,0x7684,0x4F59,0x989D)
+  'if (index === 0)',
+  'goWallet()'
 )
+if ($mineSource.Contains('wallet-entry')) { throw 'mine page should not expose the standalone wallet entry panel' }
 if ($mineSource.Contains('RealnameVerifySheet') -or $mineSource.Contains('getRealnameStatus') -or $mineSource.Contains('walletEditorVisible')) {
   throw 'mine page should no longer own wallet modal realname flow'
 }

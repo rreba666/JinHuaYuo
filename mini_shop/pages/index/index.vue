@@ -56,6 +56,25 @@ function goHero(index: number): void {
   if (target) uni.navigateTo({ url: target })
 }
 
+/** 点击“更多福利”图片，按后台配置的 AppID 跳转到目标小程序。 */
+function handleWelfareImageTap(index: number): void {
+  if (index !== 0) return
+  const appId = homepageMedia.value?.bottomLinkTarget?.[0]?.trim() || ''
+  if (!appId) {
+    uni.showToast({ title: '暂未配置跳转小程序', icon: 'none' })
+    return
+  }
+  // @ts-ignore 微信小程序跨小程序跳转 API
+  uni.navigateToMiniProgram({
+    appId,
+    fail: (error: { errMsg?: string }) => {
+      const detail = error?.errMsg?.replace('navigateToMiniProgram:', '').trim() || '跳转失败'
+      if (detail === 'cancel') return
+      uni.showToast({ title: `跳转失败：${detail}`, icon: 'none' })
+    },
+  })
+}
+
 /** 记录首页分享或扫码带入的推广者身份，并为已登录用户尝试补绑定。 */
 onLoad((options) => {
   capturePromotionContext(options as Record<string, unknown>)
@@ -161,9 +180,9 @@ onMounted(() => {
         <text class="welfare-title">福利与资讯</text>
         <view class="welfare-tabs">
           <view class="w-tab" :class="{ active: welfareTab === 0 }" @click="welfareTab = 0"><text>更多福利</text></view>
-          <view class="w-tab" :class="{ active: welfareTab === 1 }" @click="welfareTab = 1"><text>关注今华有</text></view>
+        <view class="w-tab" :class="{ active: welfareTab === 1 }" @click="welfareTab = 1"><text>关注金华有</text></view>
         </view>
-        <image v-if="bottomImages[welfareTab]" class="welfare-img" :src="bottomImages[welfareTab]" mode="aspectFill" />
+        <image v-if="bottomImages[welfareTab]" class="welfare-img" :src="bottomImages[welfareTab]" mode="aspectFill" @click="handleWelfareImageTap(welfareTab)" />
         <view v-else class="welfare-placeholder" />
         <text class="welfare-logo">今华有</text>
       </view>

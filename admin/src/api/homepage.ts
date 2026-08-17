@@ -1,5 +1,5 @@
 import { request } from './request'
-import { extractMediaUrl, resolveMediaArray, resolveMediaUrl } from './media'
+import { extractMediaUrl, resolveMediaArray, resolveMediaSlots, resolveMediaUrl } from './media'
 import type {
   HomepageConfigSaveDTO,
   HomepageConfigUpdateDTO,
@@ -21,7 +21,7 @@ export async function getHomepageConfigs(): Promise<{ list: HomepageConfigVO[]; 
       imageUrl: resolveMediaArray(item.imageUrl),
       videoUrl: resolveMediaArray(item.videoUrl),
       coverUrl: resolveMediaArray(item.coverUrl),
-      bottomImageUrl: resolveMediaArray(item.bottomImageUrl),
+      bottomImageUrl: resolveMediaSlots(item.bottomImageUrl, 2),
       bottomLinkTarget: item.bottomLinkTarget || [],
       bottomTitle: item.bottomTitle || '',
     })),

@@ -13,17 +13,19 @@ foreach ($path in @("pages/dividend/dividend", "pages/wallet/withdraw")) {
 $mineSource = Get-Content -Raw -Encoding utf8 (Join-Path $root "pages/mine/mine.vue")
 foreach ($marker in @(
   (T 0x6211,0x7684,0x4F59,0x989D),
-  (T 0x8F6C,0x4F59,0x989D),
+  "wallet.value?.balance",
+  'if (index === 0)',
+  'goWallet()',
   "/pages/wallet/withdraw"
 )) {
   if (-not (Select-String -InputObject $mineSource -Pattern $marker -SimpleMatch)) { throw "mine page marker missing: $marker" }
 }
+if ($mineSource.Contains('wallet-entry')) { throw 'mine page should not expose the standalone wallet entry panel' }
 
 $dividendSource = Get-Content -Raw -Encoding utf8 (Join-Path $root "pages/dividend/dividend.vue")
 foreach ($marker in @(
-  (T 0x6211,0x7684,0x63A8,0x5E7F,0x79EF,0x5206),
+  (T 0x7D2F,0x8BA1,0x63A8,0x5E7F,0xFF08,0x5143,0xFF09),
   (T 0x8F6C,0x4F59,0x989D),
-  (T 0x7D2F,0x8BA1,0x63A8,0x5E7F,0x79EF,0x5206),
   "/pages/wallet/withdraw",
   "goWallet",
   "wallet-button"

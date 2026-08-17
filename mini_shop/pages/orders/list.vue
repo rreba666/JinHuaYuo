@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { computed, onMounted, ref } from 'vue'
-import { cancelOrder, getOrderList, type OrderStatus, type OrderSummary } from '@/api/order'
+import { cancelOrder, getOrderList, receiveOrder, refundOrder, type OrderStatus, type OrderSummary } from '@/api/order'
 
-/** 订单 tab 定义，每项携带后端 statuses 状态码数组。已关闭(5)一律不展示。 */
-const tabs: Array<{ label: string; statuses: OrderStatus[] }> = [
+/** 订单 tab 定义，每项携带后端 statuses 状态码数组与可选配送方式。已关闭(5)一律不展示。 */
+const tabs: Array<{ label: string; statuses: OrderStatus[]; pickupType?: 0 | 1 }> = [
   { label: '全部', statuses: [0, 1, 2, 3, 4, 6, 7, 8] },
   { label: '待付款', statuses: [0] },
-  { label: '待发货', statuses: [1] },
+  { label: '待发货', statuses: [1], pickupType: 0 },
   { label: '待收货', statuses: [2] },
+  { label: '待自提', statuses: [1], pickupType: 1 },
   { label: '已完成', statuses: [3, 4, 8] },
   { label: '退款售后', statuses: [6, 7] },
 ]
@@ -37,7 +38,8 @@ async function load(reset = true): Promise<void> {
   if (reset) loading.value = true
   else loadingMore.value = true
   try {
-    const result = await getOrderList({ page: nextPage, pageSize: 10, statuses: tabs[activeIndex.value].statuses })
+    const tab = tabs[activeIndex.value]
+    const result = await getOrderList({ page: nextPage, pageSize: 10, statuses: tab.statuses, pickupType: tab.pickupType })
     if (token !== requestToken) return
     list.value = reset ? result.list : [...list.value, ...result.list]
     page.value = result.page || nextPage
@@ -65,6 +67,37 @@ async function cancel(order: OrderSummary): Promise<void> {
   catch (error) { uni.showToast({ title: error instanceof Error ? error.message : '取消订单失败', icon: 'none' }) }
 }
 
+/** 确认收货（物流订单）。 */
+async function receive(order: OrderSummary): Promise<void> {
+  const confirmed = await new Promise<boolean>((resolve) => {
+    uni.showModal({ title: '提示', content: '确认已收到商品吗？', success: (res) => resolve(res.confirm), fail: () => resolve(false) })
+  })
+  if (!confirmed) return
+  try { await receiveOrder(order.id); uni.showToast({ title: '已确认收货', icon: 'success' }); await load(true) }
+  catch (error) { uni.showToast({ title: error instanceof Error ? error.message : '确认收货失败', icon: 'none' }) }
+}
+
+/** 申请退款（自提订单）。 */
+async function refund(order: OrderSummary): Promise<void> {
+  const confirmed = await new Promise<boolean>((resolve) => {
+    uni.showModal({ title: '提示', content: '确定申请退款吗？', success: (res) => resolve(res.confirm), fail: () => resolve(false) })
+  })
+  if (!confirmed) return
+  try { await refundOrder(order.id); uni.showToast({ title: '退款申请已提交', icon: 'success' }); await load(true) }
+  catch (error) { uni.showToast({ title: error instanceof Error ? error.message : '退款申请失败', icon: 'none' }) }
+}
+
+/** 格式化金额：整数去掉小数位。 */
+function formatAmount(value: number): string {
+  return Number(value || 0).toFixed(2).replace(/\.00$/, '')
+}
+
+/** 待收货订单物流条文案：deliveryStatus 0=已发货(运输中)，1=已送达。 */
+function logisticsInfo(order: OrderSummary): { status: string; remark: string } {
+  if (order.deliveryStatus === 1) return { status: '已送达', remark: '请确认收货' }
+  return { status: '已发货', remark: '运输中' }
+}
+
 onMounted(() => {
   try {
     const r = uni.getMenuButtonBoundingClientRect()
@@ -74,8 +107,10 @@ onMounted(() => {
 
 onLoad((options?: Record<string, string | undefined>) => {
   const status = Number(options?.status)
+  const pickupType = options?.pickupType !== undefined && options.pickupType !== '' ? (Number(options.pickupType) as 0 | 1) : undefined
   if (Number.isInteger(status) && status >= 0 && status <= 8) {
-    const matched = tabs.findIndex((t) => t.statuses.includes(status as OrderStatus))
+    // 待发货(status=1,物流) 与 待自提(status=1,自提) 需用 pickupType 区分
+    const matched = tabs.findIndex((t) => t.statuses.includes(status as OrderStatus) && (pickupType === undefined || t.pickupType === pickupType))
     activeIndex.value = matched >= 0 ? matched : 0
   }
   void load(true)
@@ -93,9 +128,42 @@ onShow(() => { if (loaded.value) void load(true) })
     <scroll-view class="list" scroll-y @scrolltolower="load(false)">
       <view v-show="loading && !list.length" class="state">加载中...</view>
       <view v-for="order in list" :key="order.id" class="order-card" @click="openDetail(order)">
-        <view class="order-head"><text>{{ order.orderNo }}</text><text class="status">{{ order.statusDesc }}</text></view>
-        <view class="order-body"><image v-if="order.firstProductImage" class="image" :src="order.firstProductImage" mode="aspectFill" /><view v-else class="image placeholder" /><view class="summary"><text>{{ order.totalQuantity }} 件商品</text><text class="time">{{ order.createTime }}</text></view></view>
-        <view class="order-foot"><text>实付 ¥{{ Number(order.payAmount || 0).toFixed(2) }}</text><view class="actions"><text v-if="order.status === 0" class="action" @click.stop="pay(order)">去支付</text><text v-if="order.status === 0" class="action muted" @click.stop="cancel(order)">取消订单</text></view></view>
+        <view class="card-head"><text class="card-title">{{ order.pickupType === 1 ? (order.shopName || '门店自提') : order.orderNo }}</text><text class="card-status">{{ order.statusDesc }}</text></view>
+        <text class="card-time">{{ order.createTime }}</text>
+
+        <!-- 物流状态条（仅待收货，两态：已发货/已送达） -->
+        <view v-if="order.status === 2" class="logistics" @click.stop="openDetail(order)">
+          <view class="logi-icon" />
+          <text class="logi-status">{{ logisticsInfo(order).status }}</text>
+          <text class="logi-remark">{{ logisticsInfo(order).remark }}</text>
+          <text class="logi-arrow">›</text>
+        </view>
+
+        <view class="card-goods">
+          <image v-if="order.firstProductImage" class="goods-img" :src="order.firstProductImage" mode="aspectFill" />
+          <view v-else class="goods-img placeholder" />
+          <view class="goods-info">
+            <text class="goods-name">{{ order.firstProductName || '商品' }}</text>
+            <text class="goods-meta">共{{ order.totalQuantity }}件</text>
+            <text class="goods-price">实付款：¥{{ formatAmount(order.payAmount) }}</text>
+          </view>
+        </view>
+
+        <view class="card-actions">
+          <template v-if="order.status === 0">
+            <text class="btn outline" @click.stop="cancel(order)">取消订单</text>
+            <text class="btn primary" @click.stop="pay(order)">去支付</text>
+          </template>
+          <text v-if="order.status === 1 && order.pickupType === 0" class="btn outline" @click.stop="openDetail(order)">查看详情</text>
+          <template v-if="order.status === 2">
+            <text class="btn outline" @click.stop="openDetail(order)">查看物流</text>
+            <text v-if="order.deliveryStatus === 1" class="btn primary" @click.stop="receive(order)">确认收货</text>
+          </template>
+          <template v-if="order.status === 1 && order.pickupType === 1">
+            <text class="btn outline" @click.stop="refund(order)">退款</text>
+            <text class="btn primary" @click.stop="openDetail(order)">去自提</text>
+          </template>
+        </view>
       </view>
       <view v-show="empty" class="state">暂无订单</view><view v-show="loadingMore" class="more">加载中...</view>
     </scroll-view>
@@ -111,11 +179,26 @@ onShow(() => { if (loaded.value) void load(true) })
 .tab { flex: 1; display: flex; align-items: center; justify-content: center; height: 82rpx; color: #888; font-size: 26rpx; border-bottom: 4rpx solid transparent; box-sizing: border-box; }
 .tab.active { color: #222; border-color: #222; font-weight: 700; }
 .list { flex: 1; min-height: 0; padding: 20rpx 24rpx; box-sizing: border-box; }
-.order-card { margin-bottom: 18rpx; padding: 22rpx; background: #fff; border-radius: 10rpx; }
-.order-head, .order-foot { display: flex; align-items: center; justify-content: space-between; font-size: 24rpx; }
-.status { color: #a57b3b; }.order-body { display: flex; align-items: center; margin: 22rpx 0; }
-.image { width: 128rpx; height: 128rpx; flex-shrink: 0; background: #eee; }.placeholder { background: #e9e7dd; }
-.summary { display: flex; flex-direction: column; gap: 14rpx; margin-left: 22rpx; color: #444; font-size: 26rpx; }.time { color: #999; font-size: 22rpx; }
-.actions { display: flex; gap: 18rpx; }.action { padding: 8rpx 18rpx; color: #fff; background: #222; border-radius: 4rpx; }.action.muted { color: #666; background: #eee; }
+.order-card { margin-bottom: 20rpx; padding: 26rpx 30rpx; background: #fff; border-radius: 16rpx; }
+.card-head { display: flex; align-items: center; justify-content: space-between; }
+.card-title { color: #303030; font-size: 30rpx; font-weight: 600; max-width: 420rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-status { color: #916448; font-size: 28rpx; flex-shrink: 0; }
+.card-time { display: block; margin-top: 8rpx; color: #959595; font-size: 26rpx; }
+.logistics { display: flex; align-items: center; margin-top: 20rpx; padding: 14rpx 20rpx; background: rgba(224, 215, 206, 0.27); border-radius: 8rpx; }
+.logi-icon { width: 40rpx; height: 40rpx; margin-right: 12rpx; border: 2rpx solid #c9b8a8; border-radius: 50%; flex-shrink: 0; }
+.logi-status { color: #000; font-size: 26rpx; font-weight: 600; flex-shrink: 0; }
+.logi-remark { flex: 1; min-width: 0; margin-left: 14rpx; color: #959595; font-size: 26rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.logi-arrow { margin-left: 8rpx; color: #959595; font-size: 36rpx; line-height: 1; }
+.card-goods { display: flex; margin-top: 24rpx; }
+.goods-img { width: 196rpx; height: 264rpx; flex-shrink: 0; background: #d8d8d8; border-radius: 8rpx; }
+.goods-img.placeholder { background: #d8d8d8; }
+.goods-info { display: flex; flex: 1; min-width: 0; flex-direction: column; margin-left: 24rpx; }
+.goods-name { color: #0a0a0a; font-size: 28rpx; line-height: 1.4; }
+.goods-meta { margin-top: 18rpx; color: #8e8e8e; font-size: 26rpx; }
+.goods-price { margin-top: auto; color: #8e8e8e; font-size: 26rpx; }
+.card-actions { display: flex; justify-content: flex-end; gap: 16rpx; margin-top: 24rpx; }
+.btn { display: flex; align-items: center; justify-content: center; min-width: 160rpx; height: 52rpx; padding: 0 24rpx; border-radius: 8rpx; font-size: 26rpx; box-sizing: border-box; }
+.btn.outline { color: #000; border: 2rpx solid #222; }
+.btn.primary { color: #916448; background: rgba(192, 172, 155, 0.49); }
 .state, .more { padding: 120rpx 0; color: #999; text-align: center; font-size: 26rpx; }.more { padding: 28rpx 0; }
 </style>
