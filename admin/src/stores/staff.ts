@@ -12,12 +12,14 @@ export const useStaffStore = defineStore('staff', () => {
   const actionLoading = ref(false)
   const page = ref(1)
   const pageSize = ref(10)
+  /** 店员搜索关键词（纯数字按 ID，否则按姓名/工号模糊）。 */
+  const keyword = ref('')
 
   /** 加载店员分页列表。 */
   async function fetchList(): Promise<void> {
     loading.value = true
     try {
-      const result = await getStaff(page.value, pageSize.value)
+      const result = await getStaff(page.value, pageSize.value, keyword.value)
       list.value = result.list
       total.value = result.total
     } finally {
@@ -108,5 +110,5 @@ export const useStaffStore = defineStore('staff', () => {
     }
   }
 
-  return { list, total, loading, saving, actionLoading, page, pageSize, fetchList, save, setStatus, resetPassword, remove, removeBatch, restore, restoreBatch }
+  return { list, total, loading, saving, actionLoading, page, pageSize, keyword, fetchList, save, setStatus, resetPassword, remove, removeBatch, restore, restoreBatch }
 })

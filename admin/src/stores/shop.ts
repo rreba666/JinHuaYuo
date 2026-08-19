@@ -14,12 +14,14 @@ export const useShopStore = defineStore('shop', () => {
   const enabledLoading = ref(false)
   const page = ref(1)
   const pageSize = ref(10)
+  /** 门店搜索关键词（纯数字按 ID，否则按名称模糊）。 */
+  const keyword = ref('')
 
   /** 加载门店分页列表。 */
   async function fetchList(): Promise<void> {
     loading.value = true
     try {
-      const result = await getShops(page.value, pageSize.value)
+      const result = await getShops(page.value, pageSize.value, keyword.value)
       list.value = result.list
       total.value = result.total
     } finally {
@@ -116,5 +118,5 @@ export const useShopStore = defineStore('shop', () => {
     }
   }
 
-  return { list, enabledList, total, loading, saving, actionLoading, enabledLoading, page, pageSize, fetchList, fetchEnabled, save, setStatus, remove, removeBatch, restore, restoreBatch }
+  return { list, enabledList, total, loading, saving, actionLoading, enabledLoading, page, pageSize, keyword, fetchList, fetchEnabled, save, setStatus, remove, removeBatch, restore, restoreBatch }
 })

@@ -74,8 +74,8 @@ if ($sheetSource.Contains('setStorageSync') -or $sheetSource.Contains('console.l
 foreach ($relativePath in @(
   'api/realname.ts',
   'components/RealnameVerifySheet.vue',
-  'pages/dividend/dividend.vue',
-  'pages/wallet/withdraw.vue',
+  'subpkg-wallet/dividend/dividend.vue',
+  'subpkg-wallet/withdraw/withdraw.vue',
   'pages/mine/mine.vue'
 )) {
   $source = Get-Content -LiteralPath (Join-Path $root $relativePath) -Raw -Encoding utf8
@@ -85,7 +85,7 @@ foreach ($relativePath in @(
   }
 }
 
-foreach ($page in @('pages/wallet/withdraw.vue')) {
+foreach ($page in @('subpkg-wallet/withdraw/withdraw.vue')) {
   $null = Assert-Marker $page @(
     'getRealnameStatus', 'RealnameVerifySheet',
     'realnameVisible', 'error.code === 8601',
@@ -93,7 +93,7 @@ foreach ($page in @('pages/wallet/withdraw.vue')) {
   )
 }
 
-$dividendSource = Assert-Marker 'pages/dividend/dividend.vue' @(
+$dividendSource = Assert-Marker 'subpkg-wallet/dividend/dividend.vue' @(
   'function handleConvertPromotion()',
   '/api/wallet/convert',
   'convertWallet',
@@ -102,7 +102,7 @@ $dividendSource = Assert-Marker 'pages/dividend/dividend.vue' @(
 )
 
 $mineSource = Assert-Marker 'pages/mine/mine.vue' @(
-  '/pages/wallet/withdraw',
+  '/subpkg-wallet/withdraw/withdraw',
   'if (index === 0)',
   'goWallet()'
 )

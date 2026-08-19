@@ -30,7 +30,7 @@ if (-not $manifestMatch.Success -or $manifestMatch.Groups['appid'].Value -ne $en
   throw "manifest mp-weixin appid mismatch: manifest=$($manifestMatch.Groups['appid'].Value), env=$envAppId"
 }
 
-Assert-Marker 'pages/wallet/withdraw.vue' @(
+Assert-Marker 'subpkg-wallet/withdraw/withdraw.vue' @(
   'errMsg',
   'getSystemInfoSync',
   '3.7.9',
@@ -46,7 +46,7 @@ Assert-Marker 'api/transfer-auth.ts' @(
   'packageInfo: string | null'
 )
 
-$withdrawSource = Get-Content -Raw -Encoding utf8 -LiteralPath (Join-Path $root 'pages/wallet/withdraw.vue')
+$withdrawSource = Get-Content -Raw -Encoding utf8 -LiteralPath (Join-Path $root 'subpkg-wallet/withdraw/withdraw.vue')
 if ($withdrawSource.IndexOf('packageInfo.trim()', [StringComparison]::Ordinal) -ge 0) {
   throw 'packageInfo must be passed to wx unchanged'
 }

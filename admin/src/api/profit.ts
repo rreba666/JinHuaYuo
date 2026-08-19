@@ -42,7 +42,7 @@ function normalizeDetail(value: unknown): SevenDayBonusDetail {
 
 function normalizeLimit(value: unknown): UserDividendLimit {
   const row = (value || {}) as Partial<UserDividendLimit>
-  return { ...row, id: String(row.id ?? ''), userId: String(row.userId ?? ''), productPrice: Number(row.productPrice ?? 0), capAmount: Number(row.capAmount ?? 0), totalReceived: Number(row.totalReceived ?? 0), milestoneHit: Number(row.milestoneHit ?? 0), blocked: Number(row.blocked ?? 0), purchaseLimit: Number(row.purchaseLimit ?? 0), totalPurchases: Number(row.totalPurchases ?? 0), unlockCount: Number(row.unlockCount ?? 0), createTime: String(row.createTime ?? ''), updateTime: String(row.updateTime ?? '') }
+  return { ...row, id: String(row.id ?? ''), userId: String(row.userId ?? ''), availablePurchase: Number(row.availablePurchase ?? 0), totalPurchases: Number(row.totalPurchases ?? 0), createTime: String(row.createTime ?? ''), updateTime: String(row.updateTime ?? '') }
 }
 
 const relationDetailPath = '/api/admin/profit/relations/{buyerUserId}'

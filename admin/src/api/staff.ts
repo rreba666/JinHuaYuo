@@ -23,9 +23,11 @@ function normalizePage(value: unknown, page: number, pageSize: number): StaffPag
   }
 }
 
-/** 查询店员分页列表。 */
-export async function getStaff(page: number, pageSize: number): Promise<StaffPageResult> {
-  const response = await request.get<StaffResponse<unknown>>('/api/admin/staff/list', { params: { page, pageSize } })
+/** 查询店员分页列表。keyword 纯数字按店员 ID 精确匹配，否则按姓名/工号模糊匹配。 */
+export async function getStaff(page: number, pageSize: number, keyword?: string): Promise<StaffPageResult> {
+  const params: Record<string, string | number> = { page, pageSize }
+  if (keyword && keyword.trim()) params.keyword = keyword.trim()
+  const response = await request.get<StaffResponse<unknown>>('/api/admin/staff/list', { params })
   return normalizePage(unwrap(response, '店员列表查询失败'), page, pageSize)
 }
 

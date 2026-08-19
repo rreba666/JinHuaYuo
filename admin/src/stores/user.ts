@@ -20,7 +20,7 @@ export const useUserStore = defineStore('user', () => {
   async function fetchList(): Promise<void> {
     loading.value = true
     try {
-      const result = await getUsers(page.value, pageSize.value)
+      const result = await getUsers(page.value, pageSize.value, filters.keyword)
       list.value = result.list
       total.value = result.total
     } finally {

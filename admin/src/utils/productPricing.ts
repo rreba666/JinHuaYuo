@@ -47,7 +47,7 @@ export function resolvePromotionFund(promotionFund: unknown, minPrice: unknown, 
   return value === undefined ? getDefaultPromotionFund(minPrice, rate) : roundMoney(value)
 }
 
-/** 计算商品最低价对应的默认分红资金。 */
+/** 计算商品最低价对应的默认平台红包。 */
 export function getDefaultDividendFund(minPrice: unknown, rate = dividendRate): number {
   const price = Number(minPrice)
   return Number.isFinite(price) && price > 0 && Number.isFinite(rate) && rate >= 0
@@ -55,7 +55,7 @@ export function getDefaultDividendFund(minPrice: unknown, rate = dividendRate): 
     : 0
 }
 
-/** 保留已设置的分红资金；只有空值才按最低价计算默认值。 */
+/** 保留已设置的平台红包；只有空值才按最低价计算默认值。 */
 export function resolveDividendFund(dividendFund: unknown, minPrice: unknown, rate = dividendRate): number {
   const value = getNonNegativeNumber(dividendFund)
   return value === undefined ? getDefaultDividendFund(minPrice, rate) : roundMoney(value)

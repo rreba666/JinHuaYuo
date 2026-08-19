@@ -27,3 +27,8 @@ export function requestPayment(params: PrepayParams): Promise<void> {
     })
   })
 }
+
+/** 余额支付：用钱包余额全额抵扣订单，同步完成（无微信回调）。余额不足时后端返回错误。 */
+export function payByBalance(orderId: number | string): Promise<void> {
+  return request<void>({ url: '/api/pay/balance', method: 'POST', data: { orderId } })
+}

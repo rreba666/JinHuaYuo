@@ -69,6 +69,8 @@ export interface OrderQueryParams {
   pickupType?: OrderPickupType
   startTime?: string
   endTime?: string
+  /** 订单号筛选（精确匹配，后端 /api/admin/order/list 支持）。 */
+  orderNo?: string
 }
 
 export interface OrderAddressUpdateDTO {

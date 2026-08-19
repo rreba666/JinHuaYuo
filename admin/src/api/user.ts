@@ -25,6 +25,8 @@ function normalizeUserDetail(data: UserDetail): UserDetail {
   if (!Number.isFinite(pendingPromotion) || pendingPromotion < 0 || !Number.isFinite(pendingBonus) || pendingBonus < 0) {
     throw new Error('用户钱包余额数据无效')
   }
+  // 余额 balance：详情接口暂未返回时兜底为 0，不因缺失字段阻断详情展示
+  const balance = Number(data.balance)
   return {
     ...data,
     id: String(data.id),
@@ -33,12 +35,15 @@ function normalizeUserDetail(data: UserDetail): UserDetail {
     delFlag: Number(data.delFlag) === 1 ? 1 : 0,
     pendingPromotion,
     pendingBonus,
+    balance: Number.isFinite(balance) && balance >= 0 ? balance : 0,
   }
 }
 
-/** 查询 B 端用户分页列表。 */
-export async function getUsers(page: number, pageSize: number): Promise<UserPageResult> {
-  const response = await request.get<UserResponse<UserPageResult>>('/api/admin/user/list', { params: { page, pageSize } })
+/** 查询 B 端用户分页列表。keyword 纯数字按用户 ID 精确匹配，否则按昵称/手机号模糊匹配。 */
+export async function getUsers(page: number, pageSize: number, keyword?: string): Promise<UserPageResult> {
+  const params: Record<string, string | number> = { page, pageSize }
+  if (keyword && keyword.trim()) params.keyword = keyword.trim()
+  const response = await request.get<UserResponse<UserPageResult>>('/api/admin/user/list', { params })
   return normalizeUserPage(unwrapResponse(response, '用户列表查询失败'))
 }
 
@@ -51,7 +56,7 @@ export async function getUserDetail(userId: string): Promise<UserDetail> {
 
 /** 校验钱包编辑字段，只允许有限非负数字。 */
 function validateWalletPayload(payload: AdminWalletUpsertDTO): void {
-  for (const field of ['pendingPromotion', 'pendingBonus'] as const) {
+  for (const field of ['pendingPromotion', 'pendingBonus', 'balance'] as const) {
     const value = payload[field]
     if (value !== undefined && (!Number.isFinite(value) || value < 0)) throw new Error('余额必须是有限非负数字')
   }

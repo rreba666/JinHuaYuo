@@ -7,9 +7,13 @@ export interface ProductListItem {
   name: string
   mainImage: string
   minPrice: number
-  promotionFund: number
+  /** 商品最低划线价/原价（元），纯展示不参与扣款。 */
+  minOriginalPrice?: number
+  /** 推广资金（元）。列表接口可能不返回，此时为 undefined，需详情查看。 */
+  promotionFund?: number
   promotionEnabled: ProductFundStatusValue
-  dividendFund: number
+  /** 平台红包（分红资金，元）。列表接口可能不返回，此时为 undefined。 */
+  dividendFund?: number
   dividendEnabled: ProductFundStatusValue
   soldCount: number
   totalStock: number
@@ -26,6 +30,8 @@ export interface ProductSku {
   specs: string
   skuImage: string
   price: number
+  /** 划线价/原价（元），纯展示不参与扣款，为空=无划线价。 */
+  originalPrice?: number
   stock: number
   enabled: ProductStatusValue
 }

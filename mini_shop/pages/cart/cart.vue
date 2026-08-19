@@ -55,7 +55,7 @@ function goPayment(): void {
     uni.showToast({ title: '请选择商品', icon: 'none' })
     return
   }
-  uni.navigateTo({ url: `/pages/payment/payment?cartIds=${selectedIds.join(',')}` })
+  uni.navigateTo({ url: `/subpkg-order/payment/payment?cartIds=${selectedIds.join(',')}` })
 }
 
 onMounted(() => {
@@ -106,7 +106,7 @@ onShow(() => { loading.value = true; loadList() })
               </view>
               <view v-else />
               <!-- 价格: view包text，和 category c-pri 一致 -->
-              <view class="ipri"><text class="ipy">¥</text><text class="ipn">{{ it.price }}</text></view>
+              <view class="ipri"><text class="ipy">¥</text><text class="ipn">{{ it.originalPrice ?? it.price }}</text></view>
             </view>
           </view>
         </view>

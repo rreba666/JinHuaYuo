@@ -4,7 +4,6 @@ import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig({
   plugins: [vue()],
-  envDir: fileURLToPath(new URL('../mini_shop', import.meta.url)),
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

@@ -113,6 +113,12 @@ async function loadList(): Promise<void> {
   try { await store.fetchList() } catch (error) { ElMessage.error(error instanceof Error ? error.message : '门店列表查询失败') }
 }
 
+/** 按关键词搜索门店（ID/名称），回车或点击触发。 */
+function searchShops(): void {
+  store.page = 1
+  void loadList()
+}
+
 onMounted(() => { void loadList() })
 </script>
 
@@ -120,7 +126,7 @@ onMounted(() => { void loadList() })
   <section class="page-container page-enter">
     <div class="page-heading"><div><h1>门店管理</h1><p>维护自提门店的基础信息和营业状态。</p></div><el-button type="primary" @click="openForm()">新增门店</el-button></div>
     <el-card shadow="never" class="content-card">
-      <div class="toolbar"><div><strong>门店列表</strong><span class="toolbar-count">共 {{ store.total }} 条</span></div><div class="toolbar-actions"><span v-if="selected.length" class="selection-tip">已选择 {{ selected.length }} 项</span><el-button size="small" type="danger" plain :disabled="!deletableSelected.length || store.actionLoading" :loading="store.actionLoading" @click="removeSelected"><el-icon><Delete /></el-icon>批量删除</el-button><el-button size="small" type="success" plain :disabled="!restorableSelected.length || store.actionLoading" :loading="store.actionLoading" @click="restoreSelected"><el-icon><RefreshLeft /></el-icon>批量恢复</el-button><el-button :loading="store.loading" @click="loadList">刷新</el-button></div></div>
+      <div class="toolbar"><div><strong>门店列表</strong><span class="toolbar-count">共 {{ store.total }} 条</span></div><div class="toolbar-actions"><el-input v-model="store.keyword" placeholder="门店ID/名称" clearable class="search-input" @keyup.enter="searchShops" @clear="searchShops" /><el-button type="primary" @click="searchShops">搜索</el-button><span v-if="selected.length" class="selection-tip">已选择 {{ selected.length }} 项</span><el-button size="small" type="danger" plain :disabled="!deletableSelected.length || store.actionLoading" :loading="store.actionLoading" @click="removeSelected"><el-icon><Delete /></el-icon>批量删除</el-button><el-button size="small" type="success" plain :disabled="!restorableSelected.length || store.actionLoading" :loading="store.actionLoading" @click="restoreSelected"><el-icon><RefreshLeft /></el-icon>批量恢复</el-button><el-button :loading="store.loading" @click="loadList">刷新</el-button></div></div>
       <DataTable :data="store.list" :loading="store.loading" :total="store.total" :page="store.page" :page-size="store.pageSize" empty-text="暂无门店数据" @selection-change="selected = $event" @page-change="store.page = $event; selected = []; void loadList()" @size-change="store.pageSize = $event; store.page = 1; selected = []; void loadList()">
         <el-table-column prop="id" label="门店 ID" min-width="180" />
         <el-table-column prop="name" label="门店名称" min-width="180" />
@@ -143,5 +149,6 @@ onMounted(() => { void loadList() })
 .operator-actions :deep(.el-button) { margin-left: 0; padding: 5px 8px; }
 .operator-actions :deep(.el-icon) { margin-right: 4px; }
 .toolbar-actions { display: flex; align-items: center; gap: 8px; }
+.search-input { width: 200px; }
 .selection-tip { color: var(--el-text-color-secondary); font-size: 13px; }
 </style>

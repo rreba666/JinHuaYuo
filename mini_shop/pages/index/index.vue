@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { onLoad, onShareAppMessage } from '@dcloudio/uni-app'
+import { onLoad, onPageScroll, onShareAppMessage } from '@dcloudio/uni-app'
 import { getHomepageData } from '@/api/homepage'
 import type { HomepageMediaItem, HomepageProduct } from '@/api/homepage'
 import { bindStoredPromotionIfLoggedIn, buildPromotionSharePath, capturePromotionContext } from '@/utils/promotion'
@@ -15,11 +15,29 @@ const welfareTab = ref(0)
 const menuTop = ref(0)
 const menuLeft = ref(0)
 const menuHeight = ref(32)
+const navScrolled = ref(false)
 
 /** 悬浮导航栏样式：top 跟随胶囊、高度一致，覆盖在轮播图上方 */
 const navBarStyle = computed(() => ({
   top: menuTop.value + 'px',
   height: menuHeight.value + 'px',
+}))
+
+/** 顶部毛玻璃状态，搜索框和顶部背景层共用，避免视觉断层。 */
+const navGlassStyle = computed(() => ({
+  background: navScrolled.value ? 'rgba(255,255,255,.82)' : 'transparent',
+  backdropFilter: navScrolled.value ? 'blur(14px)' : 'none',
+  WebkitBackdropFilter: navScrolled.value ? 'blur(14px)' : 'none',
+}))
+
+/** 搜索框高度（68rpx）换算为 px，确保毛玻璃层完整包裹搜索框。 */
+const navSearchHeightPx = computed(() => Math.max(menuHeight.value, 68 * (systemWidth.value || 375) / 750))
+
+/** 覆盖状态栏到胶囊底部，避免轮播图切换造成顶部背景色跳变。 */
+const navBackdropStyle = computed(() => ({
+  height: `${menuTop.value + navSearchHeightPx.value}px`,
+  ...navGlassStyle.value,
+  boxShadow: navScrolled.value ? '0 1rpx 10rpx rgba(15,23,42,.08)' : 'none',
 }))
 
 /** 搜索框右侧间距：延伸到胶囊按钮左侧，保留 12px 间距 */
@@ -36,35 +54,10 @@ const systemWidth = ref(0)
 const heroImages = computed(() => homepageMedia.value?.imageUrl || [])
 const heroVideo = computed(() => homepageMedia.value?.videoUrl?.[0] || '')
 const bottomImages = computed(() => homepageMedia.value?.bottomImageUrl || [])
-const heroHeightPx = ref(0)
-const heroHeightStyle = computed(() => heroHeightPx.value > 0 ? `${heroHeightPx.value}px` : '720rpx')
+const heroHeightStyle = '960rpx'
 
 function isRecommendTextEnabled(value: HomepageProduct['recommendTextEnabled']): boolean {
   return value === 1 || value === '1' || value === true
-}
-
-function useDefaultHeroHeight(): void {
-  heroHeightPx.value = systemWidth.value > 0 ? systemWidth.value * 720 / 750 : 0
-}
-
-/** 根据当前轮播图原始尺寸自适应容器高度，避免 aspectFill 裁剪海报内容。 */
-function updateHeroHeight(index = 0): void {
-  const image = heroImages.value[index]
-  if (!image) return
-  useDefaultHeroHeight()
-  uni.getImageInfo({
-    src: image,
-    success: (result) => {
-      if (!result.width || !result.height) return
-      const width = systemWidth.value || 375
-      heroHeightPx.value = width * result.height / result.width
-    },
-    fail: () => useDefaultHeroHeight(),
-  })
-}
-
-function handleHeroChange(event: { detail?: { current?: number } }): void {
-  updateHeroHeight(event.detail?.current ?? 0)
 }
 
 async function loadHomepage(): Promise<void> {
@@ -74,13 +67,12 @@ async function loadHomepage(): Promise<void> {
     homepageMedia.value = enabled || null
     if (enabled?.description) brandName.value = enabled.description
     products.value = (data.recommendedProducts || []).slice(0, 6)
-    updateHeroHeight(0)
   } catch { /* 接口失败使用默认展示 */ }
   finally { loading.value = false }
 }
 
-function goProduct(id: string): void { uni.navigateTo({ url: `/pages/product/detail?id=${id}` }) }
-function goSearch(): void { uni.navigateTo({ url: '/pages/search/index' }) }
+function goProduct(id: string): void { uni.navigateTo({ url: `/subpkg-goods/detail/detail?id=${id}` }) }
+function goSearch(): void { uni.navigateTo({ url: '/subpkg-goods/search/index' }) }
 function goCategory(): void { uni.switchTab({ url: '/pages/category/category' }) }
 function goHero(index: number): void {
   const target = homepageMedia.value?.linkTarget?.[index]
@@ -118,6 +110,11 @@ onShareAppMessage(() => ({
   path: buildPromotionSharePath('/pages/index/index'),
 }))
 
+onPageScroll(({ scrollTop }: { scrollTop: number }) => {
+  navScrolled.value = scrollTop > 2
+})
+
+
 onMounted(() => {
   try {
     const sys = uni.getSystemInfoSync()
@@ -140,7 +137,8 @@ onMounted(() => {
   <view class="page">
 
     <!-- ====== 首屏轮播（从页面顶部开始） ====== -->
-    <swiper v-if="heroImages.length" class="hero-swiper" :style="{ height: heroHeightStyle }" circular autoplay interval="4500" duration="450" @change="handleHeroChange">
+    <view v-if="loading" class="hero-skeleton" :style="{ height: heroHeightStyle }" />
+    <swiper v-else-if="heroImages.length" class="hero-swiper" :style="{ height: heroHeightStyle }" circular autoplay interval="4500" duration="450">
       <swiper-item v-for="(image, index) in heroImages" :key="image" class="hero-swiper-item" :style="{ height: heroHeightStyle }">
         <image class="hero-image" :src="image" mode="widthFix" @click="goHero(index)" />
       </swiper-item>
@@ -150,9 +148,12 @@ onMounted(() => {
     <view v-else class="hero-placeholder" />
 
     <!-- ====== 悬浮导航栏（覆盖在轮播图上方，与胶囊按钮同行） ====== -->
+    <view class="nav-backdrop" :style="navBackdropStyle" />
     <view class="nav-bar" :style="navBarStyle">
       <image class="nav-logo-img" src="/static/logo.png" mode="aspectFit" />
-      <view class="nav-search" :style="navSearchStyle" @click="goSearch"><text class="nav-search-text">搜索商品</text></view>
+      <view class="nav-search" :style="navSearchStyle" @click="goSearch">
+        <input class="nav-search-input" value="" placeholder="搜索商品" readonly />
+      </view>
     </view>
 
     <!-- ====== Logo 小图 ====== -->
@@ -166,10 +167,22 @@ onMounted(() => {
       <text>JINHUAYOU</text><text>·</text><text>NURTURE A REFINED LIFE</text>
     </view>
 
-    <!-- ====== 商品卡片（图片完整展示 + 文字在下方） ====== -->
-    <view class="cards-wrap" v-if="products.length">
+    <!-- ====== 商品卡片（骨架屏 / 正常 / 空态） ====== -->
+    <view v-if="loading" class="cards-wrap">
+      <view v-for="i in 2" :key="'sk-' + i" class="product-card">
+        <view class="card-img-ph card-skeleton" />
+        <view class="card-text">
+          <view class="card-skeleton-line" style="width: 62%; height: 40rpx;" />
+          <view class="card-bar">
+            <view class="card-skeleton-line" style="width: 160rpx; height: 32rpx;" />
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view v-else-if="products.length" class="cards-wrap">
       <view v-for="(item, index) in products" :key="item.id || index" class="product-card" @click="goProduct(item.id)">
-        <image v-if="item.mainImage" class="card-img" :src="item.mainImage" mode="widthFix" />
+        <image v-if="item.mainImage" class="card-img" :src="item.mainImage" mode="widthFix" lazy-load />
         <view v-else class="card-img-ph" />
         <view v-if="isRecommendTextEnabled(item.recommendTextEnabled)" class="card-text">
           <text class="card-title">{{ item.name }}</text>
@@ -177,7 +190,7 @@ onMounted(() => {
           <view class="card-bar">
             <view class="price-group">
               <text class="price-yuan">¥</text>
-              <text class="price-num">{{ item.price || 2999 }}</text>
+              <text class="price-num">{{ item.originalPrice ?? item.minOriginalPrice ?? item.price ?? 2999 }}</text>
             </view>
             <view class="buy-btn"><text class="buy-text">即刻购买</text></view>
           </view>
@@ -185,7 +198,7 @@ onMounted(() => {
       </view>
     </view>
 
-    <view class="cards-wrap" v-if="!loading && !products.length">
+    <view v-else class="cards-wrap">
       <view class="product-card" v-for="i in 2" :key="'ph-'+i">
         <view class="card-img-ph" />
         <view class="card-text">
@@ -202,20 +215,18 @@ onMounted(() => {
       </view>
     </view>
 
-    <view class="loading-row" v-if="loading"><text class="loading-text">加载中...</text></view>
-
     <!-- ====== 福利与资讯（背景图 + 内容叠加） ====== -->
     <view class="welfare">
-      <image class="welfare-bg" src="/static/bg/2-1.png" mode="widthFix" />
+      <image class="welfare-bg" src="/static/bg/2-1.jpg" mode="widthFix" lazy-load />
       <view class="welfare-content">
         <text class="welfare-title">福利与资讯</text>
         <view class="welfare-tabs">
           <view class="w-tab" :class="{ active: welfareTab === 0 }" @click="welfareTab = 0"><text>更多福利</text></view>
-        <view class="w-tab" :class="{ active: welfareTab === 1 }" @click="welfareTab = 1"><text>关注金华有</text></view>
+        <view class="w-tab" :class="{ active: welfareTab === 1 }" @click="welfareTab = 1"><text>今华有肽</text></view>
         </view>
-        <image v-if="bottomImages[welfareTab]" class="welfare-img" :src="bottomImages[welfareTab]" mode="aspectFill" @click="handleWelfareImageTap(welfareTab)" />
+        <image v-if="bottomImages[welfareTab]" class="welfare-img" :src="bottomImages[welfareTab]" mode="aspectFill" lazy-load @click="handleWelfareImageTap(welfareTab)" />
         <view v-else class="welfare-placeholder" />
-        <text class="welfare-logo">今华有</text>
+        <text class="welfare-logo">今华有肽，年轻常在</text>
       </view>
     </view>
 
@@ -226,17 +237,22 @@ onMounted(() => {
 .page { display: flex; flex-direction: column; align-items: center; min-height: 100vh; background: #fff; }
 
 /* ===== 悬浮导航栏（fixed 覆盖轮播图上方） ===== */
-.nav-bar { position: fixed; left: 0; right: 0; display: flex; align-items: center; padding-left: 24rpx; z-index: 100; box-sizing: border-box; }
+.nav-backdrop { position: fixed; top: 0; right: 0; left: 0; z-index: 99; pointer-events: none; transition: background-color .2s ease, box-shadow .2s ease; }
+.nav-bar { position: fixed; left: 0; right: 0; display: flex; align-items: center; padding-left: 24rpx; z-index: 100; box-sizing: border-box; background: transparent; transition: background-color .2s ease, box-shadow .2s ease; }
 .nav-logo-img { width: 102rpx; height: 54rpx; flex-shrink: 0; }
-.nav-search { flex: 1; height: 68rpx; margin-left: 16rpx; background: rgba(255,255,255,.58); border-radius: 34rpx; display: flex; align-items: center; padding: 0 24rpx; }
-.nav-search-text { color: #999; font-size: 26rpx; }
+.nav-search { display: flex; flex: 1; align-items: center; height: 68rpx; margin-left: 16rpx; padding: 0 24rpx; box-sizing: border-box; border: 1rpx solid rgba(255,255,255,.78); border-radius: 34rpx; background: rgba(255,255,255,.22); box-shadow: 0 3rpx 14rpx rgba(0,0,0,.1); }
+.nav-search-input { flex: 1; min-width: 0; padding: 0; color: #5d5956; font-size: 26rpx; font-weight: 500; }
+.nav-search-input::placeholder { color: #77716d; opacity: 1; }
 
 /* ===== 首屏轮播 ===== */
 .hero-swiper { width: 100%; margin-top: 0; overflow: hidden; }
 .hero-swiper-item { width: 100%; overflow: hidden; }
 .hero-image { width: 100%; height: auto; display: block; }
-.hero-video { width: 100%; height: 720rpx; margin-top: 0; }
-.hero-placeholder { width: 100%; height: 720rpx; background: #d8d8d8; }
+.hero-skeleton { width: 100%; min-height: 960rpx; position: relative; overflow: hidden; background: #eef0f2; }
+.hero-skeleton::after { content: ''; position: absolute; inset: 0; background: rgba(255,255,255,.42); animation: hero-skeleton-pulse 1.4s ease-in-out infinite; }
+@keyframes hero-skeleton-pulse { 0%, 100% { opacity: .25; } 50% { opacity: .8; } }
+.hero-video { width: 100%; height: 960rpx; margin-top: 0; }
+.hero-placeholder { width: 100%; height: 960rpx; background: #d8d8d8; }
 
 /* ===== Logo 小图 ===== */
 .logo-row { width: 100%; padding: 102rpx 0 0 26rpx; margin-top: -120rpx; }
@@ -252,6 +268,9 @@ onMounted(() => {
 /* 图片撑满整卡 */
 .card-img { width: 100%; display: block; }
 .card-img-ph { width: 100%; height: 360rpx; background: rgba(0,0,0,.06); }
+/* 骨架屏占位（复用 hero 的脉动动画） */
+.card-skeleton { animation: hero-skeleton-pulse 1.4s ease-in-out infinite; }
+.card-skeleton-line { display: block; border-radius: 6rpx; background: rgba(0,0,0,.08); animation: hero-skeleton-pulse 1.4s ease-in-out infinite; }
 
 /* 文字叠加在图片底部 */
 .card-text { position: absolute; left: 0; right: 0; bottom: 20rpx; display: flex; flex-direction: column; align-items: center; padding: 0 40rpx; }

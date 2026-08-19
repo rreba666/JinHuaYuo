@@ -2,7 +2,11 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getUserProfile, getWalletInfo, updateUserProfile, type UserProfile, type WalletInfo } from '@/api/user'
-import { isRegisteredUser } from '@/utils/auth'
+import { getAuth, isLoggedIn, isRegisteredUser } from '@/utils/auth'
+import { getPromotionCode } from '@/api/promotion'
+import { getAnnouncementList, type Announcement } from '@/api/announcement'
+import { uploadFile } from '@/utils/request'
+import PromotionCodePoster from '@/components/PromotionCodePoster.vue'
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
@@ -12,8 +16,13 @@ const user = ref<UserProfile | null>(null)
 const wallet = ref<WalletInfo | null>(null)
 const profileEditorVisible = ref(false)
 const profileSaving = ref(false)
-const profileForm = reactive({ nickname: '', avatarUrl: '', phone: '' })
+const avatarUploading = ref(false)
+/** chooseAvatar 选中的临时头像路径（保存成功后清空）。 */
+const avatarTempPath = ref('')
+const profileForm = reactive({ nickname: '', avatarUrl: '' })
 const registeredUser = computed(() => isRegisteredUser(user.value?.identity))
+/** 启用中的公告列表（公开接口，个人页订单模块下方横向滚动展示）。 */
+const announcements = ref<Announcement[]>([])
 
 // 仅映射设计稿中已有的本地切图，缺失资源的条目由模板保留占位块。
 const orderEntries = [
@@ -53,12 +62,26 @@ const redPacketAmount = computed(() => {
 })
 /** 红包弹窗可见状态。 */
 const redPacketVisible = ref(false)
+/** 推广码弹窗状态（个人页二维码按钮点击后展示小程序码）。 */
+const promotionCodeVisible = ref(false)
+const promotionCodeLoading = ref(false)
+const promotionCodeUrl = ref('')
 
 function formatIncome(value?: number): string {
   return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(2) : '0.00'
 }
 
+function incomeValueClass(value?: number): string {
+  const raw = typeof value === 'number' && Number.isFinite(value) ? value.toFixed(2) : '0.00'
+  if (raw.length >= 12) return 'income-value-long'
+  if (raw.length >= 10) return 'income-value-compact'
+  if (raw.length >= 8) return 'income-value-small'
+  return ''
+}
+
 async function loadData(): Promise<void> {
+  // 公告为公开接口，游客也能查看
+  void loadAnnouncements()
   try { user.value = await getUserProfile() } catch { user.value = null /* 资料失败按游客处理 */ }
   if (!registeredUser.value) {
     wallet.value = null
@@ -67,31 +90,40 @@ async function loadData(): Promise<void> {
   try { wallet.value = await getWalletInfo() } catch { /* 未登录时显示默认收益 */ }
 }
 
+/** 加载启用中的公告列表，失败时保持空态。 */
+async function loadAnnouncements(): Promise<void> {
+  try { announcements.value = await getAnnouncementList() } catch { announcements.value = [] }
+}
+
 function goOrder(key: string): void {
+  if (key === 'completed') {
+    // 退款售后入口直接落到订单列表的「退款售后」分类
+    uni.navigateTo({ url: '/subpkg-order/orders/list?tab=aftersale' })
+    return
+  }
   // 待发货(status=1,物流) 与 待自提(status=1,自提) 用 pickupType 区分
   const tabMap: Record<string, { status?: number; pickupType?: number }> = {
     pending: { status: 0 },
     shipped: { status: 1, pickupType: 0 },
     received: { status: 2 },
     pickup: { status: 1, pickupType: 1 },
-    completed: { status: 4 },
   }
   const target = tabMap[key]
-  if (!target || target.status === undefined) { uni.navigateTo({ url: '/pages/orders/list' }); return }
+  if (!target || target.status === undefined) { uni.navigateTo({ url: '/subpkg-order/orders/list' }); return }
   const pickup = target.pickupType !== undefined ? `&pickupType=${target.pickupType}` : ''
-  uni.navigateTo({ url: `/pages/orders/list?status=${target.status}${pickup}` })
+  uni.navigateTo({ url: `/subpkg-order/orders/list?status=${target.status}${pickup}` })
 }
 
 function goMenu(key: string): void {
-  if (key === 'invoice') { uni.navigateTo({ url: '/pages/invoice/list' }); return }
-  if (key === 'favorite') { uni.navigateTo({ url: '/pages/favorite/list' }); return }
+  if (key === 'invoice') { uni.navigateTo({ url: '/subpkg-order/invoice/list' }); return }
+  if (key === 'favorite') { uni.navigateTo({ url: '/subpkg-wallet/favorite/list' }); return }
   if (key === 'promotion') { goPromotionCenter(); return }
   if (key === 'wallet') { goWallet(); return }
   const item = menuItems.find((menu) => menu.key === key)
   uni.showToast({ title: `${item?.label || '功能'} - 功能开发中`, icon: 'none' })
 }
 
-/** 处理收益卡点击，推广收益进入独立推广页，平台红包弹窗展示。 */
+/** 处理收益卡点击：余额进钱包、推广收益进推广页；平台红包按红点状态分流。 */
 function goIncome(index: number): void {
   if (!registeredUser.value) return
   if (index === 0) {
@@ -103,7 +135,12 @@ function goIncome(index: number): void {
     return
   }
   if (index === 2) {
-    openRedPacket()
+    // 有新分红红包（红点）时弹红包窗；无红点时直接进入红包页
+    if (hasUnseenBonus.value) {
+      openRedPacket()
+    } else {
+      openRedPacketPage()
+    }
   }
 }
 
@@ -122,11 +159,35 @@ function closeRedPacket(): void {
 /** 点击「开心收下」进入红包页。 */
 function openRedPacketPage(): void {
   redPacketVisible.value = false
-  uni.navigateTo({ url: '/pages/redpacket/redpacket' })
+  uni.navigateTo({ url: '/subpkg-wallet/redpacket/redpacket' })
+}
+
+/** 生成并展示带当前推广者身份的小程序码（个人页二维码按钮）。 */
+async function openPromotionCode(): Promise<void> {
+  if (!registeredUser.value) {
+    uni.showToast({ title: '完成订单后开放推广功能', icon: 'none' })
+    return
+  }
+  if (promotionCodeLoading.value) return
+  if (!getAuth()?.userId) {
+    uni.showToast({ title: '请先登录后生成推广码', icon: 'none' })
+    return
+  }
+  promotionCodeLoading.value = true
+  promotionCodeVisible.value = true
+  try {
+    promotionCodeUrl.value = await getPromotionCode()
+    if (!promotionCodeUrl.value) throw new Error('推广码地址为空')
+  } catch (error) {
+    promotionCodeVisible.value = false
+    uni.showToast({ title: error instanceof Error ? error.message : '推广码生成失败', icon: 'none' })
+  } finally {
+    promotionCodeLoading.value = false
+  }
 }
 
 function goAllOrders(): void {
-  uni.navigateTo({ url: '/pages/orders/list' })
+  uni.navigateTo({ url: '/subpkg-order/orders/list' })
 }
 
 function goWallet(): void {
@@ -134,7 +195,7 @@ function goWallet(): void {
     uni.showToast({ title: '完成订单后开放推广功能', icon: 'none' })
     return
   }
-  uni.navigateTo({ url: '/pages/wallet/withdraw' })
+  uni.navigateTo({ url: '/subpkg-wallet/withdraw/withdraw' })
 }
 
 /** 进入推广中心前再次校验身份，防止异步刷新期间出现越权跳转。 */
@@ -143,23 +204,54 @@ function goPromotionCenter(): void {
     uni.showToast({ title: '完成订单后开放推广功能', icon: 'none' })
     return
   }
-  uni.navigateTo({ url: '/pages/dividend/dividend' })
+  uni.navigateTo({ url: '/subpkg-wallet/dividend/dividend' })
 }
 
 function goEditProfile(): void {
-  Object.assign(profileForm, { nickname: user.value?.nickname || '', avatarUrl: user.value?.avatarUrl || '', phone: user.value?.phone || '' })
+  avatarTempPath.value = ''
+  Object.assign(profileForm, { nickname: user.value?.nickname || '', avatarUrl: user.value?.avatarUrl || '' })
   profileEditorVisible.value = true
+}
+
+/** 个人资料区点击：未登录先引导登录，已登录进入编辑资料。 */
+function handleProfileTap(): void {
+  if (!isLoggedIn()) {
+    uni.navigateTo({ url: '/pages/login/login' })
+    return
+  }
+  goEditProfile()
+}
+
+/** 处理微信头像选择回调，记录临时路径。 */
+function onChooseAvatar(event: { detail: { avatarUrl?: string } }): void {
+  const tempPath = event.detail?.avatarUrl
+  if (tempPath) {
+    avatarTempPath.value = tempPath
+  } else {
+    uni.showToast({ title: '未选择头像', icon: 'none' })
+  }
 }
 
 async function saveProfile(): Promise<void> {
   if (!profileForm.nickname.trim()) { uni.showToast({ title: '请输入昵称', icon: 'none' }); return }
   profileSaving.value = true
   try {
-    user.value = await updateUserProfile({ nickname: profileForm.nickname.trim(), avatarUrl: profileForm.avatarUrl.trim(), phone: profileForm.phone.trim() })
+    // 用户选了新头像时，先把微信临时文件上传成永久 URL
+    let avatarUrl = profileForm.avatarUrl.trim()
+    if (avatarTempPath.value) {
+      avatarUploading.value = true
+      avatarUrl = await uploadFile(avatarTempPath.value)
+      avatarTempPath.value = ''
+    }
+    // 仅允许修改昵称和头像，电话不允许编辑，保存时不上传 phone
+    user.value = await updateUserProfile({ nickname: profileForm.nickname.trim(), avatarUrl })
     profileEditorVisible.value = false
     uni.showToast({ title: '资料已保存', icon: 'success' })
   } catch (error) { uni.showToast({ title: error instanceof Error ? error.message : '资料保存失败', icon: 'none' }) }
-  finally { profileSaving.value = false }
+  finally {
+    profileSaving.value = false
+    avatarUploading.value = false
+  }
 }
 
 onMounted(() => {
@@ -180,16 +272,17 @@ onShow(() => { void loadData() })
   <view class="pg">
     <scroll-view class="bd" scroll-y>
       <view class="hero" :style="{ paddingTop: bodyTop + 'px' }">
+        <image class="hero-bg" src="/static/bg/个人bg.jpg" mode="aspectFill" />
         <view class="profile-row">
-          <view class="u-avatar">
+          <view class="u-avatar" @click="handleProfileTap">
             <image v-if="user?.avatarUrl" class="u-avatar-image" :src="user.avatarUrl" mode="aspectFill" />
           </view>
-          <view class="u-info" @click="goEditProfile">
+          <view class="u-info" @click="handleProfileTap">
             <text class="u-name">{{ user?.nickname || '我的姓名微信名' }}</text>
             <image v-if="registeredUser" class="vip-avatar-badge" src="/static/my/vip 头像_slices/vip 头像.png" mode="aspectFit" />
             <text v-if="user" class="u-id">ID: {{ user.id }}</text>
           </view>
-          <image class="qr-mark" src="/static/my/QRcode.png" mode="aspectFit" />
+          <image class="qr-mark" src="/static/my/QRcode.png" mode="aspectFit" @click="openPromotionCode" />
         </view>
 
         <view class="member-card" :class="{ 'member-card-guest': !registeredUser }">
@@ -202,7 +295,7 @@ onShow(() => { void loadData() })
 
         <view v-if="registeredUser" class="income-strip">
           <view v-for="(item, index) in incomeEntries" :key="item.label" class="income-item" @click="goIncome(index)">
-            <text class="income-value">{{ formatIncome(item.value) }}</text>
+            <text :class="['income-value', incomeValueClass(item.value)]">{{ formatIncome(item.value) }}</text>
             <text class="income-label">{{ item.label }}</text>
             <view v-if="index === 2 && hasUnseenBonus" class="income-dot" />
           </view>
@@ -223,6 +316,16 @@ onShow(() => { void loadData() })
         </view>
       </view>
 
+      <!-- 公告栏：订单模块下方、功能选项上方，横向滚动展示 -->
+      <view v-if="announcements.length" class="announcement-bar">
+        <text class="announcement-label">公告</text>
+        <scroll-view class="announcement-scroll" scroll-x :show-scrollbar="false">
+          <view class="announcement-track">
+            <text v-for="item in announcements" :key="item.id" class="announcement-item">{{ item.content }}</text>
+          </view>
+        </scroll-view>
+      </view>
+
       <view class="menu-section">
         <view class="menu-list">
           <view v-for="item in menuItems" :key="item.key" class="menu-item" @click="goMenu(item.key)">
@@ -238,10 +341,13 @@ onShow(() => { void loadData() })
     <view v-show="profileEditorVisible" class="mask" @click="profileEditorVisible = false">
       <view class="sheet" @click.stop>
         <view class="sheet-head"><text class="sheet-title">编辑资料</text><text class="sheet-close" @click="profileEditorVisible = false">×</text></view>
-        <input v-model="profileForm.nickname" class="sheet-input" placeholder="请输入昵称" />
-        <input v-model="profileForm.phone" class="sheet-input" type="number" maxlength="11" placeholder="请输入手机号" />
-        <input v-model="profileForm.avatarUrl" class="sheet-input" placeholder="头像地址（可选）" />
-        <button class="sheet-submit" :disabled="profileSaving" @click="saveProfile">{{ profileSaving ? '保存中...' : '保存资料' }}</button>
+        <button class="avatar-picker" open-type="chooseAvatar" :disabled="avatarUploading || profileSaving" @chooseavatar="onChooseAvatar">
+          <image v-if="avatarTempPath || profileForm.avatarUrl" class="avatar-preview" :src="avatarTempPath || profileForm.avatarUrl" mode="aspectFill" />
+          <text v-else class="avatar-placeholder">{{ avatarUploading ? '上传中...' : '点击选择头像' }}</text>
+        </button>
+        <text class="avatar-tip">点击可选择微信头像或相册图片</text>
+        <input v-model="profileForm.nickname" class="sheet-input" type="nickname" placeholder="请输入昵称（可点选微信昵称）" />
+        <button class="sheet-submit" :disabled="profileSaving || avatarUploading" @click="saveProfile">{{ profileSaving ? '保存中...' : '保存资料' }}</button>
       </view>
     </view>
 
@@ -249,12 +355,12 @@ onShow(() => { void loadData() })
     <view v-show="redPacketVisible" class="mask redpacket-mask" @click="closeRedPacket">
       <view class="redpacket-sheet" @click.stop>
         <image class="redpacket-bg" src="/static/my/红包_slices/编组.png" mode="aspectFit" />
-        <view class="redpacket-title"><text>今华有·优肽甄选</text><text>平台现金红包</text></view>
         <text class="redpacket-amount">{{ redPacketAmount }}</text>
-        <view class="redpacket-btn" @click="openRedPacketPage">开心收下</view>
-        <text class="redpacket-tip">*可在平台红包页面提现</text>
+        <view class="redpacket-action" @click="openRedPacketPage" />
       </view>
     </view>
+
+    <PromotionCodePoster v-model="promotionCodeVisible" :loading="promotionCodeLoading" :code-url="promotionCodeUrl" />
   </view>
 </template>
 
@@ -263,8 +369,7 @@ onShow(() => { void loadData() })
 .bd { flex: 1; width: 100%; min-height: 0; margin-bottom: -50rpx; box-sizing: border-box; }
 
 .hero { position: relative; overflow: hidden; padding-right: 38.17rpx; padding-left: 38.17rpx; background: #0d0e0f; color: #fff; }
-.hero::before { position: absolute; top: -120rpx; right: -120rpx; width: 760rpx; height: 620rpx; background: repeating-linear-gradient(132deg, transparent 0 22rpx, rgba(178, 143, 77, .45) 23rpx 26rpx); content: ''; transform: rotate(4deg); opacity: .72; }
-.hero::after { position: absolute; bottom: 184rpx; left: -180rpx; width: 740rpx; height: 280rpx; background: repeating-linear-gradient(18deg, transparent 0 28rpx, rgba(132, 102, 59, .32) 29rpx 32rpx); content: ''; transform: rotate(-16deg); opacity: .6; }
+.hero-bg { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; }
 .profile-row { position: relative; z-index: 1; display: flex; align-items: center; padding: 16rpx 0 48rpx; }
 .u-avatar { width: 99.24rpx; height: 99.24rpx; flex-shrink: 0; overflow: hidden; border-radius: 50%; background: #819a7b; }
 .u-avatar-image { width: 100%; height: 100%; }
@@ -286,19 +391,13 @@ onShow(() => { void loadData() })
 .member-end { position: relative; z-index: 1; margin-left: auto; }
 .income-strip { position: relative; z-index: 1; display: flex; height: 196rpx; margin: -196rpx -38.17rpx 0; padding: 38rpx 38.17rpx 50rpx; box-sizing: border-box; overflow: hidden; background: linear-gradient(104deg, #303134 0%, #5c5d61 48%, #28292b 100%); box-shadow: inset 0 1rpx rgba(255, 255, 255, .24); }
 .income-strip::after { position: absolute; top: -120%; left: -16%; width: 34%; height: 340%; background: linear-gradient(108deg, transparent 0%, rgba(255, 255, 255, .11) 46%, rgba(255, 255, 255, .03) 62%, transparent 100%); content: ''; transform: rotate(16deg); pointer-events: none; }
-.income-item { position: absolute; top: 0; bottom: 0; z-index: 1; display: block; }
-.income-item:nth-child(1) { left: 0; width: 252rpx; }
-.income-item:nth-child(2) { left: 252rpx; width: 280rpx; }
-.income-item:nth-child(3) { right: 0; left: 532rpx; }
+.income-item { position: relative; z-index: 1; display: flex; flex: 1 1 0; min-width: 0; flex-direction: column; align-items: center; justify-content: center; }
 .income-item + .income-item::before { position: absolute; top: 54rpx; left: 0; width: 2rpx; height: 84rpx; background: rgba(255, 255, 255, .72); content: ''; }
-.income-value { position: absolute; top: 50rpx; color: #fff; font-size: 48rpx; font-weight: 700; line-height: 58rpx; white-space: nowrap; }
-.income-item:nth-child(1) .income-value { left: 86rpx; width: 110rpx; text-align: center; }
-.income-item:nth-child(2) .income-value { left: 86rpx; width: 110rpx; text-align: center; }
-.income-item:nth-child(3) .income-value { left: 58rpx; width: 110rpx; text-align: center; }
-.income-label { position: absolute; top: 120rpx; margin: 0; color: #fff; font-size: 24rpx; line-height: 34rpx; white-space: nowrap; }
-.income-item:nth-child(1) .income-label { left: 86rpx; width: 110rpx; text-align: center; }
-.income-item:nth-child(2) .income-label { left: 92rpx; }
-.income-item:nth-child(3) .income-label { left: 64rpx; }
+.income-value { display: block; width: 100%; padding: 0 8rpx; box-sizing: border-box; color: #fff; font-size: 42rpx; font-weight: 700; line-height: 58rpx; text-align: center; white-space: nowrap; }
+.income-value-small { font-size: 36rpx; }
+.income-value-compact { font-size: 30rpx; }
+.income-value-long { font-size: 25rpx; }
+.income-label { display: block; margin-top: 12rpx; color: #fff; font-size: 24rpx; line-height: 34rpx; text-align: center; white-space: nowrap; }
 .income-dot { position: absolute; top: 56rpx; left: 160rpx; width: 20rpx; height: 20rpx; border-radius: 50%; background: #f34848; }
 
 .order-section { padding: 34rpx 0 38rpx; background: #fff; border-bottom: 22.9rpx solid #f5f5f5; color: #1E1E1E; font-family: 'PingFang SC', '苹方-简', sans-serif; font-weight: 500; }
@@ -312,6 +411,12 @@ onShow(() => { void loadData() })
 .order-icon-image { background: transparent; }
 .order-label { margin-top: 16rpx; color: #1E1E1E; font-size: 26.72rpx; font-weight: 500; white-space: nowrap; }
 
+.announcement-bar { display: flex; align-items: center; gap: 16rpx; padding: 20rpx 38.17rpx; background: #fff; border-bottom: 22.9rpx solid #f5f5f5; }
+.announcement-label { flex-shrink: 0; padding: 4rpx 14rpx; border-radius: 8rpx; color: #fff; background: #916448; font-size: 22rpx; font-weight: 600; }
+.announcement-scroll { flex: 1; min-width: 0; white-space: nowrap; }
+.announcement-track { display: flex; align-items: center; gap: 48rpx; }
+.announcement-item { flex-shrink: 0; color: #4F4F4F; font-size: 24rpx; white-space: nowrap; }
+
 .menu-section { padding: 0 0 120rpx; background: #fff; font-family: 'PingFang SC', '苹方-简', sans-serif; font-weight: 500; }
 .menu-list { background: #fff; }
 .menu-item { display: flex; align-items: center; min-height: 99.24rpx; padding: 0 38.17rpx; box-sizing: border-box; border-bottom: 0; }
@@ -324,11 +429,13 @@ onShow(() => { void loadData() })
 .sheet-head { display: flex; align-items: center; justify-content: center; min-height: 54rpx; }.sheet-title { font-size: 30rpx; font-weight: 700; }.sheet-close { position: absolute; right: 30rpx; color: #888; font-size: 42rpx; }
 .sheet-input { height: 78rpx; margin-top: 20rpx; padding: 0 22rpx; background: #f7f7f7; box-sizing: border-box; color: #333; font-size: 25rpx; }.balance { display: block; margin-top: 22rpx; color: #555; font-size: 26rpx; }
 .sheet-submit { height: 78rpx; margin: 28rpx 0 0; color: #fff; background: #222; border-radius: 4rpx; font-size: 27rpx; }.sheet-submit::after { border: 0; }
+.avatar-picker { display: flex; align-items: center; justify-content: center; width: 140rpx; height: 140rpx; margin: 24rpx auto 0; padding: 0; border-radius: 50%; overflow: hidden; background: #f3f3f3; }.avatar-picker::after { border: 0; }
+.avatar-preview { width: 140rpx; height: 140rpx; }
+.avatar-placeholder { color: #888; font-size: 24rpx; }
+.avatar-tip { display: block; margin-top: 12rpx; color: #999; font-size: 22rpx; text-align: center; }
 .redpacket-mask { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.81); }
 .redpacket-sheet { position: relative; width: 620rpx; height: 1104rpx; }
 .redpacket-bg { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; }
-.redpacket-title { position: absolute; left: 0; right: 0; top: 38%; z-index: 1; display: flex; flex-direction: column; align-items: center; color: #916448; font-size: 26rpx; font-weight: 600; line-height: 1.5; }
 .redpacket-amount { position: absolute; left: 0; right: 0; top: 51%; z-index: 1; color: #916448; font-size: 60rpx; font-weight: 700; text-align: center; line-height: 1; }
-.redpacket-btn { position: absolute; left: 50%; top: 62%; z-index: 1; display: flex; align-items: center; justify-content: center; width: 224rpx; height: 80rpx; color: #fff; font-size: 30rpx; font-weight: 600; transform: translateX(-50%); }
-.redpacket-tip { position: absolute; left: 0; right: 0; top: 75%; z-index: 1; color: #fff; font-size: 22rpx; text-align: center; }
+.redpacket-action { position: absolute; left: 50%; top: 62%; z-index: 1; width: 224rpx; height: 80rpx; transform: translateX(-50%); }
 </style>

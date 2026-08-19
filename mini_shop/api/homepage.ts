@@ -18,6 +18,10 @@ export interface HomepageProduct {
   name: string
   mainImage: string
   price: number
+  /** 划线价/原价（元），纯展示，为 null 表示无划线价。 */
+  minOriginalPrice?: number
+  /** 兼容字段：部分接口返回 originalPrice 而非 minOriginalPrice。 */
+  originalPrice?: number
   tag?: string
   soldCount?: number
   descriptionTitle?: string

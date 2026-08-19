@@ -15,8 +15,8 @@ const activeSelected = computed(() => selected.value.filter((user) => user.delFl
 const visibleUsers = computed(() => store.list.filter((user) => getUserStatus(user) === statusTab.value))
 const detailVisible = ref(false)
 const detailUserId = ref('')
-type WalletForm = Pick<UserDetail, 'pendingPromotion' | 'pendingBonus'>
-const walletForm = ref<WalletForm>({ pendingPromotion: 0, pendingBonus: 0 })
+type WalletForm = Pick<UserDetail, 'pendingPromotion' | 'pendingBonus' | 'balance'>
+const walletForm = ref<WalletForm>({ pendingPromotion: 0, pendingBonus: 0, balance: 0 })
 const walletOriginal = ref<WalletForm | null>(null)
 
 function normalizeBanStatus(value: UserBanStatusValue): 0 | 1 {
@@ -30,7 +30,7 @@ function getUserStatus(user: User): UserStatusTab {
 
 /** 将详情中的当前余额复制到独立表单，避免直接修改响应数据。 */
 function syncWalletForm(detail: UserDetail): void {
-  const values = { pendingPromotion: detail.pendingPromotion, pendingBonus: detail.pendingBonus }
+  const values = { pendingPromotion: detail.pendingPromotion, pendingBonus: detail.pendingBonus, balance: detail.balance }
   walletOriginal.value = values
   walletForm.value = { ...values }
 }
@@ -60,7 +60,7 @@ async function saveWallet(): Promise<void> {
   const original = walletOriginal.value
   if (!original) return
   const payload: AdminWalletUpsertDTO = {}
-  for (const field of ['pendingPromotion', 'pendingBonus'] as const) {
+  for (const field of ['pendingPromotion', 'pendingBonus', 'balance'] as const) {
     const nextValue = walletForm.value[field]
     if (nextValue === original[field]) continue
     if (!isValidBalance(nextValue)) {
@@ -99,6 +99,12 @@ async function loadList(): Promise<void> {
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '用户列表查询失败')
   }
+}
+
+/** 按关键词搜索用户（ID/昵称/手机号），回车或点击触发。 */
+function searchUsers(): void {
+  store.page = 1
+  void loadList()
 }
 
 async function toggleBan(user: User): Promise<void> {
@@ -197,6 +203,8 @@ onMounted(() => { void loadList() })
       <div class="toolbar">
         <div><strong>用户列表</strong><span class="toolbar-count">共 {{ store.total }} 条</span></div>
         <div class="toolbar-actions">
+          <el-input v-model="store.filters.keyword" placeholder="用户ID/昵称/手机号" clearable class="search-input" @keyup.enter="searchUsers" @clear="searchUsers" />
+          <el-button type="primary" @click="searchUsers">搜索</el-button>
           <span v-if="hasSelection" class="selection-tip">已选择 {{ selected.length }} 项</span>
           <el-button plain :disabled="!hasSelection || store.actionLoading" :loading="store.actionLoading" @click="batchBan(1)">批量封禁</el-button>
           <el-button plain type="success" :disabled="!hasSelection || store.actionLoading" :loading="store.actionLoading" @click="batchBan(0)">批量解封</el-button>
@@ -236,7 +244,7 @@ onMounted(() => { void loadList() })
         </el-table-column>
       </DataTable>
     </el-card>
-    <el-drawer v-model="detailVisible" title="用户详情" size="min(520px, calc(100vw - 24px))" destroy-on-close>
+    <el-drawer v-model="detailVisible" title="用户详情" size="min(520px, calc(100vw - 24px))" append-to-body destroy-on-close>
       <el-skeleton v-if="store.detailLoading" :rows="8" animated />
       <template v-else-if="store.detail">
         <el-descriptions :column="1" border>
@@ -248,6 +256,7 @@ onMounted(() => { void loadList() })
           <el-descriptions-item label="注册时间">{{ store.detail.createTime }}</el-descriptions-item>
           <el-descriptions-item label="待提现推广金">¥ {{ store.detail.pendingPromotion.toFixed(2) }}</el-descriptions-item>
           <el-descriptions-item label="待提现分红">¥ {{ store.detail.pendingBonus.toFixed(2) }}</el-descriptions-item>
+          <el-descriptions-item label="余额">¥ {{ store.detail.balance.toFixed(2) }}</el-descriptions-item>
         </el-descriptions>
         <el-divider>钱包余额编辑</el-divider>
         <el-alert type="warning" :closable="false" show-icon title="手工调账" description="保存会直接覆盖用户可提现余额，请确认业务影响。" />
@@ -257,6 +266,9 @@ onMounted(() => { void loadList() })
           </el-form-item>
           <el-form-item label="待提现分红">
             <el-input-number v-model="walletForm.pendingBonus" :min="0" :precision="2" :step="0.01" controls-position="right" />
+          </el-form-item>
+          <el-form-item label="余额">
+            <el-input-number v-model="walletForm.balance" :min="0" :precision="2" :step="0.01" controls-position="right" />
           </el-form-item>
         </el-form>
       </template>
@@ -284,4 +296,5 @@ onMounted(() => { void loadList() })
 .user-tab--normal { color: var(--el-color-success); }
 .user-tab--deleted { color: var(--el-text-color-secondary); }
 .user-tab--banned { color: var(--el-color-danger); }
+.search-input { width: 220px; }
 </style>

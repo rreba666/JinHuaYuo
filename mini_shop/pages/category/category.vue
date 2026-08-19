@@ -46,6 +46,7 @@ async function loadCats(): Promise<void> {
   loading.value = false
 }
 
+
 /** 请求 GET /api/product/list?categoryId= 获取商品 */
 async function loadGoods(catId: string): Promise<void> {
   const requestToken = ++goodsRequestToken
@@ -75,7 +76,7 @@ function switchCat(i: number): void {
   active.value = i
   loadGoods(cats.value[i].id)
 }
-function goDetail(id: string): void { uni.navigateTo({ url: `/pages/product/detail?id=${id}` }) }
+function goDetail(id: string): void { uni.navigateTo({ url: `/subpkg-goods/detail/detail?id=${id}` }) }
 function goHome(): void { uni.switchTab({ url: '/pages/index/index' }) }
 
 /** 将商品加入购物车，阻止事件冒泡避免同时跳转详情 */
@@ -125,7 +126,7 @@ onMounted(() => {
                 <view v-show="!it.mainImage" class="c-img-ph" />
                 <!-- 底部工具栏：价格 + 加购 -->
                 <view class="c-bot">
-                  <view class="c-pri" v-show="it.minPrice"><text class="p-y">¥</text><text class="p-n">{{ it.minPrice }}</text></view>
+                  <view class="c-pri" v-show="it.minPrice"><text class="p-y">¥</text><text class="p-n">{{ it.originalPrice ?? it.minOriginalPrice ?? it.minPrice }}</text></view>
                   <view class="add-cart-btn" @click.stop="onAddCart(it)"><text class="add-cart-h"></text><text class="add-cart-v"></text></view>
                 </view>
               </view>

@@ -5,8 +5,8 @@ import { useRoute } from 'vue-router'
 import { useOrderStore } from '@/stores/order'
 import DataTable from '@/components/DataTable.vue'
 import type { Order, OrderAddressUpdateDTO, OrderRefundDTO, OrderStatus } from '@/types/order'
-import { isDeletableOrderStatus, isVerifiedStatus } from '@/utils/orderRules'
-import { Box, CircleCheck, Delete, RefreshLeft, View } from '@element-plus/icons-vue'
+import { isVerifiedStatus } from '@/utils/orderRules'
+import { Box, CircleCheck, Delete, View } from '@element-plus/icons-vue'
 
 const store = useOrderStore()
 const route = useRoute()
@@ -29,6 +29,7 @@ const verifyForm = reactive({ orderId: '', orderNo: '', code: '' })
 const addressForm = reactive<OrderAddressUpdateDTO>({ receiverName: '', receiverPhone: '', receiverAddress: '' })
 const refundForm = reactive({ orderId: '', orderNo: '', reason: '' })
 const dateRange = ref<[string, string] | null>(null)
+const orderNoInput = ref('')
 const shipRules: FormRules = {
   expressCompany: [{ required: true, message: '请输入快递公司', trigger: 'blur' }],
   expressNo: [{ required: true, message: '请输入快递单号', trigger: 'blur' }],
@@ -57,8 +58,7 @@ const hasSelection = computed(() => selected.value.length > 0)
 const isPickupOrder = computed(() => route.path === '/orders/pickup')
 const pageTitle = computed(() => isPickupOrder.value ? '自提订单' : '普通订单')
 const eligibleSelected = computed(() => selected.value.filter((order) => !isDeleted(order) && order.status === 1))
-const deletableSelected = computed(() => selected.value.filter((order) => !isDeleted(order) && isDeletableOrderStatus(order.status)))
-const restorableSelected = computed(() => selected.value.filter((order) => isDeleted(order)))
+const deletableSelected = computed(() => selected.value.filter((order) => !isDeleted(order)))
 
 function statusType(status: OrderStatus): 'info' | 'warning' | 'primary' | 'success' | 'danger' {
   return ({ 0: 'info', 1: 'warning', 2: 'primary', 3: 'success', 4: 'success', 5: 'info', 6: 'warning', 7: 'danger', 8: 'success' } as const)[status]
@@ -67,11 +67,6 @@ function statusType(status: OrderStatus): 'info' | 'warning' | 'primary' | 'succ
 /** 判断订单是否为后端标记的软删除记录。 */
 function isDeleted(order: Order): boolean {
   return order.delFlag === 1
-}
-
-/** 判断订单是否允许调用后端恢复接口。 */
-function isRestorable(order: Order): boolean {
-  return isDeleted(order)
 }
 
 /** 仅已发货或已收货且未软删除的订单允许客服人工退款。 */
@@ -97,6 +92,13 @@ function handleDateRangeChange(value: [string, string] | null): void {
   dateRange.value = value
   store.filters.startTime = value?.[0] ? `${value[0]} 00:00:00` : ''
   store.filters.endTime = value?.[1] ? `${value[1]} 23:59:59` : ''
+  store.page = 1
+  void loadList()
+}
+
+/** 按订单号搜索（精确匹配），回车或点击搜索触发。 */
+function searchByOrderNo(): void {
+  store.filters.orderNo = orderNoInput.value.trim()
   store.page = 1
   void loadList()
 }
@@ -225,14 +227,10 @@ async function submitBatchShip(): Promise<void> {
 }
 
 function isDeletable(order: Order): boolean {
-  return !isDeleted(order) && isDeletableOrderStatus(order.status)
+  return !isDeleted(order)
 }
 
 async function removeOrder(order: Order): Promise<void> {
-  if (!isDeletable(order)) {
-    ElMessage.info('仅已完成、已关闭或已退款的订单可以删除')
-    return
-  }
   try {
     await ElMessageBox.confirm(`确认删除订单“${order.orderNo}”吗？删除后订单将从后台列表移除。`, '删除订单二次确认', { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' })
     await store.removeOrder(order.id)
@@ -245,7 +243,7 @@ async function removeOrder(order: Order): Promise<void> {
 
 async function removeSelected(): Promise<void> {
   if (!deletableSelected.value.length) {
-    ElMessage.info('请选择已完成、已关闭或已退款的订单')
+    ElMessage.info('请选择要删除的订单')
     return
   }
   const skippedCount = selected.value.length - deletableSelected.value.length
@@ -253,7 +251,7 @@ async function removeSelected(): Promise<void> {
     await ElMessageBox.confirm(`确认删除选中的 ${deletableSelected.value.length} 个订单吗？删除后订单将从后台列表移除。`, '批量删除订单二次确认', { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' })
     const result = await store.removeOrders(deletableSelected.value.map((order) => order.id))
     selected.value = []
-    const skippedMessage = skippedCount ? `，已跳过 ${skippedCount} 个非终态订单` : ''
+    const skippedMessage = skippedCount ? `，已跳过 ${skippedCount} 个已删除订单` : ''
     if (result.failedIds.length) {
       ElMessage.warning(`删除成功 ${result.successIds.length} 个，失败 ${result.failedIds.length} 个${skippedMessage}`)
     } else {
@@ -261,39 +259,6 @@ async function removeSelected(): Promise<void> {
     }
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '批量删除失败')
-  }
-}
-
-/** 恢复单条软删除订单。 */
-async function restoreOne(order: Order): Promise<void> {
-  if (!isRestorable(order)) return
-  try {
-    await ElMessageBox.confirm(`确认恢复订单“${order.orderNo}”吗？恢复后订单会回到正常列表。`, '恢复订单确认')
-    await store.restoreOne(order.id)
-    selected.value = []
-    ElMessage.success('订单已恢复')
-  } catch (error) {
-    if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '订单恢复失败')
-  }
-}
-
-/** 批量恢复选中的软删除订单。 */
-async function restoreSelected(): Promise<void> {
-  if (!restorableSelected.value.length) {
-    ElMessage.info('请选择已删除订单')
-    return
-  }
-  try {
-    await ElMessageBox.confirm(`确认恢复选中的 ${restorableSelected.value.length} 个订单吗？`, '批量恢复订单确认')
-    const result = await store.restoreOrders(restorableSelected.value.map((order) => order.id))
-    selected.value = []
-    if (result.failedIds.length) {
-      ElMessage.warning(`恢复成功 ${result.successIds.length} 个，失败 ${result.failedIds.length} 个`)
-    } else {
-      ElMessage.success(`已恢复 ${result.successIds.length} 个订单`)
-    }
-  } catch (error) {
-    if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '批量恢复失败')
   }
 }
 
@@ -351,8 +316,10 @@ onMounted(() => { void loadList() })
 
     <el-card shadow="never" class="filter-card">
       <el-form inline class="order-filter-form">
+        <el-form-item label="订单号"><el-input v-model="orderNoInput" placeholder="输入订单号" clearable style="width: 220px" @keyup.enter="searchByOrderNo" @clear="searchByOrderNo" /></el-form-item>
+        <el-form-item><el-button type="primary" @click="searchByOrderNo">搜索</el-button></el-form-item>
         <el-form-item label="下单时间"><el-date-picker :model-value="dateRange" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" @update:model-value="handleDateRangeChange" /></el-form-item>
-        <el-form-item><el-button @click="store.resetFilters(); dateRange = null; void loadList()">重置</el-button></el-form-item>
+        <el-form-item><el-button @click="store.resetFilters(); dateRange = null; orderNoInput = ''; void loadList()">重置</el-button></el-form-item>
       </el-form>
     </el-card>
 
@@ -367,7 +334,6 @@ onMounted(() => { void loadList() })
            <div><strong>自提订单</strong><span class="toolbar-count">共 {{ store.total }} 条</span></div>
            <div class="toolbar-actions pickup-order-actions">
              <span v-if="hasSelection" class="selection-tip">已选择 {{ selected.length }} 项</span>
-             <el-button type="success" plain :disabled="!restorableSelected.length || store.restoring" :loading="store.restoring" @click="restoreSelected">批量恢复</el-button>
              <el-button type="danger" plain :disabled="!deletableSelected.length || store.deleting" :loading="store.deleting" @click="removeSelected">批量删除</el-button>
            </div>
          </div>
@@ -378,8 +344,8 @@ onMounted(() => { void loadList() })
           <el-table-column prop="createTime" label="下单时间" min-width="180" />
           <el-table-column prop="shopName" label="自提门店" min-width="150"><template #default="{ row }">{{ row.shopName || '暂无数据' }}</template></el-table-column>
           <el-table-column label="核销状态" width="120"><template #default="{ row }"><el-tag :type="isVerifiedStatus(row.status) ? 'success' : 'warning'">{{ isVerifiedStatus(row.status) ? '已核销' : '待核销' }}</el-tag></template></el-table-column>
-          <el-table-column label="订单状态" width="130"><template #default="{ row }"><div class="order-status"><el-tag :type="statusType(row.status)">{{ row.statusDesc }}</el-tag><el-tag v-if="isDeleted(row)" type="danger" effect="plain">已删除</el-tag></div></template></el-table-column>
-          <el-table-column label="操作" fixed="right" width="240"><template #default="{ row }"><div class="operator-actions"><el-button size="small" type="primary" @click="showDetail(row)"><el-icon><View /></el-icon>详情</el-button><el-button v-if="isRestorable(row)" size="small" type="success" :loading="store.restoring" @click="restoreOne(row)"><el-icon><RefreshLeft /></el-icon>恢复</el-button><template v-else><el-button v-if="row.status === 1" size="small" type="success" :loading="store.verifying" @click="openVerify(row)"><el-icon><CircleCheck /></el-icon>核销</el-button><el-button size="small" type="danger" :disabled="!isDeletable(row) || store.deleting" :loading="store.deleting" :title="isDeletable(row) ? '删除订单' : '仅终态订单可删除'" @click="removeOrder(row)"><el-icon><Delete /></el-icon>删除</el-button></template></div></template></el-table-column>
+          <el-table-column label="订单状态" width="130"><template #default="{ row }"><div class="order-status"><el-tag :type="statusType(row.status)">{{ row.statusDesc }}</el-tag></div></template></el-table-column>
+          <el-table-column label="操作" fixed="right" width="240"><template #default="{ row }"><div class="operator-actions"><el-button size="small" type="primary" @click="showDetail(row)"><el-icon><View /></el-icon>详情</el-button><el-button v-if="row.status === 1" size="small" type="success" :loading="store.verifying" @click="openVerify(row)"><el-icon><CircleCheck /></el-icon>核销</el-button><el-button size="small" type="danger" :disabled="!isDeletable(row) || store.deleting" :loading="store.deleting" title="删除订单" @click="removeOrder(row)"><el-icon><Delete /></el-icon>删除</el-button></div></template></el-table-column>
         </DataTable>
       </el-card>
     </template>
@@ -391,7 +357,6 @@ onMounted(() => { void loadList() })
         <div class="toolbar-actions">
           <span v-if="hasSelection" class="selection-tip">已选择 {{ selected.length }} 项</span>
           <el-button type="primary" plain :disabled="!eligibleSelected.length || store.shipping" :loading="store.shipping" @click="openBatchShip">批量发货</el-button>
-          <el-button type="success" plain :disabled="!restorableSelected.length || store.restoring" :loading="store.restoring" @click="restoreSelected">批量恢复</el-button>
           <el-button type="danger" plain :disabled="!deletableSelected.length || store.deleting" :loading="store.deleting" @click="removeSelected">批量删除</el-button>
         </div>
       </div>
@@ -411,8 +376,8 @@ onMounted(() => { void loadList() })
         </el-table-column>
         <el-table-column prop="createTime" label="下单时间" min-width="180" />
         <el-table-column label="实付金额" width="130"><template #default="{ row }">¥ {{ Number(row.payAmount || 0).toFixed(2) }}</template></el-table-column>
-        <el-table-column prop="statusDesc" label="订单状态" width="150"><template #default="{ row }"><div class="order-status"><el-tag :type="statusType(row.status)">{{ row.statusDesc }}</el-tag><el-tag v-if="isDeleted(row)" type="danger" effect="plain">已删除</el-tag></div></template></el-table-column>
-        <el-table-column label="操作" fixed="right" width="240"><template #default="{ row }"><div class="operator-actions"><el-button size="small" type="primary" @click="showDetail(row)"><el-icon><View /></el-icon>详情</el-button><el-button v-if="isRestorable(row)" size="small" type="success" :loading="store.restoring" @click="restoreOne(row)"><el-icon><RefreshLeft /></el-icon>恢复</el-button><template v-else><el-button v-if="row.status === 1" size="small" type="primary" @click="openShip(row)"><el-icon><Box /></el-icon>发货</el-button><el-button size="small" type="danger" :disabled="!isDeletable(row) || store.deleting" :loading="store.deleting" :title="isDeletable(row) ? '删除订单' : '仅终态订单可删除'" @click="removeOrder(row)"><el-icon><Delete /></el-icon>删除</el-button></template></div></template></el-table-column>
+        <el-table-column prop="statusDesc" label="订单状态" width="150"><template #default="{ row }"><div class="order-status"><el-tag :type="statusType(row.status)">{{ row.statusDesc }}</el-tag></div></template></el-table-column>
+        <el-table-column label="操作" fixed="right" width="240"><template #default="{ row }"><div class="operator-actions"><el-button size="small" type="primary" @click="showDetail(row)"><el-icon><View /></el-icon>详情</el-button><el-button v-if="row.status === 1" size="small" type="primary" @click="openShip(row)"><el-icon><Box /></el-icon>发货</el-button><el-button size="small" type="danger" :disabled="!isDeletable(row) || store.deleting" :loading="store.deleting" title="删除订单" @click="removeOrder(row)"><el-icon><Delete /></el-icon>删除</el-button></div></template></el-table-column>
       </DataTable>
       </el-card>
     </template>

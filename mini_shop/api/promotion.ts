@@ -61,8 +61,11 @@ export function getPromotionRecords(params: PromotionRecordQuery = {}): Promise<
   return request<PromotionPageResult>({ url: `/api/promotion/records?${query}`, method: 'GET' })
 }
 
-/** 生成带当前推广者身份的小程序码。 */
-export function getPromotionCode(page = 'pages/index/index'): Promise<PromotionCode> {
+/** 推广码落地页：非 tabBar 中转页，扫码后解析推广关系再跳首页（tabBar 页不能直接作为小程序码 page）。 */
+export const PROMOTION_LANDING_PAGE = 'pages/promo/landing'
+
+/** 生成带当前推广者身份的小程序码，默认落地到非 tabBar 的推广中转页。 */
+export function getPromotionCode(page = PROMOTION_LANDING_PAGE): Promise<PromotionCode> {
   const query = buildQuery({ page })
   return request<PromotionCode>({ url: `/api/promotion/code?${query}`, method: 'GET' })
 }

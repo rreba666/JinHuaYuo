@@ -72,3 +72,47 @@ export function request<T = unknown>(options: UniApp.RequestOptions): Promise<T>
     })
   })
 }
+
+/**
+ * 上传本地文件到后端通用上传接口，返回后端代理 URL（响应 data 为 URL 字符串）。
+ * 用于头像等需要把微信临时文件转成永久可访问地址的场景。
+ * 后端接口规范：POST /api/common/upload，multipart 字段名 file，返回 { code, message, data: "https://..." }。
+ */
+export function uploadFile(filePath: string, name = 'file'): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!API_BASE_URL) {
+      reject(new ApiRequestError('未配置 VITE_API_BASE_URL，请检查 mini_shop 工程目录环境文件'))
+      return
+    }
+    const token = uni.getStorageSync('mini_shop_token')
+    uni.uploadFile({
+      url: `${API_BASE_URL}/api/common/upload`,
+      filePath,
+      name,
+      header: token ? { Authorization: `Bearer ${token}` } : {},
+      success: (response) => {
+        try {
+          const body = JSON.parse(response.data) as ApiResponse<string>
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            reject(new ApiRequestError(body.message || '网络异常，请稍后重试', body.code))
+            return
+          }
+          if (body.success === false || (body.code != null && body.code !== 0)) {
+            reject(new ApiRequestError(body.message || '上传失败', body.code))
+            return
+          }
+          if (!body.data) {
+            reject(new ApiRequestError('上传成功但未返回文件地址'))
+            return
+          }
+          resolve(body.data)
+        } catch {
+          reject(new ApiRequestError('上传响应解析失败'))
+        }
+      },
+      fail: (error) => {
+        reject(new ApiRequestError(error.errMsg || '上传失败'))
+      },
+    })
+  })
+}

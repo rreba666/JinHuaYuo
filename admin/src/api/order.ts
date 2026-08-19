@@ -98,7 +98,7 @@ export async function getOrderTrace(orderId: string): Promise<ExpressTrace | nul
   }
 }
 
-/** 删除后台订单；后端仅允许删除已完成、已关闭或已退款的终态订单。 */
+/** 删除后台订单；后端已放宽为所有状态订单均可软删除（前端负责二次确认）。 */
 export async function deleteOrder(orderId: string): Promise<void> {
   const response = await request.delete<OrderResponse<null>>(`/api/admin/order/${orderId}`)
   unwrapResponse(response, '订单删除失败')

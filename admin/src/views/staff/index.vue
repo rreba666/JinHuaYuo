@@ -130,6 +130,12 @@ async function loadList(): Promise<void> {
   try { await store.fetchList() } catch (error) { ElMessage.error(error instanceof Error ? error.message : '店员列表查询失败') }
 }
 
+/** 按关键词搜索店员（ID/姓名/工号），回车或点击触发。 */
+function searchStaff(): void {
+  store.page = 1
+  void loadList()
+}
+
 onMounted(() => { void loadList() })
 </script>
 
@@ -137,7 +143,7 @@ onMounted(() => { void loadList() })
   <section class="page-container page-enter">
     <div class="page-heading"><div><h1>店员管理</h1><p>维护门店店员账号、所属门店和登录状态。</p></div><el-button type="primary" @click="openForm()">新增店员</el-button></div>
     <el-card shadow="never" class="content-card">
-      <div class="toolbar"><div><strong>店员列表</strong><span class="toolbar-count">共 {{ store.total }} 条</span></div><div class="toolbar-actions"><span v-if="selected.length" class="selection-tip">已选择 {{ selected.length }} 项</span><el-button size="small" type="danger" plain :disabled="!deletableSelected.length || store.actionLoading" :loading="store.actionLoading" @click="removeSelected"><el-icon><Delete /></el-icon>批量删除</el-button><el-button size="small" type="success" plain :disabled="!restorableSelected.length || store.actionLoading" :loading="store.actionLoading" @click="restoreSelected"><el-icon><RefreshLeft /></el-icon>批量恢复</el-button><el-button :loading="store.loading" @click="loadList">刷新</el-button></div></div>
+      <div class="toolbar"><div><strong>店员列表</strong><span class="toolbar-count">共 {{ store.total }} 条</span></div><div class="toolbar-actions"><el-input v-model="store.keyword" placeholder="店员ID/姓名/工号" clearable class="search-input" @keyup.enter="searchStaff" @clear="searchStaff" /><el-button type="primary" @click="searchStaff">搜索</el-button><span v-if="selected.length" class="selection-tip">已选择 {{ selected.length }} 项</span><el-button size="small" type="danger" plain :disabled="!deletableSelected.length || store.actionLoading" :loading="store.actionLoading" @click="removeSelected"><el-icon><Delete /></el-icon>批量删除</el-button><el-button size="small" type="success" plain :disabled="!restorableSelected.length || store.actionLoading" :loading="store.actionLoading" @click="restoreSelected"><el-icon><RefreshLeft /></el-icon>批量恢复</el-button><el-button :loading="store.loading" @click="loadList">刷新</el-button></div></div>
       <DataTable :data="store.list" :loading="store.loading" :total="store.total" :page="store.page" :page-size="store.pageSize" empty-text="暂无店员数据" @selection-change="selected = $event" @page-change="store.page = $event; selected = []; void loadList()" @size-change="store.pageSize = $event; store.page = 1; selected = []; void loadList()">
         <el-table-column prop="username" label="登录账号" min-width="150" /><el-table-column prop="name" label="姓名" width="110" /><el-table-column prop="phone" label="手机号" width="140" /><el-table-column prop="shopName" label="所属门店" min-width="170" /><el-table-column label="性别" width="90"><template #default="{ row }">{{ row.gender === 1 ? '男' : row.gender === 2 ? '女' : '未设置' }}</template></el-table-column><el-table-column label="状态" width="110"><template #default="{ row }"><el-tag v-if="isDeleted(row)" type="info">已删除</el-tag><el-switch v-else :model-value="row.status === 1" :loading="store.actionLoading" @change="changeStatus(row, $event)" /></template></el-table-column><el-table-column prop="createTime" label="创建时间" min-width="180" /><el-table-column label="操作" width="270" fixed="right"><template #default="{ row }"><div class="operator-actions"><el-button v-if="isDeleted(row)" size="small" type="success" :loading="store.actionLoading" @click="restoreStaff(row)"><el-icon><RefreshLeft /></el-icon>恢复</el-button><template v-else><el-button size="small" type="primary" @click="openForm(row)"><el-icon><Edit /></el-icon>编辑</el-button><el-button size="small" @click="resetPassword(row)"><el-icon><Key /></el-icon>重置密码</el-button><el-button size="small" type="danger" :loading="store.actionLoading" @click="removeStaff(row)"><el-icon><Delete /></el-icon>删除</el-button></template></div></template></el-table-column>
       </DataTable>
@@ -155,5 +161,6 @@ onMounted(() => { void loadList() })
 .operator-actions :deep(.el-button) { margin-left: 0; padding: 5px 8px; }
 .operator-actions :deep(.el-icon) { margin-right: 4px; }
 .toolbar-actions { display: flex; align-items: center; gap: 8px; }
+.search-input { width: 200px; }
 .selection-tip { color: var(--el-text-color-secondary); font-size: 13px; }
 </style>

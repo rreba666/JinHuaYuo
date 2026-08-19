@@ -97,6 +97,7 @@ onMounted(() => {
           <template #title><el-icon><House /></el-icon><span>主页管理</span></template>
           <el-menu-item index="/homepage"><el-icon><DataBoard /></el-icon><template #title>首屏与品牌</template></el-menu-item>
           <el-menu-item index="/homepage/bottom-recommendation"><el-icon><Promotion /></el-icon><template #title>底部推荐</template></el-menu-item>
+          <el-menu-item index="/announcement"><el-icon><Bell /></el-icon><template #title>公告栏</template></el-menu-item>
         </el-sub-menu>
         <el-menu-item v-if="isService" index="/users">
           <el-icon><User /></el-icon>
@@ -127,6 +128,7 @@ onMounted(() => {
           <el-menu-item index="/orders"><template #title>普通订单</template></el-menu-item>
           <el-menu-item index="/orders/pickup"><template #title>自提订单</template></el-menu-item>
           <el-menu-item index="/orders/address-audit"><template #title>地址变更审核</template></el-menu-item>
+          <el-menu-item index="/after-sale"><template #title>售后管理</template></el-menu-item>
         </el-sub-menu>
         <el-menu-item v-if="isFinance || isService" index="/invoices">
           <el-icon><Document /></el-icon>

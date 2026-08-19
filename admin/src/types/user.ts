@@ -16,11 +16,15 @@ export interface User {
 export interface UserDetail extends User {
   pendingPromotion: number
   pendingBonus: number
+  /** 余额（独立账户，可消费可提现）。 */
+  balance: number
 }
 
 export interface AdminWalletUpsertDTO {
   pendingPromotion?: number
   pendingBonus?: number
+  /** 余额（独立账户，可消费可提现）。 */
+  balance?: number
 }
 
 export interface UserFilters {

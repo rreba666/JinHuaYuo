@@ -62,14 +62,10 @@ export interface SevenDayBonusDetail {
 export interface UserDividendLimit {
   id: string
   userId: string
-  productPrice: number
-  capAmount: number
-  totalReceived: number
-  milestoneHit: number
-  blocked: number
-  purchaseLimit: number
+  /** 当前可用购买机会数（初始 3，槽位锁死返还 1）。 */
+  availablePurchase: number
+  /** 累计购买分红商品件数。 */
   totalPurchases: number
-  unlockCount: number
   createTime: string
   updateTime: string
 }

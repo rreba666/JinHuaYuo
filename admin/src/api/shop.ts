@@ -23,9 +23,11 @@ function normalizePage(value: unknown, page: number, pageSize: number): ShopPage
   }
 }
 
-/** 查询门店分页列表。 */
-export async function getShops(page: number, pageSize: number): Promise<ShopPageResult> {
-  const response = await request.get<ShopResponse<unknown>>('/api/admin/shop/list', { params: { page, pageSize } })
+/** 查询门店分页列表。keyword 纯数字按门店 ID 精确匹配，否则按门店名称模糊匹配。 */
+export async function getShops(page: number, pageSize: number, keyword?: string): Promise<ShopPageResult> {
+  const params: Record<string, string | number> = { page, pageSize }
+  if (keyword && keyword.trim()) params.keyword = keyword.trim()
+  const response = await request.get<ShopResponse<unknown>>('/api/admin/shop/list', { params })
   return normalizePage(unwrap(response, '门店列表查询失败'), page, pageSize)
 }
 

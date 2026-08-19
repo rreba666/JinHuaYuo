@@ -10,6 +10,8 @@ export interface CartItem {
   skuName: string
   specs: string
   price: number
+  /** 划线价/原价（订前价，元），纯展示不参与扣款，为空=无划线价。 */
+  originalPrice?: number
   quantity: number
   checked: boolean
   stock: number

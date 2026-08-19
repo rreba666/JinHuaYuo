@@ -6,13 +6,13 @@ function T([int[]]$codes) {
 }
 
 $pagesJson = Get-Content -Raw -Encoding utf8 (Join-Path $root "pages.json")
-if (-not (Select-String -InputObject $pagesJson -Pattern "pages/wallet/withdraw" -SimpleMatch)) { throw "wallet route missing" }
+if (-not (Select-String -InputObject $pagesJson -Pattern "subpkg-wallet/withdraw/withdraw" -SimpleMatch)) { throw "wallet route missing" }
 
 $mineSource = Get-Content -Raw -Encoding utf8 (Join-Path $root "pages/mine/mine.vue")
 foreach ($marker in @(
   'if (index === 0)',
   'goWallet()',
-  "/pages/wallet/withdraw"
+  "/subpkg-wallet/withdraw/withdraw"
 )) {
   if (-not (Select-String -InputObject $mineSource -Pattern $marker -SimpleMatch)) { throw "mine wallet marker missing: $marker" }
 }
@@ -21,7 +21,7 @@ foreach ($marker in @("walletEditorVisible", "RealnameVerifySheet", "getRealname
   if (Select-String -InputObject $mineSource -Pattern $marker -SimpleMatch) { throw "mine page still exposes old wallet modal marker: $marker" }
 }
 
-$dividendSource = Get-Content -Raw -Encoding utf8 (Join-Path $root "pages/dividend/dividend.vue")
+$dividendSource = Get-Content -Raw -Encoding utf8 (Join-Path $root "subpkg-wallet/dividend/dividend.vue")
 foreach ($marker in @(
   (T 0x8F6C,0x4F59,0x989D),
   "/api/wallet/convert"
@@ -41,7 +41,7 @@ foreach ($marker in @("convertWallet", "handleConvertPromotion", "loadPromotionS
   if (-not (Select-String -InputObject $dividendSource -Pattern $marker -SimpleMatch)) { throw "dividend convert marker missing: $marker" }
 }
 
-$walletPath = Join-Path $root "pages/wallet/withdraw.vue"
+$walletPath = Join-Path $root "subpkg-wallet/withdraw/withdraw.vue"
 if (-not (Test-Path -LiteralPath $walletPath)) { throw "wallet page missing" }
 $walletSource = Get-Content -Raw -Encoding utf8 $walletPath
 foreach ($marker in @(

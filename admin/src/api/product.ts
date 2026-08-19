@@ -60,6 +60,7 @@ function normalizeProductDetail(detail: ProductDetail): ProductDetail {
     ...detail,
     id: String(detail.id),
     categoryId: String(detail.categoryId),
+    minOriginalPrice: detail.minOriginalPrice == null ? undefined : Number(detail.minOriginalPrice),
     promotionFund: resolvePromotionFund(detail.promotionFund, detail.minPrice),
     promotionEnabled: normalizeProductBinaryOrNull(detail.promotionEnabled),
     dividendFund: resolveDividendFund(detail.dividendFund, detail.minPrice),
@@ -74,6 +75,7 @@ function normalizeProductDetail(detail: ProductDetail): ProductDetail {
           ...sku,
           id: sku.id == null ? undefined : String(sku.id),
           enabled: sku.enabled ?? 1,
+          originalPrice: sku.originalPrice == null ? undefined : Number(sku.originalPrice),
         }))
       : [],
   }
@@ -118,9 +120,11 @@ function normalizeProductList(result: ProductPageResult): ProductPageResult {
         ...item,
         id: String(item.id),
         minPrice,
-        promotionFund: resolvePromotionFund(item.promotionFund, minPrice),
+        minOriginalPrice: item.minOriginalPrice == null ? undefined : Number(item.minOriginalPrice),
+        // 列表接口不返回资金金额，保持 undefined，避免用默认值误导；实际金额以详情接口为准
+        promotionFund: item.promotionFund == null ? undefined : Number(item.promotionFund),
         promotionEnabled: normalizeProductBinaryOrNull(item.promotionEnabled),
-        dividendFund: resolveDividendFund(item.dividendFund, minPrice),
+        dividendFund: item.dividendFund == null ? undefined : Number(item.dividendFund),
         dividendEnabled: normalizeProductBinaryOrNull(item.dividendEnabled),
         mainImage: resolveMediaUrl(item.mainImage),
       }

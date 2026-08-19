@@ -100,6 +100,18 @@ const router = createRouter({
           meta: { title: '地址变更审核', permission: ['order:read'], roles: SUPER_AND_SERVICE, requiresAuth: true },
         },
         {
+          path: 'after-sale',
+          name: 'AfterSale',
+          component: () => import('@/views/after-sale/index.vue'),
+          meta: { title: '售后管理', permission: ['order:read'], roles: SUPER_AND_SERVICE, requiresAuth: true },
+        },
+        {
+          path: 'announcement',
+          name: 'Announcement',
+          component: () => import('@/views/announcement/index.vue'),
+          meta: { title: '公告栏', roles: SUPER_ADMIN, requiresAuth: true },
+        },
+        {
           path: 'invoices',
           name: 'Invoices',
           component: () => import('@/views/invoices/index.vue'),

@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type Upload
 import ImageGridUpload from '@/components/ImageGridUpload.vue'
 import { useHomepageStore } from '@/stores/homepage'
 import type { HomepageConfigSaveDTO, HomepageConfigVO, HomepageEnabled, HomepageEnabledValue } from '@/types/homepage'
+import { cropImageToSize, HERO_IMAGE_SIZE } from '@/utils/imageCrop'
 import { Delete, Edit } from '@element-plus/icons-vue'
 
 const store = useHomepageStore()
@@ -150,7 +151,12 @@ async function uploadFile(options: UploadRequestOptions, field: 'imageUrl' | 'vi
     return
   }
   try {
-    form[field].push(await store.uploadFile(file))
+    // 首屏轮播图统一裁剪到 750×960 后再上传，保证前端展示比例一致
+    let target = file
+    if (field === 'imageUrl') {
+      target = await cropImageToSize(file, HERO_IMAGE_SIZE.width, HERO_IMAGE_SIZE.height)
+    }
+    form[field].push(await store.uploadFile(target))
     ElMessage.success('文件上传成功')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '文件上传失败')
@@ -242,7 +248,7 @@ onMounted(() => {
     <el-dialog v-model="formVisible" :title="editingId === null ? '新增主页配置' : `编辑主页配置（ID ${editingId}）`" width="680px" append-to-body>
       <el-form ref="formRef" class="homepage-config-form" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="配置描述" prop="description"><el-input v-model="form.description" type="textarea" :rows="3" /></el-form-item>
-        <el-form-item label="图片"><ImageGridUpload v-model="form.imageUrl" :uploading="store.uploading" @upload="uploadImage" @remove="removeValue('imageUrl', $event)" /></el-form-item>
+        <el-form-item label="图片"><div class="upload-block"><ImageGridUpload v-model="form.imageUrl" :uploading="store.uploading" @upload="uploadImage" @remove="removeValue('imageUrl', $event)" /><p class="upload-hint">建议尺寸 750×960px（竖图），上传后自动裁剪为该尺寸</p></div></el-form-item>
         <el-form-item label="视频地址"><div v-for="(value, index) in form.videoUrl" :key="`video-${index}`" class="array-field"><el-input v-model="form.videoUrl[index]" /><el-button link type="danger" @click="removeValue('videoUrl', index)">删除</el-button></div><div class="array-actions"><el-upload :show-file-list="false" :http-request="uploadVideo" accept="video/mp4"><el-button :loading="store.uploading">上传 MP4</el-button></el-upload><el-button link type="primary" @click="addValue('videoUrl')">新增地址</el-button></div></el-form-item>
         <el-form-item label="视频封面"><ImageGridUpload v-model="form.coverUrl" :uploading="store.uploading" @upload="uploadCover" @remove="removeValue('coverUrl', $event)" /></el-form-item>
         <el-form-item label="跳转目标"><div v-for="(value, index) in form.linkTarget" :key="`link-${index}`" class="array-field"><el-input v-model="form.linkTarget[index]" placeholder="请输入小程序页面路径" /><el-button link type="danger" @click="removeValue('linkTarget', index)">删除</el-button></div><div class="array-actions"><el-button link type="primary" @click="addValue('linkTarget')">新增目标</el-button></div></el-form-item>
@@ -262,6 +268,8 @@ onMounted(() => {
 <style scoped>
 .homepage-config-form .el-form-item__label { white-space: nowrap; }
 .homepage-config-form .el-form-item__content { min-width: 0; }
+.upload-block { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 100%; }
+.upload-hint { margin: 0; color: #909399; font-size: 12px; line-height: 1.5; }
 .array-field { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; margin-bottom: 8px; }
 .array-field .el-input { flex: 1 1 auto; min-width: 0; }
 .array-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }

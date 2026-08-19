@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
-$pagePath = Join-Path $root "pages/dividend/dividend.vue"
+$pagePath = Join-Path $root "subpkg-wallet/dividend/dividend.vue"
 $source = Get-Content -Raw -Encoding utf8 -LiteralPath $pagePath
 
 function Assert-Marker([string]$marker) {

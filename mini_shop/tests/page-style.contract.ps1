@@ -7,11 +7,11 @@ $pages = @(
   "pages/category/category.vue",
   "pages/cart/cart.vue",
   "pages/mine/mine.vue",
-  "pages/wallet/withdraw.vue",
-  "pages/product/detail.vue",
-  "pages/payment/payment.vue",
-  "pages/invoice/list.vue",
-  "pages/search/index.vue"
+  "subpkg-wallet/withdraw/withdraw.vue",
+  "subpkg-goods/detail/detail.vue",
+  "subpkg-order/payment/payment.vue",
+  "subpkg-order/invoice/list.vue",
+  "subpkg-goods/search/index.vue"
 )
 
 foreach ($relativePath in $pages) {

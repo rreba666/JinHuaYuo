@@ -39,77 +39,118 @@
       }
     },
     {
-      "path": "pages/product/detail",
+      "path": "pages/promo/landing",
       "style": {
-        "navigationStyle": "custom",
-        "navigationBarBackgroundColor": "#FFFFFF"
-      }
-    },
-    {
-      "path": "pages/invoice/list",
-      "style": {
+        "navigationBarTitleText": "推广中转",
         "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/search/index",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/payment/payment",
-      "style": {
-        "navigationBarTitleText": "确认订单",
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/dividend/dividend",
-      "style": {
-        "navigationStyle": "custom",
-        "navigationBarBackgroundColor": "#FFFFFF"
-      }
-    },
-    {
-      "path": "pages/wallet/withdraw",
-      "style": {
-        "navigationStyle": "custom",
-        "navigationBarBackgroundColor": "#FFFFFF"
-      }
-    },
-    {
-      "path": "pages/orders/list",
-      "style": {
-        "navigationStyle": "custom",
-        "navigationBarTitleText": "我的订单",
-        "navigationBarBackgroundColor": "#FFFFFF"
-      }
-    },
-    {
-      "path": "pages/orders/detail",
-      "style": {
-        "navigationBarTitleText": "订单详情",
-        "navigationBarBackgroundColor": "#FFFFFF"
-      }
-    },
-    {
-      "path": "pages/favorite/list",
-      "style": {
-        "navigationStyle": "custom",
-        "navigationBarTitleText": "我的收藏",
-        "navigationBarBackgroundColor": "#FFFFFF"
-      }
-    },
-    {
-      "path": "pages/redpacket/redpacket",
-      "style": {
-        "navigationStyle": "custom",
-        "navigationBarTitleText": "平台红包",
-        "navigationBarBackgroundColor": "#FFFFFF"
       }
     }
   ],
+  "subPackages": [
+    {
+      "root": "subpkg-order",
+      "name": "order",
+      "pages": [
+        {
+          "path": "payment/payment",
+          "style": {
+            "navigationBarTitleText": "确认订单",
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "orders/list",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTitleText": "我的订单",
+            "navigationBarBackgroundColor": "#FFFFFF"
+          }
+        },
+        {
+          "path": "orders/detail",
+          "style": {
+            "navigationBarTitleText": "订单详情",
+            "navigationBarBackgroundColor": "#FFFFFF"
+          }
+        },
+        {
+          "path": "invoice/list",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        }
+      ]
+    },
+    {
+      "root": "subpkg-goods",
+      "name": "goods",
+      "pages": [
+        {
+          "path": "detail/detail",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarBackgroundColor": "#FFFFFF"
+          }
+        },
+        {
+          "path": "search/index",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        }
+      ]
+    },
+    {
+      "root": "subpkg-wallet",
+      "name": "wallet",
+      "pages": [
+        {
+          "path": "withdraw/withdraw",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarBackgroundColor": "#FFFFFF"
+          }
+        },
+        {
+          "path": "dividend/dividend",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarBackgroundColor": "#FFFFFF"
+          }
+        },
+        {
+          "path": "redpacket/redpacket",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTitleText": "平台红包",
+            "navigationBarBackgroundColor": "#FFFFFF"
+          }
+        },
+        {
+          "path": "favorite/list",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTitleText": "我的收藏",
+            "navigationBarBackgroundColor": "#FFFFFF"
+          }
+        }
+      ]
+    }
+  ],
+  "preloadRule": {
+    "pages/index/index": {
+      "network": "all",
+      "packages": ["goods"]
+    },
+    "pages/category/category": {
+      "network": "all",
+      "packages": ["goods"]
+    },
+    "pages/mine/mine": {
+      "network": "all",
+      "packages": ["wallet"]
+    }
+  },
   "tabBar": {
     "color": "#000000",
     "selectedColor": "#1677ff",
@@ -119,26 +160,26 @@
       {
         "pagePath": "pages/index/index",
         "text": "首页",
-        "iconPath": "/static/tapbar/tapbar.png",
-        "selectedIconPath": "/static/tapbar/tapbar_Selected.png"
+        "iconPath": "/static/tapbar/首页.png",
+        "selectedIconPath": "/static/tapbar/首页 _select.png"
       },
       {
         "pagePath": "pages/category/category",
         "text": "分类",
-        "iconPath": "/static/tapbar/tapbar.png",
-        "selectedIconPath": "/static/tapbar/tapbar_Selected.png"
+        "iconPath": "/static/tapbar/分类.png",
+        "selectedIconPath": "/static/tapbar/分类_select..png"
       },
       {
         "pagePath": "pages/cart/cart",
         "text": "购物车",
-        "iconPath": "/static/tapbar/tapbar.png",
-        "selectedIconPath": "/static/tapbar/tapbar_Selected.png"
+        "iconPath": "/static/tapbar/购物车.png",
+        "selectedIconPath": "/static/tapbar/购物车_select..png"
       },
       {
         "pagePath": "pages/mine/mine",
         "text": "我的",
-        "iconPath": "/static/tapbar/tapbar.png",
-        "selectedIconPath": "/static/tapbar/tapbar_Selected.png"
+        "iconPath": "/static/tapbar/我的.png",
+        "selectedIconPath": "/static/tapbar/我的_select.png"
       }
     ]
   },

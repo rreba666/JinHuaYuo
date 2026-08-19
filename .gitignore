@@ -50,6 +50,10 @@ mini_shop/.vite/
 logs/
 tmp/
 temp/
+# 临时浏览器 profile（截图/预览工具产生）
+.tmp-*/
+# 设计稿提取的临时数据目录
+data/
 
 # Editor and operating system files
 .vscode/

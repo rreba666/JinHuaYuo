@@ -1,5 +1,5 @@
 <template>
-  <view class="login-page">
+  <view v-if="!restoringSession" class="login-page">
     <view class="login-card">
       <image class="logo" src="/static/logo.png" mode="aspectFit" />
       <text class="title">欢迎来到商城</text>
@@ -22,11 +22,23 @@
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { loginByWechat } from '@/api/auth'
-import { saveAuth } from '@/utils/auth'
+import { updateUserProfile } from '@/api/user'
+import { isLoggedIn, saveAuth } from '@/utils/auth'
+import { getWechatProfile } from '@/utils/wechat-profile'
 import { clearPromotionContext, capturePromotionContext, getStoredPromoterId } from '@/utils/promotion'
 
 const loading = ref(false)
 const errorMessage = ref('')
+const restoringSession = ref(true)
+
+/** 首次打开登录页时恢复本地会话，避免已登录用户重复授权。 */
+function restoreExistingSession(): void {
+  if (isLoggedIn()) {
+    uni.reLaunch({ url: '/pages/index/index' })
+    return
+  }
+  restoringSession.value = false
+}
 
 /** 处理微信手机号授权回调，并继续完成业务登录。 */
 async function handlePhoneNumber(event: UniApp.GetPhoneNumberResult): Promise<void> {
@@ -38,6 +50,10 @@ async function handlePhoneNumber(event: UniApp.GetPhoneNumberResult): Promise<vo
 
   loading.value = true
   errorMessage.value = ''
+  const profilePromise = getWechatProfile().catch((profileError) => {
+    console.warn('微信资料同步未完成，登录继续进行', profileError)
+    return null
+  })
   try {
     const loginResult = await getWechatLoginCode()
     const authData = await loginByWechat(loginResult, event.detail.code, getStoredPromoterId())
@@ -51,6 +67,14 @@ async function handlePhoneNumber(event: UniApp.GetPhoneNumberResult): Promise<vo
     console.log('Bearer 头:', `Bearer ${authData.token}`)
     console.log('==============================')
     saveAuth(authData)
+    const profile = await profilePromise
+    if (profile) {
+      try {
+        await updateUserProfile(profile)
+      } catch (profileUpdateError) {
+        console.warn('微信资料回写未完成，登录继续进行', profileUpdateError)
+      }
+    }
     clearPromotionContext()
     uni.reLaunch({ url: '/pages/index/index' })
   } catch (error) {
@@ -63,6 +87,7 @@ async function handlePhoneNumber(event: UniApp.GetPhoneNumberResult): Promise<vo
 /** 登录页也捕获入口参数，避免分享链接直接打开登录页时丢失推广者身份。 */
 onLoad((options) => {
   capturePromotionContext(options as Record<string, unknown>)
+  restoreExistingSession()
 })
 
 /** 获取微信登录凭证，供后端换取业务 Token。 */

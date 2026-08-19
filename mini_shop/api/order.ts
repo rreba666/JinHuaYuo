@@ -25,6 +25,10 @@ export interface OrderSummary {
   status: OrderStatus
   statusDesc: string
   payAmount: number
+  /** 商品总额（原价合计，元），支付页小计展示。 */
+  totalAmount?: number
+  /** 减免额（优惠券抵扣，元），支付页优惠券行展示。 */
+  discountAmount?: number
   totalQuantity: number
   firstProductImage: string
   createTime: string

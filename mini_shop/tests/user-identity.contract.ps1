@@ -21,8 +21,8 @@ $promotionGateMessage = T 0x5B8C,0x6210,0x8BA2,0x5355,0x540E,0x5F00,0x653E,0x63A
 Assert-Marker 'api/user.ts' @('identity', "0 | 1 | '0' | '1'", 'getUserProfile')
 Assert-Marker 'utils/auth.ts' @('isRegisteredUser', 'Number(identity) === 1')
 Assert-Marker 'pages/mine/mine.vue' @('getUserProfile', 'isRegisteredUser', 'registeredUser', 'v-if="registeredUser"', 'income-strip', 'goWallet()')
-Assert-Marker 'pages/dividend/dividend.vue' @('getUserProfile', 'isRegisteredUser', 'registeredUser', $promotionGateMessage, '/pages/mine/mine')
-Assert-Marker 'pages/wallet/withdraw.vue' @('getUserProfile', 'isRegisteredUser', 'registeredUser', $promotionGateMessage, '/pages/mine/mine')
-Assert-Marker 'pages/product/detail.vue' @('getUserProfile', 'isRegisteredUser', 'promotionVisible')
+Assert-Marker 'subpkg-wallet/dividend/dividend.vue' @('getUserProfile', 'isRegisteredUser', 'registeredUser', $promotionGateMessage, '/pages/mine/mine')
+Assert-Marker 'subpkg-wallet/withdraw/withdraw.vue' @('getUserProfile', 'isRegisteredUser', 'registeredUser', $promotionGateMessage, '/pages/mine/mine')
+Assert-Marker 'subpkg-goods/detail/detail.vue' @('getUserProfile', 'isRegisteredUser', 'promotionVisible')
 
 Write-Output "user identity contract: PASS"

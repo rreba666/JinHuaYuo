@@ -10,15 +10,14 @@ function Assert-Marker([string]$marker, [string]$message) {
   }
 }
 
-Assert-Marker ':style="{ height: heroHeightStyle }"' 'hero carousel must use an adaptive height'
+Assert-Marker "const heroHeightStyle = '960rpx'" 'hero carousel must use the fixed 750x960 design ratio'
+Assert-Marker ':style="{ height: heroHeightStyle }"' 'hero carousel must use the fixed height style'
 Assert-Marker 'mode="widthFix"' 'hero images must preserve their complete aspect ratio'
-Assert-Marker 'function updateHeroHeight' 'hero height must be recalculated from the active image'
-Assert-Marker 'uni.getImageInfo' 'hero image dimensions must be read before calculating the carousel height'
-Assert-Marker '@change="handleHeroChange"' 'hero carousel must recalculate height when the slide changes'
 Assert-Marker '.hero-image { width: 100%; height: auto; display: block; }' 'hero image must fill width without a fixed crop height'
+Assert-Marker '.hero-swiper-item { width: 100%; overflow: hidden; }' 'hero slide must keep a stable layout box during transitions'
 
-if ($source -match '\.hero-swiper \{ width: 100%; height: 720rpx;') {
-  throw 'hero carousel must not keep the old fixed 720rpx height'
+if ($source.Contains('uni.getImageInfo')) {
+  throw 'hero carousel must not measure image dimensions at runtime'
 }
 
 Write-Output "homepage hero image contract: PASS"

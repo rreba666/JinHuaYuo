@@ -15,6 +15,10 @@ export interface ProductFavorite {
   minPrice: number
   /** 展示价（元，当前与最低价同值） */
   price: number
+  /** 划线价/原价（元），纯展示，为 null 表示无划线价。 */
+  originalPrice?: number
+  /** 兼容字段：部分接口返回 minOriginalPrice。 */
+  minOriginalPrice?: number
   /** 已售数量 */
   soldCount: number
   /** 收藏时间（yyyy-MM-dd HH:mm:ss） */

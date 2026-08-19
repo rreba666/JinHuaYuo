@@ -17,9 +17,11 @@ export interface ProductDetail {
   dividendEnabled?: 0 | 1 | '0' | '1' | boolean
   minPrice: number
   maxPrice: number
+  /** 商品最低划线价/原价（订前价，元），纯展示不参与扣款，为 null 表示无划线价。 */
+  minOriginalPrice?: number
   totalStock: number
   soldCount: number
-  skuList: Array<{ id: string; skuName: string; specs: string; price: number; stock: number; enabled: number }>
+  skuList: Array<{ id: string; skuName: string; specs: string; price: number; originalPrice?: number; stock: number; enabled: number }>
 }
 
 export interface ProductCard {
@@ -29,6 +31,10 @@ export interface ProductCard {
   mainImage: string
   price: number
   minPrice?: number
+  /** 划线价/原价（订前价，元），纯展示，为 null 表示无划线价。 */
+  originalPrice?: number
+  /** 兼容字段：部分接口返回 minOriginalPrice。 */
+  minOriginalPrice?: number
   tag?: string
   soldCount: number
   totalStock?: number

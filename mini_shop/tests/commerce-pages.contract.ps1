@@ -6,7 +6,7 @@ function T([int[]]$codes) {
 }
 
 $pagesJson = Get-Content -Raw -Encoding utf8 (Join-Path $root "pages.json")
-foreach ($path in @("pages/dividend/dividend", "pages/wallet/withdraw")) {
+foreach ($path in @("subpkg-wallet/dividend/dividend", "subpkg-wallet/withdraw/withdraw")) {
   if (-not (Select-String -InputObject $pagesJson -Pattern $path -SimpleMatch)) { throw "$path route missing" }
 }
 
@@ -16,17 +16,17 @@ foreach ($marker in @(
   "wallet.value?.balance",
   'if (index === 0)',
   'goWallet()',
-  "/pages/wallet/withdraw"
+  "/subpkg-wallet/withdraw/withdraw"
 )) {
   if (-not (Select-String -InputObject $mineSource -Pattern $marker -SimpleMatch)) { throw "mine page marker missing: $marker" }
 }
 if ($mineSource.Contains('wallet-entry')) { throw 'mine page should not expose the standalone wallet entry panel' }
 
-$dividendSource = Get-Content -Raw -Encoding utf8 (Join-Path $root "pages/dividend/dividend.vue")
+$dividendSource = Get-Content -Raw -Encoding utf8 (Join-Path $root "subpkg-wallet/dividend/dividend.vue")
 foreach ($marker in @(
   (T 0x7D2F,0x8BA1,0x63A8,0x5E7F,0xFF08,0x5143,0xFF09),
   (T 0x8F6C,0x4F59,0x989D),
-  "/pages/wallet/withdraw",
+  "/subpkg-wallet/withdraw/withdraw",
   "goWallet",
   "wallet-button"
 )) {
@@ -36,7 +36,7 @@ foreach ($marker in @("withdraw-button", "openWithdraw", "handleWithdraw", "with
   if (Select-String -InputObject $dividendSource -Pattern $marker -SimpleMatch) { throw "dividend page still exposes old withdraw marker: $marker" }
 }
 
-$walletSource = Get-Content -Raw -Encoding utf8 (Join-Path $root "pages/wallet/withdraw.vue")
+$walletSource = Get-Content -Raw -Encoding utf8 (Join-Path $root "subpkg-wallet/withdraw/withdraw.vue")
 foreach ($marker in @(
   (T 0x4F59,0x989D),
   (T 0x53EF,0x8F6C,0x8D26,0x4F59,0x989D),
