@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { getCategoryList, getCategoryProducts, type CategoryNode, type CategoryProduct } from '@/api/category'
-import { addToCart } from '@/api/cart'
+import { addSkuToCartWithStock } from '@/api/cart'
+import { getProductDetail } from '@/api/product'
+import { ApiRequestError, isApiRequestError } from '@/utils/request'
+import { PURCHASE_LIMIT_ERROR_CODE, PURCHASE_LIMIT_MESSAGE } from '@/utils/dividend-limit'
+import { createThrottle } from '@/utils/interaction'
 
 const menuTop = ref(0)
 const menuLeft = ref(0)
@@ -28,6 +32,9 @@ const categoryGoodsCache = new Map<string, CategoryProduct[]>()
 let goodsRequestToken = 0
 const loading = ref(true)
 const busy = ref(false)
+const cartAdding = ref(false)
+const navigationThrottle = createThrottle(500)
+const categorySwitchThrottle = createThrottle(250)
 const bodyTop = computed(() => menuTop.value + menuH.value + 12)
 /** 为左右内容区计算固定可视高度，避免页面整体滚动造成顶部导航穿透。 */
 const scrollHeightStyle = computed(() => ({
@@ -72,20 +79,52 @@ async function loadGoods(catId: string): Promise<void> {
 }
 
 function switchCat(i: number): void {
+  if (!categorySwitchThrottle()) return
   if (i === active.value) return
   active.value = i
   loadGoods(cats.value[i].id)
 }
-function goDetail(id: string): void { uni.navigateTo({ url: `/subpkg-goods/detail/detail?id=${id}` }) }
+function goDetail(id: string): void {
+  if (!navigationThrottle()) return
+  uni.navigateTo({ url: `/subpkg-goods/detail/detail?id=${id}` })
+}
 function goHome(): void { uni.switchTab({ url: '/pages/index/index' }) }
+function goSearch(): void {
+  if (!navigationThrottle()) return
+  uni.navigateTo({ url: '/subpkg-goods/search/index' })
+}
 
 /** 将商品加入购物车，阻止事件冒泡避免同时跳转详情 */
 async function onAddCart(product: CategoryProduct): Promise<void> {
+  if (cartAdding.value) return
+  cartAdding.value = true
   try {
-    await addToCart({ productId: Number(product.id) })
+    const detail = await getProductDetail(String(product.id))
+    const sku = detail.skuList.find((item) => item.enabled !== 0) || detail.skuList[0]
+    const stock = Number(sku?.stock ?? 0)
+    if (!sku || !Number.isFinite(stock) || stock <= 0) {
+      throw new ApiRequestError('库存不足', 3001)
+    }
+    await addSkuToCartWithStock({
+      productId: Number(product.id),
+      skuId: Number(sku.id),
+      stock,
+      quantity: 1,
+      dividendEnabled: detail.dividendEnabled,
+      price: Number(sku.price),
+    })
     uni.showToast({ title: '已加入购物车', icon: 'success' })
-  } catch {
-    uni.showToast({ title: '加购失败', icon: 'none' })
+  } catch (error) {
+    uni.showToast({
+      title: isApiRequestError(error) && error.code === 3001
+        ? '库存不足'
+        : isApiRequestError(error) && error.code === PURCHASE_LIMIT_ERROR_CODE
+          ? PURCHASE_LIMIT_MESSAGE
+          : (error instanceof Error ? error.message : '加购失败'),
+      icon: 'none',
+    })
+  } finally {
+    cartAdding.value = false
   }
 }
 
@@ -103,7 +142,7 @@ onMounted(() => {
     <!-- ====== 导航栏（fixed，对齐胶囊） ====== -->
     <view class="nav" :style="navStyle">
       <text class="nav-tit">全部商品</text>
-      <view class="nav-sch" :style="schStyle"><text class="nav-sch-txt">搜索商品</text></view>
+      <view class="nav-sch" :style="schStyle" @click="goSearch"><text class="nav-sch-txt">搜索商品</text></view>
     </view>
 
     <!-- ====== 主体 ====== -->

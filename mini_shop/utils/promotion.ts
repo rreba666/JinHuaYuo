@@ -2,6 +2,9 @@ import { getAuth, isLoggedIn } from '@/utils/auth'
 import { bindPromotion } from '@/api/promotion'
 
 const PROMOTION_CONTEXT_KEY = 'mini_shop_promotion_context'
+const PROMOTION_BIND_MAX_ATTEMPTS = 3
+const PROMOTION_BIND_RETRY_DELAYS = [400, 1000] as const
+let promotionBindingPromise: Promise<boolean> | null = null
 
 /** 将推广者 ID 标准化为后端可接受的正整数。 */
 function normalizePromoterId(value: unknown): number | null {
@@ -61,17 +64,45 @@ export function clearPromotionContext(): void {
   uni.removeStorageSync(PROMOTION_CONTEXT_KEY)
 }
 
+function waitForPromotionBindRetry(delay: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delay))
+}
+
+/** 对已登录用户补绑定推广关系，失败时有限重试并保留待绑定身份。 */
+async function bindPromotionWithRetry(promoterId: number): Promise<boolean> {
+  for (let attempt = 1; attempt <= PROMOTION_BIND_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const bound = await bindPromotion(promoterId)
+      if (bound) {
+        clearPromotionContext()
+        return true
+      }
+      console.warn(`推广关系绑定未确认，第 ${attempt}/${PROMOTION_BIND_MAX_ATTEMPTS} 次`)
+    } catch (error) {
+      console.warn(`推广关系绑定请求失败，第 ${attempt}/${PROMOTION_BIND_MAX_ATTEMPTS} 次`, error)
+    }
+
+    if (attempt < PROMOTION_BIND_MAX_ATTEMPTS) {
+      await waitForPromotionBindRetry(PROMOTION_BIND_RETRY_DELAYS[attempt - 1])
+    }
+  }
+
+  console.warn('推广关系绑定未完成，已保留待绑定身份，后续将继续重试')
+  return false
+}
+
 /** 对已登录用户补绑定推广关系，供已登录扫码进入的场景使用。 */
 export async function bindStoredPromotionIfLoggedIn(): Promise<boolean> {
   const promoterId = getStoredPromoterId()
   if (!promoterId || !isLoggedIn()) return false
 
-  try {
-    const bound = await bindPromotion(promoterId)
-    if (!bound) return false
-    clearPromotionContext()
-    return true
-  } catch {
-    return false
-  }
+  if (promotionBindingPromise) return promotionBindingPromise
+
+  const pending = bindPromotionWithRetry(promoterId)
+  promotionBindingPromise = pending
+  pending.then(
+    () => { if (promotionBindingPromise === pending) promotionBindingPromise = null },
+    () => { if (promotionBindingPromise === pending) promotionBindingPromise = null },
+  )
+  return pending
 }

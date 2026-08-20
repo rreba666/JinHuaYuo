@@ -8,6 +8,7 @@ import { getEnabledShops, type EnabledShop } from '@/api/shop'
 import { submitInvoice } from '@/api/invoice'
 import { getWalletInfo } from '@/api/user'
 import { getProductDetail } from '@/api/product'
+import { DIVIDEND_PURCHASE_LIMIT, PURCHASE_LIMIT_MESSAGE, getDividendQuantity, isDividendEligible } from '@/utils/dividend-limit'
 
 type PickupType = 0 | 1
 type InvoiceType = 'personal' | 'company'
@@ -198,7 +199,7 @@ async function loadSelectedItems(): Promise<void> {
   loading.value = true
   loadError.value = false
   try {
-    const allItems = await getCartList()
+    const allItems = await getCartList({ resolveDividendEligibility: true })
     items.value = allItems.filter((item) => selectedCartIds.value.includes(item.cartId))
   } catch (error) {
     loadError.value = true
@@ -231,6 +232,7 @@ async function loadDirectItem(): Promise<void> {
       quantity: directQuantity.value,
       checked: true,
       stock: Number(sku.stock || 0),
+      dividendEligible: isDividendEligible({ dividendEnabled: product.dividendEnabled, price: sku.price }),
     }]
     selectedCartIds.value = []
   } catch (error) {
@@ -468,12 +470,25 @@ function closeInvoiceDrawer(): void {
   invoiceDrawerVisible.value = false
 }
 
+/** 将分红商品购买机会错误转换为面向用户的业务提示。 */
+function getPaymentErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : ''
+  if (message.includes('购买机会不足') || message.includes('无法购买该分红商品')) {
+    return '一个账号一个补贴周期内最多同时存在三件商品哦'
+  }
+  return message || '支付未完成'
+}
+
 /** 校验结算信息，创建订单后获取支付签名并调起微信支付。 */
 async function submitPayment(): Promise<void> {
   if (paying.value) return
   const isExistingOrder = Boolean(orderId.value)
   if (!items.value.length && !isExistingOrder) {
     uni.showToast({ title: '没有可结算的商品', icon: 'none' })
+    return
+  }
+  if (!isExistingOrder && getDividendQuantity(items.value) > DIVIDEND_PURCHASE_LIMIT) {
+    uni.showToast({ title: PURCHASE_LIMIT_MESSAGE, icon: 'none' })
     return
   }
   if (!isExistingOrder && pickupType.value === 0 && !selectedAddress.value) {
@@ -545,7 +560,7 @@ async function submitPayment(): Promise<void> {
     uni.showToast({ title: invoiceError ? '支付成功，发票申请失败' : '支付成功', icon: invoiceError ? 'none' : 'success' })
     setTimeout(() => { uni.redirectTo({ url: `/subpkg-order/orders/detail?orderId=${currentOrderId}` }) }, 500)
   } catch (error) {
-    uni.showToast({ title: error instanceof Error ? error.message : '支付未完成', icon: 'none' })
+    uni.showToast({ title: getPaymentErrorMessage(error), icon: 'none' })
   } finally { paying.value = false }
 }
 

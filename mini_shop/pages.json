@@ -167,13 +167,13 @@
         "pagePath": "pages/category/category",
         "text": "分类",
         "iconPath": "/static/tapbar/分类.png",
-        "selectedIconPath": "/static/tapbar/分类_select..png"
+        "selectedIconPath": "/static/tapbar/分类_select.png"
       },
       {
         "pagePath": "pages/cart/cart",
         "text": "购物车",
         "iconPath": "/static/tapbar/购物车.png",
-        "selectedIconPath": "/static/tapbar/购物车_select..png"
+        "selectedIconPath": "/static/tapbar/购物车_select.png"
       },
       {
         "pagePath": "pages/mine/mine",

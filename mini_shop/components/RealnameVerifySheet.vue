@@ -1,97 +1,75 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { ocrVerifyRealname, type RealnameOcrVerifyDTO, type RealnameStatus } from '@/api/realname'
+import { computed, reactive, ref, watch } from 'vue'
+import { verifyRealname, type RealnameStatus, type RealnameVerifyDTO } from '@/api/realname'
 import { isApiRequestError } from '@/utils/request'
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{
   'update:modelValue': [visible: boolean]
-  verified: [status: Awaited<ReturnType<typeof ocrVerifyRealname>>]
+  verified: [status: RealnameStatus]
 }>()
 
-const photoPreview = ref('')
-const photoBase64 = ref('')
-const errorMessage = ref('')
-const uploading = ref(false)
-const submitting = ref(false)
+const CERT_NO_PATTERN = /^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[0-9Xx]$/
 const visible = computed(() => props.modelValue)
-// 由父组件通过 v-model 控制显示和关闭。
+const submitting = ref(false)
+const errorMessage = ref('')
+const form = reactive({
+  certName: '',
+  certNo: '',
+  bankCardNo: '',
+  bankPhone: '',
+})
 
 function clearSensitiveInput(): void {
-  photoPreview.value = ''
-  photoBase64.value = ''
+  form.certName = ''
+  form.certNo = ''
+  form.bankCardNo = ''
+  form.bankPhone = ''
 }
 
 function close(): void {
-  if (submitting.value || uploading.value) return
+  if (submitting.value) return
   clearSensitiveInput()
   errorMessage.value = ''
   emit('update:modelValue', false)
 }
 
-function readFileAsBase64(filePath: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    uni.getFileSystemManager().readFile({
-      filePath,
-      encoding: 'base64',
-      success: (result) => {
-        const data = typeof result.data === 'string' ? result.data : ''
-        resolve(data.startsWith('data:') ? data : `data:image/jpeg;base64,${data}`)
-      },
-      fail: reject,
-    })
-  })
-}
-
-function pickIdCardPhoto(): void {
-  if (submitting.value || uploading.value) return
-  uploading.value = true
-  errorMessage.value = ''
-  uni.chooseImage({
-    count: 1,
-    sizeType: ['compressed'],
-    sourceType: ['camera', 'album'],
-    success: (result) => {
-      void (async () => {
-        try {
-          const file = result.tempFiles?.[0]
-          const filePath = result.tempFilePaths?.[0]
-          if (!file || !filePath) {
-            errorMessage.value = '未选择身份证照片'
-            return
-          }
-          if (file.size > 1024 * 1024) {
-            errorMessage.value = '身份证照片不能超过 1M'
-            return
-          }
-          photoPreview.value = filePath
-          photoBase64.value = await readFileAsBase64(filePath)
-        } catch (error) {
-          errorMessage.value = error instanceof Error ? error.message : '身份证照片读取失败'
-        } finally {
-          uploading.value = false
-        }
-      })()
-    },
-    fail: () => {
-      errorMessage.value = '未选择身份证照片'
-      uploading.value = false
-    },
-  })
-}
-
-async function submitPhoto(): Promise<void> {
-  if (submitting.value) return
-  if (!photoBase64.value) {
-    errorMessage.value = '请先拍摄身份证照片'
-    return
+function validateForm(): boolean {
+  const certName = form.certName.trim()
+  const certNo = form.certNo.trim().toUpperCase()
+  const bankCardNo = form.bankCardNo.replace(/\s+/g, '')
+  const bankPhone = form.bankPhone.replace(/\s+/g, '')
+  if (!certName) {
+    errorMessage.value = '请输入真实姓名'
+    return false
   }
+  if (!CERT_NO_PATTERN.test(certNo)) {
+    errorMessage.value = '请输入正确的18位身份证号'
+    return false
+  }
+  if (bankCardNo && !/^\d{6,32}$/.test(bankCardNo)) {
+    errorMessage.value = '银行卡号只能填写6-32位数字'
+    return false
+  }
+  if (bankPhone && !/^\d{6,20}$/.test(bankPhone)) {
+    errorMessage.value = '电话号只能填写6-20位数字'
+    return false
+  }
+  return true
+}
 
+async function submitForm(): Promise<void> {
+  if (submitting.value || !validateForm()) return
   submitting.value = true
   errorMessage.value = ''
+  const payload: RealnameVerifyDTO = {
+    certName: form.certName.trim(),
+    certNo: form.certNo.trim().toUpperCase(),
+    ...(form.bankCardNo.trim() ? { bankCardNo: form.bankCardNo.replace(/\s+/g, '') } : {}),
+    ...(form.bankPhone.trim() ? { bankPhone: form.bankPhone.replace(/\s+/g, '') } : {}),
+  }
   try {
-    const payload: RealnameOcrVerifyDTO = { image: photoBase64.value }
-    const status: RealnameStatus = await ocrVerifyRealname(payload)
+    const status = await verifyRealname(payload)
     clearSensitiveInput()
     emit('verified', status)
     emit('update:modelValue', false)
@@ -116,24 +94,32 @@ watch(() => props.modelValue, (nextVisible) => {
 </script>
 
 <template>
-  <!-- 由父组件通过 v-model 控制显示，成功后通过 @verified 通知外层继续流程。 -->
   <view v-show="visible" class="realname-mask" @click="close">
     <view class="realname-sheet" @click.stop>
       <view class="sheet-header">
         <text class="sheet-title">实名认证</text>
         <text class="sheet-close" @click="close">×</text>
       </view>
-      <text class="sheet-description">请拍摄本人身份证照片</text>
-      <view class="photo-box" @click="pickIdCardPhoto">
-        <image v-if="photoPreview" class="photo-preview" :src="photoPreview" mode="aspectFill" />
-        <view v-else class="photo-empty">
-          <text class="photo-plus">+</text>
-          <text class="photo-text">拍身份证照片</text>
+      <scroll-view class="realname-form" scroll-y>
+        <view class="field-group">
+          <text class="field-label">姓名</text>
+          <input v-model="form.certName" class="field-input" maxlength="32" type="text" placeholder="请输入真实姓名" />
         </view>
-      </view>
-      <text class="sheet-tip">请保持身份证文字清晰，正面拍摄更容易通过</text>
-      <text v-show="errorMessage" class="sheet-error">{{ errorMessage }}</text>
-      <button class="sheet-submit" :disabled="submitting || uploading" @click="submitPhoto">
+        <view class="field-group">
+          <text class="field-label">身份证号</text>
+          <input v-model="form.certNo" class="field-input" maxlength="18" type="text" placeholder="请输入18位身份证号" />
+        </view>
+        <view class="field-group">
+          <text class="field-label">电话号</text>
+          <input v-model="form.bankPhone" class="field-input" maxlength="20" type="number" placeholder="请输入银行预留手机号" />
+        </view>
+        <view class="field-group">
+          <text class="field-label">银行卡</text>
+          <input v-model="form.bankCardNo" class="field-input" maxlength="32" type="number" placeholder="请输入银行卡号" />
+        </view>
+        <text v-show="errorMessage" class="sheet-error">{{ errorMessage }}</text>
+      </scroll-view>
+      <button class="sheet-submit" :disabled="submitting" @click="submitForm">
         {{ submitting ? '认证中...' : '提交认证' }}
       </button>
     </view>
@@ -142,18 +128,15 @@ watch(() => props.modelValue, (nextVisible) => {
 
 <style>
 .realname-mask { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; background: rgba(0, 0, 0, .62); }
-.realname-sheet { width: 100%; padding: 30rpx 28rpx calc(30rpx + env(safe-area-inset-bottom)); box-sizing: border-box; background: #fff; }
+.realname-sheet { width: 100%; max-height: 88vh; padding: 30rpx 28rpx calc(30rpx + env(safe-area-inset-bottom)); box-sizing: border-box; background: #fff; }
 .sheet-header { position: relative; display: flex; align-items: center; justify-content: center; min-height: 54rpx; }
 .sheet-title { color: #222; font-size: 30rpx; font-weight: 600; }
 .sheet-close { position: absolute; right: 0; color: #888; font-size: 42rpx; line-height: 42rpx; }
-.sheet-description { display: block; margin-top: 18rpx; color: #666; font-size: 24rpx; }
-.photo-box { display: flex; align-items: center; justify-content: center; width: 100%; height: 330rpx; margin-top: 20rpx; overflow: hidden; border: 1rpx dashed #d0d5dd; border-radius: 20rpx; background: #fafafa; }
-.photo-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12rpx; color: #98a2b3; }
-.photo-plus { font-size: 72rpx; line-height: 1; }
-.photo-text { font-size: 26rpx; }
-.photo-preview { width: 100%; height: 100%; }
-.sheet-tip { display: block; margin-top: 14rpx; color: #8a8f99; font-size: 22rpx; line-height: 32rpx; }
-.sheet-error { display: block; margin-top: 14rpx; color: #c44; font-size: 23rpx; line-height: 32rpx; }
-.sheet-submit { height: 78rpx; margin-top: 28rpx; color: #fff; background: #222; border-radius: 4rpx; font-size: 27rpx; }
+.realname-form { max-height: 62vh; margin-top: 20rpx; }
+.field-group { margin-bottom: 20rpx; }
+.field-label { display: block; margin-bottom: 10rpx; color: #333; font-size: 25rpx; font-weight: 600; }
+.field-input { width: 100%; height: 82rpx; padding: 0 22rpx; box-sizing: border-box; border: 1rpx solid #e5e7eb; border-radius: 12rpx; background: #fafafa; color: #222; font-size: 26rpx; }
+.sheet-error { display: block; margin: 4rpx 0 10rpx; color: #c44; font-size: 23rpx; line-height: 32rpx; }
+.sheet-submit { height: 78rpx; margin-top: 22rpx; color: #fff; background: #222; border-radius: 4rpx; font-size: 27rpx; }
 .sheet-submit::after { border: 0; }
 </style>

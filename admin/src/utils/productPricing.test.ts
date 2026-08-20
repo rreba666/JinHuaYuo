@@ -5,6 +5,7 @@ import {
   DEFAULT_PROMOTION_RATE,
   getDefaultDividendFund,
   getDefaultPromotionFund,
+  isDefaultFundAmount,
   resetFundRates,
   resolveDividendFund,
   resolvePromotionFund,
@@ -49,4 +50,12 @@ test('configured fund rates override the defaults', () => {
   } finally {
     resetFundRates()
   }
+})
+
+test('saved amounts matching the current default restore default mode', () => {
+  assert.equal(isDefaultFundAmount(20, 100, getDefaultPromotionFund), true)
+  assert.equal(isDefaultFundAmount(26, 100, getDefaultDividendFund), true)
+  assert.equal(isDefaultFundAmount(396, 1980, getDefaultPromotionFund), true)
+  assert.equal(isDefaultFundAmount(395.99, 1980, getDefaultPromotionFund), false)
+  assert.equal(isDefaultFundAmount(undefined, 100, getDefaultPromotionFund), false)
 })

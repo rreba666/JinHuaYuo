@@ -2,8 +2,9 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Delete, Edit, Refresh, Search, Setting, View } from '@element-plus/icons-vue'
+import { getDividendRecordTestResult, getDividendSlotTestResult, getWalletTestResult } from '@/api/profit'
 import { useProfitStore } from '@/stores/profit'
-import type { ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, PromotionBinding, PromotionBindingSource, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit } from '@/types/profit'
+import type { DividendRecordTestResult, DividendSlotTestResult, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, PromotionBinding, PromotionBindingSource, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
 
 const store = useProfitStore()
 const activeTab = ref('promotion')
@@ -22,9 +23,18 @@ const dailyId = ref('')
 const rebindRow = ref<PromotionBinding | null>(null)
 const promoterId = ref('')
 const settleForm = reactive({ startDate: '', endDate: '' })
+const testInjectForm = reactive({ poolDate: '', amount: 1000 })
+const testSettleForm = reactive({ startDate: '', endDate: '' })
+const testPoolId = ref('')
+const userToken = ref('')
+const testResultLoading = ref(false)
+const walletTestResult = ref<WalletTestResult | null>(null)
+const dividendSlotTestResult = ref<DividendSlotTestResult | null>(null)
+const dividendRecordTestResult = ref<DividendRecordTestResult | null>(null)
 
 const relationKeyword = computed({ get: () => store.relationFilters.keyword, set: (value: string) => { store.relationFilters.keyword = value } })
 const relationSource = computed<PromotionBindingSource | ''>({ get: () => store.relationFilters.source, set: (value) => { store.relationFilters.source = value } })
+const selectedTestPool = computed(() => store.sevenDayPools.find((pool) => pool.id === testPoolId.value) || null)
 
 function money(value: number): string { return `¥ ${Number(value || 0).toFixed(2)}` }
 function statusType(status: string): 'success' | 'warning' | 'info' | 'danger' { return /CONFIRMED|SETTLED|SUCCESS|BOUND/i.test(status) ? 'success' : /REJECT|BLOCK|FAIL/i.test(status) ? 'danger' : /PENDING|WAIT/i.test(status) ? 'warning' : 'info' }
@@ -61,6 +71,54 @@ async function settlePool(): Promise<void> {
   if (!settleForm.startDate || !settleForm.endDate) { ElMessage.warning('请选择结算日期范围'); return }
   try { await store.settle(settleForm.startDate, settleForm.endDate); ElMessage.success('奖池结算已完成') } catch (error) { showError(error, '奖池结算失败') }
 }
+async function injectTestPool(): Promise<void> {
+  const amount = Number(testInjectForm.amount)
+  if (!Number.isFinite(amount) || amount <= 0) { ElMessage.warning('注入金额必须大于 0'); return }
+  try {
+    await ElMessageBox.confirm(`将向 ${testInjectForm.poolDate || '今天'} 的每日奖池追加 ${money(amount)}，不会立即发放给用户。确认继续吗？`, '确认注入奖池', { type: 'warning' })
+    await store.inject({ poolDate: testInjectForm.poolDate || undefined, amount })
+    ElMessage.success('奖池金额已注入，请继续查看未结算奖池')
+  } catch (error) { if (error !== 'cancel' && error !== 'close') showError(error, '奖池注入失败') }
+}
+async function settleTestPool(): Promise<void> {
+  if (!testSettleForm.startDate || !testSettleForm.endDate) { ElMessage.warning('请选择结算日期范围'); return }
+  try {
+    await store.settle(testSettleForm.startDate, testSettleForm.endDate)
+    const pool = store.sevenDayPools.find((item) => item.startDate === testSettleForm.startDate && item.endDate === testSettleForm.endDate)
+    testPoolId.value = pool?.id || ''
+    ElMessage.success(pool ? `结算完成，已选中奖池 ${pool.id}` : '结算完成，请在下方选择新建父奖池')
+  } catch (error) { showError(error, '奖池结算失败') }
+}
+async function confirmTestPool(): Promise<void> {
+  const pool = selectedTestPool.value
+  if (!pool) { ElMessage.warning('请先选择要发放的父奖池'); return }
+  try {
+    await ElMessageBox.confirm(`确认发放 ${pool.startDate} 至 ${pool.endDate} 的奖池 ${pool.id} 吗？此操作会增加用户待提现分红并写入分红流水。`, '确认发放分红', { type: 'warning', confirmButtonText: '确认发放', cancelButtonText: '取消' })
+    await store.confirm(pool.id)
+    ElMessage.success('分红已发放，请使用 C 端 Token 核验结果')
+  } catch (error) { if (error !== 'cancel' && error !== 'close') showError(error, '分红发放失败') }
+}
+async function verifyUserDividend(): Promise<void> {
+  if (!userToken.value.trim()) { ElMessage.warning('请输入 C 端用户 Token'); return }
+  testResultLoading.value = true
+  try {
+    const [wallet, slots, records] = await Promise.all([
+      getWalletTestResult(userToken.value),
+      getDividendSlotTestResult(userToken.value),
+      getDividendRecordTestResult(userToken.value),
+    ])
+    walletTestResult.value = wallet
+    dividendSlotTestResult.value = slots
+    dividendRecordTestResult.value = records
+    ElMessage.success('C 端分红结果已刷新')
+  } catch (error) { showError(error, 'C 端分红结果查询失败') } finally { testResultLoading.value = false }
+}
+function clearUserDividendResult(): void {
+  userToken.value = ''
+  walletTestResult.value = null
+  dividendSlotTestResult.value = null
+  dividendRecordTestResult.value = null
+}
 async function showPoolDetails(pool: SevenDayBonusPool): Promise<void> { try { await store.fetchPoolDetails(pool.id); poolDetailVisible.value = true } catch (error) { showError(error, '奖池明细加载失败') } }
 function openPoolAdjust(pool: SevenDayBonusPool): void { poolId.value = pool.id; Object.assign(adjustPoolForm, { totalAmount: pool.totalAmount, userCount: pool.settledUserCount }); adjustPoolVisible.value = true }
 async function submitPoolAdjust(): Promise<void> { if (!(await adjustPoolFormRef.value?.validate().catch(() => false))) return; try { await store.adjust(poolId.value, { ...adjustPoolForm }); adjustPoolVisible.value = false; ElMessage.success('奖池已调整') } catch (error) { showError(error, '奖池调整失败') } }
@@ -88,6 +146,44 @@ onMounted(() => { void load(); void loadRelations() })
           <div class="table-pagination"><span>共 {{ store.relationTotal }} 条</span><el-pagination background layout="total, sizes, prev, pager, next" :current-page="store.relationPage" :page-size="store.relationSize" :total="store.relationTotal" @current-change="relationPageChange" @size-change="relationSizeChange" /></div>
         </el-card>
       </el-tab-pane>
+      <el-tab-pane label="分红测试" name="test">
+        <el-alert title="测试流程：先确认用户有有效订单和活跃分红槽位，再注入奖池、结算、选择父奖池并确认发放。结算不会直接给用户加钱。" type="info" :closable="false" show-icon class="test-alert" />
+        <div class="test-step-grid">
+          <el-card shadow="never" class="content-card test-step-card">
+            <div class="test-step-heading"><div><span class="step-index">1</span><strong>准备资格</strong></div><el-button size="small" :loading="store.loading" @click="load"><el-icon><Refresh /></el-icon>刷新资格</el-button></div>
+            <p class="test-help">用户必须有有效订单和未锁死的分红槽位。当前购买机会列表共 {{ store.dividendLimits.length }} 条。</p>
+            <el-table :data="store.dividendLimits.slice(0, 5)" v-loading="store.loading" border stripe size="small"><el-table-column prop="userId" label="用户 ID" width="100" /><el-table-column prop="availablePurchase" label="可用机会" /><el-table-column prop="totalPurchases" label="累计购买" /></el-table>
+          </el-card>
+          <el-card shadow="never" class="content-card test-step-card">
+            <div class="test-step-heading"><div><span class="step-index">2</span><strong>注入奖池金额</strong></div></div>
+            <p class="test-help">只累加指定日期的每日奖池，不会立即发放。注入后可在未结算奖池中确认金额。</p>
+            <div class="test-form-row"><el-date-picker v-model="testInjectForm.poolDate" type="date" value-format="YYYY-MM-DD" placeholder="注入日期（默认今天）" /><el-input-number v-model="testInjectForm.amount" :min="0.01" :precision="2" controls-position="right" /><el-button type="primary" :loading="store.actionLoading" @click="injectTestPool">注入奖池金额</el-button></div>
+            <el-table :data="store.unsettledDaily" v-loading="store.loading" border stripe size="small" class="test-table"><el-table-column prop="poolDate" label="日期" /><el-table-column label="每日金额"><template #default="{ row }">{{ money(row.dailyAmount) }}</template></el-table-column><el-table-column prop="dailyUserCount" label="用户数" /></el-table>
+          </el-card>
+          <el-card shadow="never" class="content-card test-step-card">
+            <div class="test-step-heading"><div><span class="step-index">3</span><strong>结算每日奖池</strong></div></div>
+            <p class="test-help">按日期范围创建父奖池。此步骤只结算，不会增加用户钱包。</p>
+            <div class="test-form-row"><el-date-picker v-model="testSettleForm.startDate" type="date" value-format="YYYY-MM-DD" placeholder="开始日期" /><el-date-picker v-model="testSettleForm.endDate" type="date" value-format="YYYY-MM-DD" placeholder="结束日期" /><el-button type="primary" :loading="store.actionLoading" @click="settleTestPool">结算每日奖池</el-button></div>
+          </el-card>
+          <el-card shadow="never" class="content-card test-step-card">
+            <div class="test-step-heading"><div><span class="step-index">4</span><strong>选择并发放父奖池</strong></div></div>
+            <p class="test-help">先选择已结算的父奖池，可先查看每日明细，再执行不可逆的正式发放。</p>
+            <div class="test-form-row"><el-select v-model="testPoolId" placeholder="选择父奖池" class="test-pool-select"><el-option v-for="pool in store.sevenDayPools" :key="pool.id" :label="`${pool.id}：${pool.startDate} 至 ${pool.endDate}，${money(pool.totalAmount)}`" :value="pool.id" /></el-select><el-button :disabled="!selectedTestPool" @click="selectedTestPool && showPoolDetails(selectedTestPool)"><el-icon><View /></el-icon>查看明细</el-button><el-button type="danger" :loading="store.actionLoading" :disabled="!selectedTestPool" @click="confirmTestPool">确认发放</el-button></div>
+            <el-descriptions v-if="selectedTestPool" :column="3" border size="small" class="test-summary"><el-descriptions-item label="奖池 ID">{{ selectedTestPool.id }}</el-descriptions-item><el-descriptions-item label="总金额">{{ money(selectedTestPool.totalAmount) }}</el-descriptions-item><el-descriptions-item label="结算人数">{{ selectedTestPool.settledUserCount }}</el-descriptions-item></el-descriptions>
+          </el-card>
+          <el-card shadow="never" class="content-card test-step-card test-result-card">
+            <div class="test-step-heading"><div><span class="step-index">5</span><strong>C 端核验分红结果</strong></div><el-button text @click="clearUserDividendResult">清空</el-button></div>
+            <p class="test-help">粘贴对应用户的 C 端 Token，仅用于本次查询，不会保存，也不会影响当前管理员登录。</p>
+            <div class="test-form-row test-token-row"><el-input v-model="userToken" type="textarea" :rows="2" clearable placeholder="请输入 C 端用户 Token" /><el-button type="primary" :loading="testResultLoading" @click="verifyUserDividend">查询结果</el-button></div>
+            <div v-if="walletTestResult || dividendSlotTestResult || dividendRecordTestResult" class="test-result-grid">
+              <el-descriptions v-if="walletTestResult" title="钱包信息" :column="4" border size="small"><el-descriptions-item label="余额">{{ money(walletTestResult.balance) }}</el-descriptions-item><el-descriptions-item label="待提现推广金">{{ money(walletTestResult.pendingPromotion) }}</el-descriptions-item><el-descriptions-item label="待提现分红">{{ money(walletTestResult.pendingBonus) }}</el-descriptions-item><el-descriptions-item label="累计收入">{{ money(walletTestResult.totalIncome) }}</el-descriptions-item></el-descriptions>
+              <el-descriptions v-if="dividendSlotTestResult" title="分红槽位" :column="3" border size="small"><el-descriptions-item label="可用购买机会">{{ dividendSlotTestResult.availablePurchase }}</el-descriptions-item><el-descriptions-item label="累计购买">{{ dividendSlotTestResult.totalPurchases }}</el-descriptions-item><el-descriptions-item label="槽位数量">{{ dividendSlotTestResult.slots.length }}</el-descriptions-item></el-descriptions>
+              <el-table v-if="dividendSlotTestResult" :data="dividendSlotTestResult.slots" border stripe size="small"><el-table-column prop="id" label="槽位 ID" width="90" /><el-table-column prop="productName" label="商品" min-width="160" /><el-table-column label="累计分红"><template #default="{ row }">{{ money(row.totalReceived) }}</template></el-table-column><el-table-column label="上限"><template #default="{ row }">{{ money(row.capAmount) }}</template></el-table-column><el-table-column prop="locked" label="锁死" width="80"><template #default="{ row }">{{ row.locked ? '是' : '否' }}</template></el-table-column></el-table>
+              <el-table v-if="dividendRecordTestResult" :data="dividendRecordTestResult.list" border stripe size="small"><el-table-column prop="id" label="流水 ID" width="100" /><el-table-column prop="productName" label="红包来源" min-width="180" /><el-table-column label="金额" width="130"><template #default="{ row }">{{ money(row.amount) }}</template></el-table-column><el-table-column prop="createTime" label="到账时间" min-width="170" /></el-table>
+            </div>
+          </el-card>
+        </div>
+      </el-tab-pane>
       <el-tab-pane label="7 天奖池" name="pools">
         <el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>7 天奖池</strong><span class="toolbar-count">按周期管理奖池</span></div><div class="toolbar-actions"><el-date-picker v-model="settleForm.startDate" type="date" value-format="YYYY-MM-DD" placeholder="开始日期" /><el-date-picker v-model="settleForm.endDate" type="date" value-format="YYYY-MM-DD" placeholder="结束日期" /><el-button type="primary" :loading="store.actionLoading" @click="settlePool">结算周期</el-button></div></div>
           <el-table :data="store.sevenDayPools" v-loading="store.loading" border stripe><el-table-column prop="id" label="奖池 ID" width="110" /><el-table-column label="周期" min-width="200"><template #default="{ row }">{{ row.startDate }} 至 {{ row.endDate }}</template></el-table-column><el-table-column label="总金额" width="140"><template #default="{ row }">{{ money(row.totalAmount) }}</template></el-table-column><el-table-column prop="settledUserCount" label="已结算人数" width="120" /><el-table-column prop="settleTime" label="结算时间" min-width="180" /><el-table-column label="操作" width="250" fixed="right"><template #default="{ row }"><div class="operator-actions"><el-button size="small" @click="showPoolDetails(row)"><el-icon><View /></el-icon>明细</el-button><el-button size="small" @click="openPoolAdjust(row)"><el-icon><Setting /></el-icon>调整</el-button><el-button size="small" type="primary" @click="confirmPool(row)">确认并发放</el-button></div></template></el-table-column></el-table>
@@ -114,5 +210,23 @@ onMounted(() => { void load(); void loadRelations() })
 .relationSource { width: 140px; }
 .table-pagination { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-top: 16px; }
 .dialog-context { color: var(--el-text-color-secondary); margin: 0 0 12px; }
+.test-alert { margin-bottom: 16px; }
+.test-step-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.test-step-card { min-width: 0; }
+.test-step-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.test-step-heading > div { display: flex; align-items: center; gap: 9px; }
+.step-index { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; border-radius: 50%; color: #fff; background: var(--el-color-primary); font-size: 13px; font-weight: 700; }
+.test-help { min-height: 40px; margin: 0 0 12px; color: var(--el-text-color-secondary); font-size: 13px; line-height: 20px; }
+.test-form-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.test-form-row :deep(.el-input-number) { width: 150px; }
+.test-pool-select { min-width: 260px; flex: 1; }
+.test-table { margin-top: 8px; }
+.test-summary { margin-top: 10px; }
+.test-result-card { grid-column: 1 / -1; }
+.test-token-row :deep(.el-textarea) { min-width: 0; flex: 1; }
+.test-token-row :deep(.el-textarea__inner) { min-height: 52px; }
+.test-result-grid { display: grid; gap: 12px; }
+.test-result-grid :deep(.el-descriptions__title) { margin-top: 4px; font-size: 14px; }
 @media (max-width: 900px) { .toolbar-actions, .table-pagination { align-items: stretch; flex-direction: column; } .relationKeyword, .relationSource { width: 100%; } }
+@media (max-width: 1100px) { .test-step-grid { grid-template-columns: 1fr; } .test-result-card { grid-column: auto; } }
 </style>

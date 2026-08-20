@@ -131,7 +131,6 @@ onShow(() => { void loadData() })
       <view class="page-content">
         <view class="heading">
           <text class="heading-title">平台红包</text>
-          <text class="heading-subtitle">每日分红</text>
         </view>
 
         <view class="packet-card">
@@ -173,7 +172,6 @@ onShow(() => { void loadData() })
 .page-content { padding: 0 0 100rpx; box-sizing: border-box; }
 .heading { display: flex; align-items: baseline; margin-left: 40rpx; }
 .heading-title { color: #000; font-size: 28rpx; }
-.heading-subtitle { margin-left: 12rpx; color: #959595; font-size: 22rpx; }
 .packet-card { position: relative; width: 720rpx; max-width: calc(100% - 32rpx); height: 340rpx; margin: 24rpx auto 0; overflow: hidden; }
 .packet-bg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .packet-amount { position: absolute; left: 0; right: 0; top: 46%; z-index: 1; color: #916448; font-size: 64rpx; font-weight: 700; text-align: center; }

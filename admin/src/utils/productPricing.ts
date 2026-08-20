@@ -60,3 +60,14 @@ export function resolveDividendFund(dividendFund: unknown, minPrice: unknown, ra
   const value = getNonNegativeNumber(dividendFund)
   return value === undefined ? getDefaultDividendFund(minPrice, rate) : roundMoney(value)
 }
+
+/** 判断已保存金额是否仍对应当前默认比例，供编辑页恢复开关状态。 */
+export function isDefaultFundAmount(
+  amount: unknown,
+  minPrice: unknown,
+  getDefault: (minPrice: unknown) => number,
+): boolean {
+  const value = getNonNegativeNumber(amount)
+  if (value === undefined) return false
+  return Math.abs(roundMoney(value) - getDefault(minPrice)) < 0.005
+}

@@ -4,12 +4,14 @@ import { onLoad, onPageScroll, onShareAppMessage } from '@dcloudio/uni-app'
 import { getHomepageData } from '@/api/homepage'
 import type { HomepageMediaItem, HomepageProduct } from '@/api/homepage'
 import { bindStoredPromotionIfLoggedIn, buildPromotionSharePath, capturePromotionContext } from '@/utils/promotion'
+import { createThrottle } from '@/utils/interaction'
 
-const brandName = ref('今华有·臻养品质人生')
+const brandName = ref('今华有·臻选品质人生')
 const products = ref<HomepageProduct[]>([])
 const homepageMedia = ref<HomepageMediaItem | null>(null)
 const loading = ref(true)
 const welfareTab = ref(0)
+const navigationThrottle = createThrottle(500)
 
 /** 微信胶囊按钮位置（px），用于悬浮导航栏精确定位 */
 const menuTop = ref(0)
@@ -71,10 +73,20 @@ async function loadHomepage(): Promise<void> {
   finally { loading.value = false }
 }
 
-function goProduct(id: string): void { uni.navigateTo({ url: `/subpkg-goods/detail/detail?id=${id}` }) }
-function goSearch(): void { uni.navigateTo({ url: '/subpkg-goods/search/index' }) }
-function goCategory(): void { uni.switchTab({ url: '/pages/category/category' }) }
+function goProduct(id: string): void {
+  if (!navigationThrottle()) return
+  uni.navigateTo({ url: `/subpkg-goods/detail/detail?id=${id}` })
+}
+function goSearch(): void {
+  if (!navigationThrottle()) return
+  uni.navigateTo({ url: '/subpkg-goods/search/index' })
+}
+function goCategory(): void {
+  if (!navigationThrottle()) return
+  uni.switchTab({ url: '/pages/category/category' })
+}
 function goHero(index: number): void {
+  if (!navigationThrottle()) return
   const target = homepageMedia.value?.linkTarget?.[index]
   if (target) uni.navigateTo({ url: target })
 }
@@ -82,6 +94,7 @@ function goHero(index: number): void {
 /** 点击“更多福利”图片，按后台配置的 AppID 跳转到目标小程序。 */
 function handleWelfareImageTap(index: number): void {
   if (index !== 0) return
+  if (!navigationThrottle()) return
   const appId = homepageMedia.value?.bottomLinkTarget?.[0]?.trim() || ''
   if (!appId) {
     uni.showToast({ title: '暂未配置跳转小程序', icon: 'none' })
@@ -137,7 +150,13 @@ onMounted(() => {
   <view class="page">
 
     <!-- ====== 首屏轮播（从页面顶部开始） ====== -->
-    <view v-if="loading" class="hero-skeleton" :style="{ height: heroHeightStyle }" />
+    <view v-if="loading" class="hero-skeleton" :style="{ height: heroHeightStyle }">
+      <view class="hero-skeleton-media" />
+      <view class="hero-skeleton-copy">
+        <view class="hero-skeleton-line hero-skeleton-line-wide" />
+        <view class="hero-skeleton-line hero-skeleton-line-narrow" />
+      </view>
+    </view>
     <swiper v-else-if="heroImages.length" class="hero-swiper" :style="{ height: heroHeightStyle }" circular autoplay interval="4500" duration="450">
       <swiper-item v-for="(image, index) in heroImages" :key="image" class="hero-swiper-item" :style="{ height: heroHeightStyle }">
         <image class="hero-image" :src="image" mode="widthFix" @click="goHero(index)" />
@@ -248,8 +267,13 @@ onMounted(() => {
 .hero-swiper { width: 100%; margin-top: 0; overflow: hidden; }
 .hero-swiper-item { width: 100%; overflow: hidden; }
 .hero-image { width: 100%; height: auto; display: block; }
-.hero-skeleton { width: 100%; min-height: 960rpx; position: relative; overflow: hidden; background: #eef0f2; }
-.hero-skeleton::after { content: ''; position: absolute; inset: 0; background: rgba(255,255,255,.42); animation: hero-skeleton-pulse 1.4s ease-in-out infinite; }
+.hero-skeleton { width: 100%; min-height: 960rpx; position: relative; overflow: hidden; background: #e7eaed; }
+.hero-skeleton-media { position: absolute; inset: 0; background: #e7eaed; animation: hero-skeleton-pulse 1.4s ease-in-out infinite; }
+.hero-skeleton-copy { position: absolute; right: 72rpx; bottom: 74rpx; left: 72rpx; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 18rpx; }
+.hero-skeleton-line { height: 28rpx; border-radius: 14rpx; background: rgba(190,197,204,.82); animation: hero-skeleton-pulse 1.4s ease-in-out infinite; }
+.hero-skeleton-line-wide { width: 58%; }
+.hero-skeleton-line-narrow { width: 34%; height: 18rpx; }
+.hero-skeleton::after { content: ''; position: absolute; inset: 0; z-index: 2; pointer-events: none; background: rgba(255,255,255,.22); animation: hero-skeleton-pulse 1.4s ease-in-out infinite; }
 @keyframes hero-skeleton-pulse { 0%, 100% { opacity: .25; } 50% { opacity: .8; } }
 .hero-video { width: 100%; height: 960rpx; margin-top: 0; }
 .hero-placeholder { width: 100%; height: 960rpx; background: #d8d8d8; }

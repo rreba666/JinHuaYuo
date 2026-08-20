@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { onLoad, onShareAppMessage, onShow } from '@dcloudio/uni-app'
-import { getPromotionCode, getPromotionRecords, getPromotionSummary, type PromotionRecord, type PromotionSummary } from '@/api/promotion'
+import { getPromotionRecords, getPromotionSummary, type PromotionRecord, type PromotionSummary } from '@/api/promotion'
 import { convertWallet, getUserProfile, getWalletInfo, type UserProfile, type WalletInfo } from '@/api/user'
-import { getAuth, isRegisteredUser } from '@/utils/auth'
+import { isRegisteredUser } from '@/utils/auth'
 import { bindStoredPromotionIfLoggedIn, buildPromotionSharePath, capturePromotionContext } from '@/utils/promotion'
-import PromotionCodePoster from '@/components/PromotionCodePoster.vue'
+import { formatPromotionQueryDate, getFrozenPromotionAmount, isFrozenPromotion, PROMOTION_FREEZE_MS } from '@/utils/promotion-freeze'
+import { createThrottle } from '@/utils/interaction'
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
@@ -13,18 +14,20 @@ const user = ref<UserProfile | null>(null)
 const wallet = ref<WalletInfo | null>(null)
 const promotionSummary = ref<PromotionSummary | null>(null)
 const promotionRecords = ref<PromotionRecord[]>([])
+const frozenPromotionRecords = ref<PromotionRecord[]>([])
 const promotionPage = ref(1)
 const promotionTotal = ref(0)
 const promotionLoading = ref(false)
 const promotionLoadingMore = ref(false)
+const promotionClock = ref(Date.now())
 const loading = ref(false)
-const promotionCodeVisible = ref(false)
-const promotionCodeLoading = ref(false)
-const promotionCodeUrl = ref('')
 const converting = ref(false)
 const accessChecking = ref(false)
 const accessDenied = ref(false)
+const navigationThrottle = createThrottle(500)
+let pageLoadPromise: Promise<void> | null = null
 const registeredUser = computed(() => isRegisteredUser(user.value?.identity))
+const frozenPromotionAmount = computed(() => getFrozenPromotionAmount(frozenPromotionRecords.value, promotionClock.value))
 
 /** 自定义导航栏样式，和微信胶囊按钮保持同一高度。 */
 const navStyle = computed(() => ({ top: `${menuTop.value}px`, height: `${menuHeight.value}px` }))
@@ -32,26 +35,27 @@ const navStyle = computed(() => ({ top: `${menuTop.value}px`, height: `${menuHei
 /** 内容区从胶囊按钮下方开始，避免标题被系统导航遮挡。 */
 const bodyStyle = computed(() => ({ paddingTop: `${menuTop.value + menuHeight.value + uni.upx2px(100)}px` }))
 
-/** 当前可提现的推广金，接口未返回时按 0 处理。 */
-const pendingPromotion = computed(() => {
+/** 当前已解冻、可转余额的推广金，冻结部分不参与转余额。 */
+const withdrawablePromotion = computed(() => {
   const value = Number(promotionSummary.value?.pendingPromotion ?? wallet.value?.pendingPromotion)
   return Number.isFinite(value) && value > 0 ? value : 0
 })
 
+/** 当前已产生的推广金，包含近七天内仍处于冻结期的金额，仅用于展示。 */
+const displayedPromotionAmount = computed(() => withdrawablePromotion.value + frozenPromotionAmount.value)
+
 /** 累计推广金额，接口失败时保持真实空态。 */
-const totalPromotionText = computed(() => formatMoneyOrPlaceholder(promotionSummary.value?.totalPromotion))
+const totalPromotionText = computed(() => {
+  if (!promotionSummary.value) return '--'
+  const confirmedAmount = Number(promotionSummary.value.totalPromotion)
+  return Number.isFinite(confirmedAmount) ? formatMoney(confirmedAmount + frozenPromotionAmount.value) : '--'
+})
 
 /** 已绑定用户数量，接口失败时保持真实空态。 */
 const boundUserCountText = computed(() => formatIntegerOrPlaceholder(promotionSummary.value?.boundUserCount))
 
 /** 是否还有未加载的推广明细。 */
 const hasMorePromotionRecords = computed(() => promotionRecords.value.length < promotionTotal.value)
-
-/** 将可选金额格式化为设计稿金额，否则显示空态。 */
-function formatMoneyOrPlaceholder(value: unknown): string {
-  const amount = Number(value)
-  return Number.isFinite(amount) ? amount.toFixed(2) : '--'
-}
 
 /** 将可选人数格式化为整数，否则显示空态。 */
 function formatIntegerOrPlaceholder(value: unknown): string {
@@ -114,6 +118,31 @@ async function loadPromotionRecords(): Promise<void> {
   }
 }
 
+/** 查询近七天推广记录，完整计算当前仍冻结的推广金。 */
+async function loadFrozenPromotionRecords(): Promise<void> {
+  if (!registeredUser.value) return
+  const now = Date.now()
+  promotionClock.value = now
+  const startTime = formatPromotionQueryDate(now - PROMOTION_FREEZE_MS)
+  const endTime = formatPromotionQueryDate(now)
+  const recentRecords: PromotionRecord[] = []
+  let page = 1
+  let total = 0
+  try {
+    do {
+      const result = await getPromotionRecords({ startTime, endTime, page, pageSize: 100 })
+      recentRecords.push(...(result.list || []))
+      total = Number(result.total) || recentRecords.length
+      page += 1
+      if (!result.list?.length) break
+    } while (recentRecords.length < total)
+    frozenPromotionRecords.value = recentRecords
+  } catch {
+    // 冻结金额是增强展示，查询失败时保留后端确认金额，不影响转余额。
+    frozenPromotionRecords.value = []
+  }
+}
+
 /** 滚动到底部时继续加载推广明细。 */
 async function loadMorePromotionRecords(): Promise<void> {
   if (!registeredUser.value) return
@@ -139,7 +168,7 @@ async function handleConvertPromotion(): Promise<void> {
     return
   }
   if (converting.value) return
-  if (pendingPromotion.value <= 0) {
+  if (withdrawablePromotion.value <= 0) {
     uni.showToast({ title: '暂无可转余额', icon: 'none' })
     return
   }
@@ -156,6 +185,19 @@ async function handleConvertPromotion(): Promise<void> {
   }
 }
 
+/** 查看冻结推广金的规则说明。 */
+function showPromotionIncomeInfo(): void {
+  const total = displayedPromotionAmount.value
+  const withdrawable = withdrawablePromotion.value
+  const frozen = frozenPromotionAmount.value
+  uni.showModal({
+    title: '推广收益说明',
+    content: `当前推广收益 ${formatMoney(total)} 元，其中可转余额 ${formatMoney(withdrawable)} 元，冻结推广金 ${formatMoney(frozen)} 元。冻结推广金是最近 7 天内产生、暂时不能提现的推广收益，冻结期满后即可正常使用。`,
+    showCancel: false,
+    confirmText: '知道了',
+  })
+}
+
 /** 打开微信分享能力，具体分享内容由 onShareAppMessage 返回。 */
 function handleShare(): void {
   if (!registeredUser.value) {
@@ -167,6 +209,7 @@ function handleShare(): void {
 
 /** 进入统一钱包页，余额提现与转账统一在钱包页完成。 */
 function goWallet(): void {
+  if (!navigationThrottle()) return
   if (!registeredUser.value) {
     denyGuestAccess()
     return
@@ -174,31 +217,6 @@ function goWallet(): void {
   uni.navigateTo({ url: '/subpkg-wallet/withdraw/withdraw' })
 }
 
-/** 获取并展示带当前推广者身份的小程序码。 */
-async function openPromotionCode(): Promise<void> {
-  if (!registeredUser.value) {
-    denyGuestAccess()
-    return
-  }
-  if (promotionCodeLoading.value) return
-  if (!getAuth()?.userId) {
-    uni.showToast({ title: '请先登录后生成推广码', icon: 'none' })
-    return
-  }
-  promotionCodeLoading.value = true
-  promotionCodeVisible.value = true
-  try {
-    promotionCodeUrl.value = await getPromotionCode()
-    if (!promotionCodeUrl.value) throw new Error('推广码地址为空')
-  } catch (error) {
-    promotionCodeVisible.value = false
-    uni.showToast({ title: error instanceof Error ? error.message : '推广码生成失败', icon: 'none' })
-  } finally {
-    promotionCodeLoading.value = false
-  }
-}
-
-/** 关闭推广码弹窗。 */
 /** 拦截游客访问推广中心，并返回个人中心等待后端身份升级。 */
 function denyGuestAccess(): void {
   if (accessDenied.value) return
@@ -230,11 +248,24 @@ async function ensureRegisteredAccess(): Promise<boolean> {
 /** 初始化或刷新推广中心，身份升级后重新进入即可获得完整功能。 */
 async function loadPage(): Promise<void> {
   if (!(await ensureRegisteredAccess())) return
-  await Promise.all([loadWallet(), loadPromotionSummary(), loadPromotionRecords()])
+  await Promise.all([loadWallet(), loadPromotionSummary(), loadPromotionRecords(), loadFrozenPromotionRecords()])
+}
+
+/** 合并首次挂载与重新显示时的并发刷新，避免重复请求推广数据。 */
+function refreshPage(): Promise<void> {
+  if (pageLoadPromise) return pageLoadPromise
+  const pending = loadPage()
+  pageLoadPromise = pending
+  pending.then(
+    () => { if (pageLoadPromise === pending) pageLoadPromise = null },
+    () => { if (pageLoadPromise === pending) pageLoadPromise = null },
+  )
+  return pending
 }
 
 /** 返回来源页面，没有历史页面时回到个人中心。 */
 function goBack(): void {
+  if (!navigationThrottle()) return
   const pages = getCurrentPages()
   if (pages.length > 1) {
     uni.navigateBack({ delta: 1 })
@@ -263,11 +294,11 @@ onMounted(() => {
       menuHeight.value = rect.height
     }
   } catch { /* 非微信环境没有胶囊按钮 */ }
-  void loadPage()
+  void refreshPage()
 })
 
 onShow(() => {
-  void loadPage()
+  void refreshPage()
 })
 </script>
 
@@ -286,7 +317,7 @@ onShow(() => {
 
         <view class="balance-card">
           <image class="promotion-background" src="/static/Promotion/推广背景_slices/推广背景.png" mode="scaleToFill" />
-          <text class="balance-value">{{ formatMoney(pendingPromotion) }}</text>
+          <text class="balance-value" @click="showPromotionIncomeInfo">{{ formatMoney(displayedPromotionAmount) }}</text>
           <view class="card-actions">
             <view class="wallet-button" :class="{ disabled: converting }" @click="handleConvertPromotion">转余额</view>
             <view class="wallet-button wallet-link" @click="goWallet">钱包提现</view>
@@ -295,7 +326,6 @@ onShow(() => {
 
         <view class="share-actions">
           <button class="share-button" open-type="share" @click="handleShare">立即分享赚钱 <view class="share-arrow" /></button>
-          <view class="code-button" @click="openPromotionCode">推广码</view>
         </view>
 
         <view class="stats-row">
@@ -335,7 +365,7 @@ onShow(() => {
               <text class="promotion-cell buyer-name">{{ record.buyerName || '--' }}</text>
               <text class="promotion-cell order-time">{{ formatDate(record.createTime) }}</text>
               <text class="promotion-cell order-amount">{{ formatMoney(record.payAmount) }}</text>
-              <text class="promotion-cell promotion-amount">+{{ formatMoney(record.amount) }}</text>
+              <view class="promotion-cell promotion-amount"><text>+{{ formatMoney(record.amount) }}</text><text v-if="isFrozenPromotion(record)" class="promotion-frozen-mark">冻结</text></view>
             </view>
             <view v-show="promotionLoadingMore" class="promotion-more">加载中...</view>
             <view v-show="!promotionLoadingMore && !hasMorePromotionRecords" class="promotion-more">已加载全部</view>
@@ -344,7 +374,6 @@ onShow(() => {
       </view>
     </scroll-view>
 
-    <PromotionCodePoster v-model="promotionCodeVisible" :loading="promotionCodeLoading" :code-url="promotionCodeUrl" />
   </view>
 </template>
 
@@ -370,7 +399,6 @@ onShow(() => {
 .share-button::after { border: 0; }
 .share-actions { display: flex; align-items: center; justify-content: center; gap: 16rpx; margin-top: 52rpx; }
 .share-actions .share-button { margin: 0; }
-.code-button { display: flex; align-items: center; justify-content: center; width: 104rpx; height: 64rpx; border: 1rpx solid #000; color: #000; background: #fff; font-size: 22.9rpx; box-sizing: border-box; }
 .share-arrow { position: relative; width: 28rpx; height: 1rpx; margin-left: 12rpx; background: #000; }
 .share-arrow::after { position: absolute; top: -4rpx; right: 0; width: 8rpx; height: 8rpx; border-top: 1rpx solid #000; border-right: 1rpx solid #000; content: ''; transform: rotate(45deg); }
 .stats-row { display: flex; gap: 26rpx; margin: 48rpx 40rpx 0; }
@@ -390,7 +418,8 @@ onShow(() => {
 .promotion-row { display: grid; grid-template-columns: 202rpx 216rpx 190rpx 98rpx; min-height: 100rpx; margin: 0 40rpx; align-items: center; border-bottom: 1rpx solid #f6f6f6; color: #959595; font-size: 20rpx; line-height: 26rpx; }
 .promotion-cell { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre-line; }
 .order-time, .order-amount { text-align: center; }
-.promotion-amount { color: #010101; text-align: right; }
+.promotion-amount { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; color: #010101; text-align: right; }
+.promotion-frozen-mark { margin-top: 4rpx; padding: 2rpx 8rpx; color: #b4772f; background: #fff4e5; font-size: 18rpx; line-height: 22rpx; }
 .promotion-more { padding: 18rpx 0; color: #959595; font-size: 20rpx; text-align: center; }
 .sheet-head { position: relative; display: flex; align-items: center; justify-content: center; min-height: 54rpx; }
 .sheet-title { color: #222; font-size: 30rpx; font-weight: 600; }

@@ -82,6 +82,15 @@ export interface PickupCodeVO {
   pickupTime: string | null
 }
 
+/** 将后端历史配置生成的 API 域名改为店员核销 H5 域名。 */
+export function normalizePickupUrl(pickupUrl: string | null): string | null {
+  if (!pickupUrl) return pickupUrl
+  return pickupUrl.replace(
+    /^https?:\/\/api\.jinhuayou365\.com(?=\/pickup(?:[/?#]|$))/i,
+    'https://cqcode.jinhuayou365.com',
+  )
+}
+
 export interface OrderPageResult {
   total: number
   list: OrderSummary[]
@@ -120,7 +129,10 @@ export function getOrderDetail(orderId: number | string): Promise<OrderDetail> {
 
 /** 获取自提二维码信息（独立接口，核销/退款/超期关闭后 pickupCode 置 null）。 */
 export function getPickupCode(orderId: number | string): Promise<PickupCodeVO> {
-  return request<PickupCodeVO>({ url: `/api/order/pickup-code/${orderId}`, method: 'GET' })
+  return request<PickupCodeVO>({ url: `/api/order/pickup-code/${orderId}`, method: 'GET' }).then((data) => ({
+    ...data,
+    pickupUrl: normalizePickupUrl(data.pickupUrl),
+  }))
 }
 
 /** 取消待支付订单。 */

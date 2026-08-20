@@ -5,7 +5,7 @@ import { getRealnameStatus } from '@/api/realname'
 import { applyTransferAuth, getTransferAuthStatus, type TransferAuthState } from '@/api/transfer-auth'
 import { getUserProfile, getWalletInfo, searchUser, transferWallet, withdrawWallet, getWithdrawals, type UserProfile, type UserSearchVO, type WalletInfo, type WithdrawRecord } from '@/api/user'
 import RealnameVerifySheet from '@/components/RealnameVerifySheet.vue'
-import { getAuth, hasWalletNoticeSeen, isRegisteredUser, markWalletNoticeSeen } from '@/utils/auth'
+import { clearAuth, getAuth, hasWalletNoticeSeen, isRegisteredUser, markWalletNoticeSeen } from '@/utils/auth'
 import { isApiRequestError } from '@/utils/request'
 import { MERCHANT_TRANSFER_APP_ID, MERCHANT_TRANSFER_MCH_ID, TRANSFER_MIN_AMOUNT, WITHDRAW_MIN_AMOUNT } from '@/utils/wallet-config'
 
@@ -15,6 +15,8 @@ const user = ref<UserProfile | null>(null)
 const wallet = ref<WalletInfo | null>(null)
 const loading = ref(false)
 const currentTab = ref<'withdraw' | 'transfer'>('transfer')
+/** 提现方式入口，默认保留原有零钱提现流程，银行卡作为新增选项。 */
+const withdrawOption = ref<'BALANCE' | 'BANK_CARD'>('BALANCE')
 const withdrawAmount = ref('')
 const transferUserId = ref('')
 const transferAmount = ref('')
@@ -187,10 +189,21 @@ async function ensureRegisteredAccess(): Promise<boolean> {
   }
 }
 
+/** 页面进入时读取实名状态，决定提现按钮是“实名绑定”还是“确认提现”。 */
+async function loadRealnameStatus(): Promise<void> {
+  try {
+    const status = await getRealnameStatus()
+    realnameVerified.value = status.verified
+  } catch {
+    // 查询失败时按未实名处理，避免错误放行提现。
+    realnameVerified.value = false
+  }
+}
+
 /** 初始化或刷新钱包页，确保身份升级后重新进入即可使用提现功能。 */
 async function loadPage(): Promise<void> {
   if (!(await ensureRegisteredAccess())) return
-  await Promise.all([loadWallet(), loadTransferAuthStatus(), loadWithdrawRecords(true)])
+  await Promise.all([loadWallet(), loadTransferAuthStatus(), loadWithdrawRecords(true), loadRealnameStatus()])
   openWalletNotice()
 }
 
@@ -303,6 +316,17 @@ function openMerchantTransferAuth(packageInfo: string): void {
         uni.showToast({ title: '已取消授权', icon: 'none' })
         return
       }
+      if (/微信号不一致|授权微信号不一致|openid/i.test(detail)) {
+        clearAuth()
+        uni.showModal({
+          title: '微信号不一致',
+          content: '当前微信号与授权账号不一致，请重新登录后再试。',
+          showCancel: false,
+          confirmText: '重新登录',
+          success: () => uni.reLaunch({ url: '/pages/login/login' }),
+        })
+        return
+      }
       uni.showToast({ title: detail ? `授权页拉起失败：${detail}` : '授权页拉起失败，请重试', icon: 'none' })
     },
   })
@@ -362,11 +386,20 @@ async function ensureRealnameReady(action: 'withdraw' | 'transfer'): Promise<boo
   }
 }
 
+/** 切换提现方式，零钱和银行卡分别走各自的后端收款流程。 */
+function selectWithdrawOption(option: 'BALANCE' | 'BANK_CARD'): void {
+  withdrawOption.value = option
+}
+
 async function executeWithdraw(amount: number): Promise<void> {
   if (withdrawSubmitting.value) return
   withdrawSubmitting.value = true
   try {
-    await withdrawWallet(amount, 'BALANCE')
+    if (withdrawOption.value === 'BANK_CARD') {
+      await withdrawWallet(amount, 'BALANCE', 'BANK_CARD')
+    } else {
+      await withdrawWallet(amount, 'BALANCE')
+    }
     withdrawAmount.value = ''
     pendingWithdrawAmount.value = null
     pendingAction.value = null
@@ -380,7 +413,7 @@ async function executeWithdraw(amount: number): Promise<void> {
       pendingAction.value = 'withdraw'
       pendingWithdrawAmount.value = amount
       realnameVisible.value = true
-    } else if (isApiRequestError(error) && error.code === 7007) {
+    } else if (withdrawOption.value === 'BALANCE' && isApiRequestError(error) && error.code === 7007) {
       // 未完成免确认收款授权 → 引导授权
       transferAuthState.value = ''
       pendingWithdrawAmount.value = amount
@@ -486,9 +519,7 @@ async function handleRealnameVerified(): Promise<void> {
   pendingAction.value = null
 
   if (action === 'withdraw' && pendingWithdrawAmount.value != null) {
-    const amount = pendingWithdrawAmount.value
     pendingWithdrawAmount.value = null
-    await executeWithdraw(amount)
     return
   }
   if (action === 'transfer' && pendingTransfer.value) {
@@ -544,27 +575,37 @@ onUnload(() => {
         <view v-show="currentTab === 'withdraw'" class="panel-card">
           <text class="panel-title">提现方式</text>
           <view class="type-row">
-            <view class="type-chip active">零钱提现</view>
+            <view class="type-chip" :class="{ active: withdrawOption === 'BALANCE' }" @click="selectWithdrawOption('BALANCE')">零钱提现</view>
+            <view class="type-chip" :class="{ active: withdrawOption === 'BANK_CARD' }" @click="selectWithdrawOption('BANK_CARD')">银行卡提现</view>
           </view>
           <text class="panel-title panel-section-title">提现金额</text>
           <input v-model="withdrawAmount" class="panel-input" type="digit" :placeholder="`请输入提现余额，最低 ${withdrawMinimumLabel}`" />
-          <text class="fee-hint">提现将收取 5% 手续费，实际到账金额为提现金额的 95%，提交后进入审核。</text>
+          <text v-if="withdrawOption === 'BANK_CARD'" class="fee-hint">银行卡信息取自实名认证资料，平台审核通过后人工打款；提现将收取 5% 手续费。</text>
+          <text v-else class="fee-hint">提现将收取 5% 手续费，提交后进入审核。</text>
           <text v-if="withdrawAmountNumber > 0" class="fee-calc">手续费 ¥{{ formatMoney(withdrawFee) }}，实际到账 ¥{{ formatMoney(withdrawActual) }}</text>
-          <!-- 未完成免确认收款授权时引导授权 -->
-          <view v-if="authStatusError" class="auth-banner">
-            <text class="auth-text">授权状态获取失败，请重试</text>
-            <button class="panel-button" :disabled="authLoading" @click="refreshTransferAuth">
-              {{ authLoading ? '刷新中...' : '刷新授权状态' }}
+          <template v-if="withdrawOption === 'BANK_CARD'">
+            <button class="panel-button" :disabled="withdrawSubmitting || realnameChecking" @click="handleWithdraw">
+              {{ withdrawSubmitting ? '提交中...' : (realnameVerified ? '确认提现' : '实名绑定') }}
             </button>
-          </view>
-          <view v-else-if="needAuth" class="auth-banner">
-            <text class="auth-text">{{ transferAuthState === 'WAIT_USER_CONFIRM' ? '授权未完成，请再次确认授权' : '首次提现前需完成免确认收款授权，提交后由平台审核打款' }}</text>
-            <button class="panel-button" :disabled="authApplying || authLoading" @click="handleAuthorize">
-              {{ authApplying ? '授权中...' : (transferAuthState === 'WAIT_USER_CONFIRM' ? '重新授权' : '去授权') }}
-            </button>
-          </view>
+          </template>
           <template v-else>
-            <button class="panel-button" :disabled="withdrawSubmitting" @click="handleWithdraw">
+            <!-- 未完成免确认收款授权时引导授权，仅零钱提现需要此流程 -->
+            <button v-if="!realnameVerified" class="panel-button" :disabled="withdrawSubmitting || realnameChecking" @click="handleWithdraw">
+              {{ realnameChecking ? '查询中...' : '实名绑定' }}
+            </button>
+            <view v-else-if="authStatusError" class="auth-banner">
+              <text class="auth-text">授权状态获取失败，请重试</text>
+              <button class="panel-button" :disabled="authLoading" @click="refreshTransferAuth">
+                {{ authLoading ? '刷新中...' : '刷新授权状态' }}
+              </button>
+            </view>
+            <view v-else-if="needAuth" class="auth-banner">
+              <text class="auth-text">{{ transferAuthState === 'WAIT_USER_CONFIRM' ? '授权未完成，请再次确认授权' : '首次零钱提现前需完成免确认收款授权，提交后由平台审核打款' }}</text>
+              <button class="panel-button" :disabled="authApplying || authLoading" @click="handleAuthorize">
+                {{ authApplying ? '授权中...' : (transferAuthState === 'WAIT_USER_CONFIRM' ? '重新授权' : '去授权') }}
+              </button>
+            </view>
+            <button v-else class="panel-button" :disabled="withdrawSubmitting" @click="handleWithdraw">
               {{ withdrawSubmitting ? '提交中...' : '确认提现' }}
             </button>
           </template>
@@ -598,7 +639,7 @@ onUnload(() => {
           <view v-if="withdrawRecords.length" class="records-list">
             <view v-for="record in withdrawRecords" :key="record.withdrawNo" class="record-item">
               <view class="record-top">
-                <text class="record-type">{{ record.typeDesc }}</text>
+                <text class="record-type">{{ record.withdrawMethod === 'BANK_CARD' ? '银行卡提现' : record.typeDesc }}</text>
                 <text :class="['record-status', withdrawStatusClass(record.status)]">{{ record.statusDesc }}</text>
               </view>
               <view class="record-mid">

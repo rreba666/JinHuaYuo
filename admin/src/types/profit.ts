@@ -89,3 +89,46 @@ export interface ProfitAdjustDailyDTO {
   dailyAmount: number
   dailyUserCount: number
 }
+
+export interface BonusInjectDTO {
+  poolDate?: string
+  amount: number
+}
+
+export interface WalletTestResult {
+  balance: number
+  pendingPromotion: number
+  pendingBonus: number
+  totalIncome: number
+}
+
+export interface DividendSlotTestItem {
+  id: string
+  productName: string
+  productPrice: number
+  capAmount: number
+  totalReceived: number
+  locked: number
+  lockedAt: string
+  createTime: string
+}
+
+export interface DividendSlotTestResult {
+  availablePurchase: number
+  totalPurchases: number
+  slots: DividendSlotTestItem[]
+}
+
+export interface DividendRecordTestItem {
+  id: string
+  productName: string
+  amount: number
+  createTime: string
+}
+
+export interface DividendRecordTestResult {
+  total: number
+  page: number
+  pageSize: number
+  list: DividendRecordTestItem[]
+}

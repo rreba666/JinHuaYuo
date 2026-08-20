@@ -5,7 +5,7 @@ import DataTable from '@/components/DataTable.vue'
 import ImageGridUpload from '@/components/ImageGridUpload.vue'
 import { useProductStore } from '@/stores/product'
 import type { AdminProductSaveDTO, CategoryNode, ProductDetail, ProductFundStatusValue, ProductListItem, ProductStatus } from '@/types/product'
-import { getDefaultDividendFund, getDefaultPromotionFund } from '@/utils/productPricing'
+import { getDefaultDividendFund, getDefaultPromotionFund, isDefaultFundAmount } from '@/utils/productPricing'
 import { Delete, Edit, View } from '@element-plus/icons-vue'
 
 const store = useProductStore()
@@ -70,9 +70,9 @@ function flattenCategories(nodes: CategoryNode[], parent = ''): Array<{ id: stri
 function fillForm(detail?: ProductDetail): void {
   const status = normalizeBinary(detail?.status ?? 1)
   Object.assign(form, detail ? { id: detail.id, name: detail.name, categoryId: detail.categoryId, mainImage: detail.mainImage, images: [...(detail.images || [])], videoUrl: detail.videoUrl || '', description: detail.description || '', descriptionTitle: detail.descriptionTitle || '', originPlace: detail.originPlace || '', detailImages: [...(detail.detailImages || [])], promotionFund: detail.promotionFund ?? 0, promotionEnabled: normalizeBinary(detail.promotionEnabled), dividendFund: detail.dividendFund ?? 0, dividendEnabled: normalizeBinary(detail.dividendEnabled), status, isRecommended: status === 1 ? normalizeBinary(detail.isRecommended) : 0, recommendTextEnabled: status === 1 && normalizeBinary(detail.isRecommended) === 1 ? normalizeBinary(detail.recommendTextEnabled) : 0, sortOrder: detail.sortOrder || 0, skuList: (detail.skuList || []).map((sku) => ({ ...sku, id: sku.id == null ? undefined : String(sku.id), enabled: normalizeBinary(sku.enabled) })) } : createEmptyForm())
-  // 新增商品默认使用比例计算；编辑商品默认手动模式，保留已有金额
-  promotionUseDefault.value = !detail
-  dividendUseDefault.value = !detail
+  // 新增商品默认使用比例；编辑商品根据已保存金额恢复模式（后端暂无独立模式字段）。
+  promotionUseDefault.value = detail ? isDefaultFundAmount(detail.promotionFund, detail.minPrice, getDefaultPromotionFund) : true
+  dividendUseDefault.value = detail ? isDefaultFundAmount(detail.dividendFund, detail.minPrice, getDefaultDividendFund) : true
   if (!detail) {
     form.promotionFund = getDefaultPromotionFundForSku()
     form.dividendFund = getDefaultDividendFundForSku()

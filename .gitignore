@@ -54,6 +54,8 @@ temp/
 .tmp-*/
 # 设计稿提取的临时数据目录
 data/
+# 契约测试脚本（本地验证用，不随代码提交）
+*.contract.ps1
 
 # Editor and operating system files
 .vscode/

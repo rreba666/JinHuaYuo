@@ -1,124 +1,181 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { onMounted, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Refresh, CircleCheck, CircleClose } from '@element-plus/icons-vue'
+import DataTable from '@/components/DataTable.vue'
+import { useAddressAuditStore } from '@/stores/address-audit'
+import type { AddressAuditStatus, OrderAddressChangeRequest } from '@/types/address-audit'
 
-interface AddressAuditRecord {
-  id: string
-  orderNo: string
-  buyerName: string
-  buyerPhone: string
-  originalAddress: string
-  newAddress: string
-  orderStatus: string
-  auditStatus: string
-  remark: string
+const store = useAddressAuditStore()
+
+const statusOptions: Array<{ label: string; value: AddressAuditStatus | '' }> = [
+  { label: '全部', value: '' },
+  { label: '待审核', value: 0 },
+  { label: '已通过', value: 1 },
+  { label: '已拒绝', value: 2 },
+]
+
+const reasonVisible = ref(false)
+const rejectReason = ref('')
+const rejectTarget = ref<OrderAddressChangeRequest | null>(null)
+
+function statusLabel(status: AddressAuditStatus): string {
+  return statusOptions.find((option) => option.value === status)?.label || '未知状态'
 }
 
-const filters = reactive({
-  buyerKeyword: '',
-  orderNo: '',
-  auditStatus: '',
-  orderStatus: '',
-})
-const dateRange = ref<[string, string] | null>(null)
-const rows = ref<AddressAuditRecord[]>([])
+function statusType(status: AddressAuditStatus): 'warning' | 'success' | 'danger' {
+  if (status === 1) return 'success'
+  if (status === 2) return 'danger'
+  return 'warning'
+}
 
-const auditStatusOptions = [
-  { label: '待审核', value: 'pending' },
-  { label: '审核通过', value: 'approved' },
-  { label: '审核驳回', value: 'rejected' },
-]
-const orderStatusOptions = [
-  { label: '待支付', value: '0' },
-  { label: '已支付', value: '1' },
-  { label: '已发货', value: '2' },
-  { label: '已收货', value: '3' },
-  { label: '已完成', value: '4' },
-  { label: '已关闭', value: '5' },
-]
+/** 加载当前筛选条件下的地址申请列表。 */
+async function load(): Promise<void> {
+  try {
+    await store.fetchList()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '地址审核列表加载失败')
+  }
+}
 
-/** 保留筛选交互，等待后端审核列表接口接入真实查询。 */
+/** 提交筛选条件并回到第一页。 */
 function search(): void {
-  ElMessage.info('地址变更审核接口待接入')
+  store.page = 1
+  void load()
 }
 
-/** 清空地址审核页面的本地筛选条件。 */
+/** 清空筛选条件并重新加载。 */
 function reset(): void {
-  Object.assign(filters, { buyerKeyword: '', orderNo: '', auditStatus: '', orderStatus: '' })
-  dateRange.value = null
+  store.resetFilters()
+  void load()
 }
 
-/** 提示审核操作需要后端提供审核接口。 */
-function notifyAuditAction(): void {
-  ElMessage.info('地址变更审核操作接口待接入')
+/** 切换审核状态筛选。 */
+function handleStatusChange(value: AddressAuditStatus | ''): void {
+  store.filters.status = value
+  store.page = 1
+  void load()
 }
+
+function pageChange(value: number): void {
+  store.page = value
+  void load()
+}
+
+function sizeChange(value: number): void {
+  store.pageSize = value
+  store.page = 1
+  void load()
+}
+
+/** 审核通过前确认，后端会同步更新订单收货地址快照。 */
+async function approve(row: OrderAddressChangeRequest): Promise<void> {
+  try {
+    await ElMessageBox.confirm(
+      `确认通过订单「${row.orderNo}」的地址修改申请吗？通过后订单将使用新收货地址。`,
+      '审核通过确认',
+      { type: 'warning', confirmButtonText: '确认通过', cancelButtonText: '取消' },
+    )
+    await store.approve(row.id)
+    ElMessage.success('地址修改申请已通过')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '地址审核通过失败')
+  }
+}
+
+/** 打开驳回原因输入框。 */
+function openReject(row: OrderAddressChangeRequest): void {
+  rejectTarget.value = row
+  rejectReason.value = ''
+  reasonVisible.value = true
+}
+
+/** 提交驳回原因并刷新申请列表。 */
+async function submitReject(): Promise<void> {
+  if (!rejectTarget.value) return
+  try {
+    await store.reject(rejectTarget.value.id, rejectReason.value.trim())
+    reasonVisible.value = false
+    ElMessage.success('地址修改申请已拒绝')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '地址审核驳回失败')
+  }
+}
+
+onMounted(() => { void load() })
 </script>
 
 <template>
-  <section class="page-container">
+  <section class="page-container page-enter">
     <div class="page-heading">
-      <div><h1>地址变更审核</h1><p>审核订单配送地址变更申请，避免履约地址被误修改。</p></div>
+      <div><h1>地址变更审核</h1><p>审核用户提交的订单收货地址修改申请，通过后才会更新订单地址。</p></div>
+      <el-button :loading="store.loading" @click="load"><el-icon><Refresh /></el-icon>刷新</el-button>
     </div>
 
     <el-card shadow="never" class="filter-card">
       <el-form inline class="audit-filter-form" @submit.prevent="search">
-        <el-form-item label="买家信息">
-          <el-input v-model="filters.buyerKeyword" placeholder="请输入用户 ID 或手机号" clearable />
+        <el-form-item label="审核状态">
+          <el-radio-group :model-value="store.filters.status" @change="handleStatusChange">
+            <el-radio-button v-for="option in statusOptions" :key="String(option.value)" :value="option.value">{{ option.label }}</el-radio-button>
+          </el-radio-group>
         </el-form-item>
         <el-form-item label="订单号">
-          <el-input v-model="filters.orderNo" placeholder="请输入订单号" clearable />
-        </el-form-item>
-        <el-form-item label="审核状态">
-          <el-select v-model="filters.auditStatus" placeholder="全部" clearable>
-            <el-option v-for="option in auditStatusOptions" :key="option.value" v-bind="option" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="订单状态">
-          <el-select v-model="filters.orderStatus" placeholder="全部" clearable>
-            <el-option v-for="option in orderStatusOptions" :key="option.value" v-bind="option" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="申请时间">
-          <el-date-picker v-model="dateRange" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" />
+          <el-input v-model="store.filters.orderNo" placeholder="请输入订单号" clearable @keyup.enter="search" />
         </el-form-item>
         <el-form-item class="audit-filter-actions"><el-button type="primary" @click="search">搜索</el-button><el-button @click="reset">重置</el-button></el-form-item>
       </el-form>
     </el-card>
 
     <el-card shadow="never" class="content-card">
-      <div class="toolbar">
-        <div><strong>地址变更申请</strong><span class="toolbar-count">接口待接入</span></div>
-        <el-button type="primary" plain disabled @click="notifyAuditAction">批量审核</el-button>
-      </div>
-      <el-alert class="audit-state" title="地址变更审核接口尚未在 API 文档中提供" description="页面结构已预留，接入审核列表、审核通过/驳回和备注接口后即可加载真实申请。" type="info" show-icon :closable="false" />
-      <el-table :data="rows" border class="address-audit-table">
-        <el-table-column label="买家信息" min-width="180">
-          <template #default="{ row }"><div>{{ row.buyerName }}</div><small>{{ row.buyerPhone }}</small></template>
+      <div class="toolbar"><div><strong>地址变更申请</strong><span class="toolbar-count">共 {{ store.total }} 条</span></div></div>
+      <DataTable :data="store.list" :loading="store.loading" :total="store.total" :page="store.page" :page-size="store.pageSize" empty-text="暂无地址变更申请" @page-change="pageChange" @size-change="sizeChange">
+        <el-table-column prop="orderNo" label="订单号" min-width="190" />
+        <el-table-column label="用户 ID" width="120"><template #default="{ row }">{{ row.userId || '--' }}</template></el-table-column>
+        <el-table-column label="地址变更" min-width="420">
+          <template #default="{ row }">
+            <div class="address-block"><span class="address-label">原地址</span><span>{{ row.oldReceiverName }} {{ row.oldReceiverPhone }} {{ row.oldReceiverAddress }}</span></div>
+            <div class="address-block new-address"><span class="address-label">新地址</span><span>{{ row.newReceiverName }} {{ row.newReceiverPhone }} {{ row.newReceiverAddress }}</span></div>
+          </template>
         </el-table-column>
-        <el-table-column label="地址" min-width="360">
-          <template #default="{ row }"><div>原地址：{{ row.originalAddress }}</div><div>新地址：{{ row.newAddress }}</div></template>
+        <el-table-column prop="reason" label="申请原因" min-width="160" show-overflow-tooltip />
+        <el-table-column label="审核状态" width="110"><template #default="{ row }"><el-tag :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></template></el-table-column>
+        <el-table-column label="申请时间" min-width="170"><template #default="{ row }">{{ row.createTime || '--' }}</template></el-table-column>
+        <el-table-column label="审核信息" min-width="170"><template #default="{ row }"><div>{{ row.reviewedBy || '--' }}</div><div v-if="row.reviewedAt" class="cell-sub">{{ row.reviewedAt }}</div><div v-if="row.rejectReason" class="reject-copy">{{ row.rejectReason }}</div></template></el-table-column>
+        <el-table-column label="操作" width="170" fixed="right">
+          <template #default="{ row }">
+            <div v-if="row.status === 0" class="operator-actions">
+              <el-button size="small" type="success" :loading="store.actionLoading" @click="approve(row)"><el-icon><CircleCheck /></el-icon>通过</el-button>
+              <el-button size="small" type="danger" :loading="store.actionLoading" @click="openReject(row)"><el-icon><CircleClose /></el-icon>驳回</el-button>
+            </div>
+            <span v-else class="cell-muted">—</span>
+          </template>
         </el-table-column>
-        <el-table-column prop="orderStatus" label="订单状态" width="120" />
-        <el-table-column prop="auditStatus" label="审核状态" width="120" />
-        <el-table-column prop="remark" label="备注" min-width="180" />
-        <el-table-column label="操作" width="180"><template #default="{ row }"><el-button link type="primary" @click="notifyAuditAction">审核</el-button><el-button link @click="notifyAuditAction">备注</el-button></template></el-table-column>
-        <template #empty><el-empty description="暂无地址变更申请" /></template>
-      </el-table>
+      </DataTable>
     </el-card>
+
+    <el-dialog v-model="reasonVisible" title="驳回地址修改申请" width="460px" append-to-body>
+      <p class="dialog-tip">订单：{{ rejectTarget?.orderNo || '--' }}</p>
+      <el-input v-model="rejectReason" type="textarea" :rows="4" maxlength="255" show-word-limit placeholder="请输入驳回原因（可为空）" />
+      <template #footer><el-button @click="reasonVisible = false">取消</el-button><el-button type="primary" :loading="store.actionLoading" @click="submitReject">确认驳回</el-button></template>
+    </el-dialog>
   </section>
 </template>
 
 <style scoped>
-.audit-filter-form { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 0 12px; }
+.audit-filter-form { display: flex; align-items: center; flex-wrap: wrap; gap: 0 16px; }
 .audit-filter-form .el-form-item { margin-bottom: 0; }
-.audit-filter-form .el-input { width: 210px; }
-.audit-filter-form .el-select { width: 150px; min-width: 150px; }
-.audit-filter-form .el-date-editor { width: 260px; }
+.audit-filter-form .el-input { width: 240px; }
 .audit-filter-actions { margin-left: auto; }
-.audit-state { margin-bottom: 16px; }
-.address-audit-table :deep(.el-table__empty-block) { min-height: 220px; }
-.address-audit-table small { color: var(--vben-muted); }
-.address-audit-table :deep(.cell) { white-space: normal; line-height: 1.7; }
+.address-block { display: flex; gap: 8px; line-height: 1.6; }
+.new-address { margin-top: 6px; }
+.address-label { flex: 0 0 42px; color: #909399; }
+.cell-sub { margin-top: 2px; color: #909399; font-size: 12px; }
+.reject-copy { margin-top: 4px; color: #f56c6c; font-size: 12px; line-height: 1.5; }
+.cell-muted { color: #c0c4cc; }
+.dialog-tip { margin: 0 0 12px; color: #606266; }
+.operator-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.operator-actions :deep(.el-button) { margin-left: 0; padding: 5px 8px; }
+.operator-actions :deep(.el-icon) { margin-right: 4px; }
 
 @media (max-width: 1200px) {
   .audit-filter-actions { margin-left: 0; }

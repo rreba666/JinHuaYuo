@@ -23,9 +23,13 @@ export interface WalletInfo {
 
 export type WithdrawType = 'PROMOTION' | 'BONUS' | 'BALANCE'
 
+/** 提现收款方式，当前后端仅支持银行卡人工打款。 */
+export type WithdrawMethod = 'BANK_CARD'
+
 export interface WithdrawDTO {
   amount: number
   type: WithdrawType
+  withdrawMethod?: WithdrawMethod
 }
 
 export interface BalanceTransferDTO {
@@ -43,6 +47,7 @@ export interface UserSearchVO {
 export interface WithdrawRecord {
   withdrawNo: string
   type: WithdrawType
+  withdrawMethod: WithdrawMethod
   typeDesc: string
   amount: number
   status: string
@@ -97,8 +102,9 @@ export function updateUserProfile(data: Partial<UserProfile>): Promise<UserProfi
 }
 
 /** 提交指定类型的钱包提现申请，后端要求金额最低 1。 */
-export function withdrawWallet(amount: number, type: WithdrawType = 'BALANCE'): Promise<void> {
-  return request<void>({ url: '/api/wallet/withdraw', method: 'POST', data: { amount, type } as WithdrawDTO })
+export function withdrawWallet(amount: number, type: WithdrawType = 'BALANCE', withdrawMethod?: WithdrawMethod): Promise<void> {
+  const data = { amount, type, ...(withdrawMethod ? { withdrawMethod } : {}) }
+  return request<void>({ url: '/api/wallet/withdraw', method: 'POST', data: data as WithdrawDTO })
 }
 
 /** 分页查询当前用户的提现记录。 */

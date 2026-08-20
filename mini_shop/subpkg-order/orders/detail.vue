@@ -5,8 +5,8 @@ import { cancelOrder, getOrderDetail, getPickupCode, receiveOrder, refundOrder, 
 import { getEnabledShops, type EnabledShop } from '@/api/shop'
 import { getAfterSaleList } from '@/api/after-sale'
 import { isApiRequestError } from '@/utils/request'
-// @ts-ignore uqrcode 为 UMD 单文件库（utils/uqrcode.js），无官方类型声明
-import UQRCode from '@/utils/uqrcode'
+// @ts-ignore uqrcode 为 UMD 单文件库（随分包 subpkg-order 打包，避免主包出现未使用的 JS 文件）
+import UQRCode from '@/subpkg-order/utils/uqrcode'
 
 const order = ref<OrderDetail | null>(null)
 const loading = ref(true)

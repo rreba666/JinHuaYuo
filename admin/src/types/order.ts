@@ -81,6 +81,7 @@ export interface OrderAddressUpdateDTO {
 
 export interface OrderShipDTO {
   expressCompany: string
+  expressCompanyCode: string
   expressNo: string
 }
 

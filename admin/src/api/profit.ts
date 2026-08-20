@@ -1,5 +1,5 @@
 import { request } from './request'
-import type { ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, ProfitResponse, PromotionBinding, PromotionBindingPage, PromotionBindingQuery, PromotionPage, PendingPromotionRecord, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit } from '@/types/profit'
+import type { BonusInjectDTO, DividendRecordTestItem, DividendRecordTestResult, DividendSlotTestItem, DividendSlotTestResult, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, ProfitResponse, PromotionBinding, PromotionBindingPage, PromotionBindingQuery, PromotionPage, PendingPromotionRecord, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
 
 function unwrap<T>(response: { data: ProfitResponse<T> }, fallback: string): T {
   const result = response.data
@@ -45,6 +45,72 @@ function normalizeLimit(value: unknown): UserDividendLimit {
   return { ...row, id: String(row.id ?? ''), userId: String(row.userId ?? ''), availablePurchase: Number(row.availablePurchase ?? 0), totalPurchases: Number(row.totalPurchases ?? 0), createTime: String(row.createTime ?? ''), updateTime: String(row.updateTime ?? '') }
 }
 
+function normalizeWalletTest(value: unknown): WalletTestResult {
+  const row = (value || {}) as Partial<WalletTestResult>
+  return {
+    balance: Number(row.balance ?? 0),
+    pendingPromotion: Number(row.pendingPromotion ?? 0),
+    pendingBonus: Number(row.pendingBonus ?? 0),
+    totalIncome: Number(row.totalIncome ?? 0),
+  }
+}
+
+function normalizeSlotTest(value: unknown): DividendSlotTestResult {
+  const row = (value || {}) as Partial<DividendSlotTestResult>
+  const slots = Array.isArray(row.slots) ? row.slots : []
+  return {
+    availablePurchase: Number(row.availablePurchase ?? 0),
+    totalPurchases: Number(row.totalPurchases ?? 0),
+    slots: slots.map((item) => {
+      const slot = (item || {}) as Partial<DividendSlotTestItem>
+      return {
+        id: String(slot.id ?? ''),
+        productName: String(slot.productName ?? ''),
+        productPrice: Number(slot.productPrice ?? 0),
+        capAmount: Number(slot.capAmount ?? 0),
+        totalReceived: Number(slot.totalReceived ?? 0),
+        locked: Number(slot.locked ?? 0),
+        lockedAt: String(slot.lockedAt ?? ''),
+        createTime: String(slot.createTime ?? ''),
+      }
+    }),
+  }
+}
+
+function normalizeRecordTest(value: unknown): DividendRecordTestResult {
+  const row = (value || {}) as Partial<DividendRecordTestResult>
+  const list = Array.isArray(row.list) ? row.list : []
+  return {
+    total: Number(row.total ?? list.length) || 0,
+    page: Number(row.page ?? 1) || 1,
+    pageSize: Number(row.pageSize ?? 20) || 20,
+    list: list.map((item) => {
+      const record = (item || {}) as Partial<DividendRecordTestItem>
+      return {
+        id: String(record.id ?? ''),
+        productName: String(record.productName ?? ''),
+        amount: Number(record.amount ?? 0),
+        createTime: String(record.createTime ?? ''),
+      }
+    }),
+  }
+}
+
+function getUserTestToken(token: string): string {
+  const normalized = token.trim()
+  if (!normalized) throw new Error('请输入 C 端用户 Token')
+  return normalized
+}
+
+async function getUserTestData<T>(token: string, url: string, params?: Record<string, string | number>): Promise<T> {
+  const response = await request.get<ProfitResponse<T>>(url, {
+    params,
+    headers: { Authorization: `Bearer ${getUserTestToken(token)}` },
+    skipAuthRedirect: true,
+  })
+  return unwrap(response, 'C 端结果查询失败')
+}
+
 const relationDetailPath = '/api/admin/profit/relations/{buyerUserId}'
 function getRelationDetailPath(buyerUserId: string): string { return relationDetailPath.replace('{buyerUserId}', buyerUserId) }
 
@@ -84,8 +150,26 @@ export async function getDividendLimits(): Promise<UserDividendLimit[]> {
   return Array.isArray(data) ? data.map(normalizeLimit) : []
 }
 
+export async function injectBonusPool(payload: BonusInjectDTO): Promise<void> {
+  const amount = Number(payload.amount)
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('注入金额必须大于 0')
+  unwrap(await request.post<ProfitResponse<null>>('/api/admin/profit/inject', { ...payload, amount }), '奖池注入失败')
+}
+
 export async function settleProfit(startDate: string, endDate: string): Promise<void> { unwrap(await request.post<ProfitResponse<null>>('/api/admin/profit/settle', null, { params: { startDate, endDate } }), '奖池结算失败') }
 export async function confirmPool(poolId: string): Promise<void> { unwrap(await request.post<ProfitResponse<null>>(`/api/admin/profit/pool/${poolId}/confirm`), '奖池确认失败') }
 export async function adjustPool(poolId: string, payload: ProfitAdjustPoolDTO): Promise<void> { unwrap(await request.put<ProfitResponse<null>>(`/api/admin/profit/pool/${poolId}/adjust`, payload), '奖池调整失败') }
 export async function adjustDaily(detailId: string, payload: ProfitAdjustDailyDTO): Promise<void> { unwrap(await request.put<ProfitResponse<null>>(`/api/admin/profit/daily/${detailId}/adjust`, payload), '每日奖池调整失败') }
 export async function resetDividendLimit(userId: string): Promise<void> { unwrap(await request.put<ProfitResponse<null>>(`/api/admin/profit/limit/${userId}/reset`), '分红额度重置失败') }
+
+export async function getWalletTestResult(token: string): Promise<WalletTestResult> {
+  return normalizeWalletTest(await getUserTestData<unknown>(token, '/api/wallet/info'))
+}
+
+export async function getDividendSlotTestResult(token: string): Promise<DividendSlotTestResult> {
+  return normalizeSlotTest(await getUserTestData<unknown>(token, '/api/wallet/dividend-slots'))
+}
+
+export async function getDividendRecordTestResult(token: string): Promise<DividendRecordTestResult> {
+  return normalizeRecordTest(await getUserTestData<unknown>(token, '/api/wallet/dividend-records', { page: 1, pageSize: 20 }))
+}

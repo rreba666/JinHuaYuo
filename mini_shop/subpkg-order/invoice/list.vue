@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { getInvoiceDetail, getInvoiceList, type InvoiceRequest } from '@/api/invoice'
+
+const menuTop = ref(0)
+const menuHeight = ref(32)
+const navStyle = computed(() => ({ top: `${menuTop.value}px`, height: `${menuHeight.value}px` }))
+const listStyle = computed(() => ({ paddingTop: `${menuTop.value + menuHeight.value + uni.upx2px(20)}px` }))
 
 const list = ref<InvoiceRequest[]>([])
 const page = ref(1)
@@ -40,12 +45,22 @@ async function showDetail(item: InvoiceRequest): Promise<void> {
 
 onLoad(() => { void load(true) })
 onShow(() => { if (loaded.value) void load(true) })
+
+onMounted(() => {
+  try {
+    const rect = uni.getMenuButtonBoundingClientRect()
+    if (rect) {
+      menuTop.value = rect.top
+      menuHeight.value = rect.height
+    }
+  } catch { /* 非微信环境没有胶囊按钮 */ }
+})
 </script>
 
 <template>
   <view class="page">
-    <view class="nav"><view class="back" @click="uni.navigateBack()">‹</view><text class="title">发票记录</text></view>
-    <scroll-view class="list" scroll-y @scrolltolower="load(false)">
+    <view class="nav" :style="navStyle"><image class="back" src="/static/left_arrow.png" mode="aspectFit" @click="uni.navigateBack()" /><text class="title">发票记录</text></view>
+    <scroll-view class="list" :style="listStyle" scroll-y @scrolltolower="load(false)">
       <view v-show="loading && !list.length" class="state">加载中...</view>
       <view v-for="item in list" :key="String(item.id)" class="invoice-card" @click="showDetail(item)">
         <view class="card-head"><text>{{ invoiceTitle(item) }}</text><text :class="['status', statusClass(item.status)]">{{ item.statusDesc }}</text></view>
@@ -73,11 +88,11 @@ onShow(() => { if (loaded.value) void load(true) })
 </template>
 
 <style>
-.page { min-height: 100vh; background: #f6f6f6; color: #222; }
-.nav { height: 96rpx; display: flex; align-items: center; justify-content: center; position: relative; background: #fff; }
-.back { position: absolute; left: 24rpx; top: 18rpx; font-size: 54rpx; line-height: 54rpx; }
+.page { position: relative; height: 100vh; overflow: hidden; background: #f6f6f6; color: #222; }
+.nav { position: fixed; right: 0; left: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: #fff; }
+.back { position: absolute; left: 32rpx; width: 40rpx; height: 40rpx; }
 .title { font-size: 32rpx; font-weight: 700; }
-.list { height: calc(100vh - 96rpx); padding: 20rpx 24rpx; box-sizing: border-box; }
+.list { position: absolute; inset: 0; width: 100%; height: 100%; padding: 20rpx 24rpx; box-sizing: border-box; }
 .invoice-card { margin-bottom: 18rpx; padding: 24rpx; background: #fff; border-radius: 8rpx; }
 .card-head, .card-row, .detail-row { display: flex; justify-content: space-between; gap: 24rpx; }
 .card-head { font-size: 28rpx; font-weight: 600; }

@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { onLoad, onShareAppMessage } from '@dcloudio/uni-app'
-import { addToCart } from '@/api/cart'
+import { addSkuToCartWithStock } from '@/api/cart'
 import { favoriteProduct, unfavoriteProduct } from '@/api/favorite'
 import { getUserProfile, type UserProfile } from '@/api/user'
 import { getProductDetail, type ProductDetail } from '@/api/product'
 import { getAuth, isRegisteredUser } from '@/utils/auth'
 import { bindStoredPromotionIfLoggedIn, buildPromotionSharePath, capturePromotionContext } from '@/utils/promotion'
 import { getPromotionCode } from '@/api/promotion'
+import { isApiRequestError } from '@/utils/request'
+import { PURCHASE_LIMIT_ERROR_CODE, PURCHASE_LIMIT_MESSAGE } from '@/utils/dividend-limit'
 import PromotionCodePoster from '@/components/PromotionCodePoster.vue'
 
 const menuTop = ref(0)
@@ -127,13 +129,31 @@ async function toggleFavorite(): Promise<void> {
 /** 将当前商品默认 SKU 加入购物车。 */
 async function addProductToCart(): Promise<void> {
   if (!product.value || actionLoading.value) return
+  const sku = selectedSku.value
+  if (!sku) {
+    uni.showToast({ title: '商品库存不足', icon: 'none' })
+    return
+  }
   actionLoading.value = true
   try {
-    const skuId = selectedSku.value?.id
-    await addToCart({ productId: Number(product.value.id), ...(skuId ? { skuId: Number(skuId) } : {}), quantity: 1 })
+    await addSkuToCartWithStock({
+      productId: Number(product.value.id),
+      skuId: Number(sku.id),
+      stock: Number(sku.stock),
+      quantity: 1,
+      dividendEnabled: product.value.dividendEnabled,
+      price: Number(sku.price),
+    })
     uni.showToast({ title: '已加入购物车', icon: 'success' })
   } catch (error) {
-    uni.showToast({ title: error instanceof Error ? error.message : '加入购物车失败', icon: 'none' })
+    uni.showToast({
+      title: isApiRequestError(error) && error.code === 3001
+        ? '库存不足'
+        : isApiRequestError(error) && error.code === PURCHASE_LIMIT_ERROR_CODE
+          ? PURCHASE_LIMIT_MESSAGE
+          : (error instanceof Error ? error.message : '加入购物车失败'),
+      icon: 'none',
+    })
   } finally {
     actionLoading.value = false
   }
@@ -143,7 +163,8 @@ async function addProductToCart(): Promise<void> {
 async function buyNow(): Promise<void> {
   if (!product.value || actionLoading.value) return
   const skuId = selectedSku.value?.id
-  if (!skuId) {
+  const stock = Number(selectedSku.value?.stock ?? 0)
+  if (!skuId || !Number.isFinite(stock) || stock <= 0) {
     uni.showToast({ title: '暂无可购买规格', icon: 'none' })
     return
   }
@@ -226,7 +247,6 @@ onMounted(() => {
             <text class="promotion-label">分享本商品成功可得</text>
             <text class="promotion-value">{{ promotionFundText }}</text>
             <text class="promotion-label">推广金</text>
-            <image class="promotion-arrow" src="/static/ProductDetails/右备份_slices/右备份.png" mode="aspectFit" />
           </view>
 
           <view class="tag-row">
@@ -253,10 +273,10 @@ onMounted(() => {
       <view class="share-sheet" @click.stop>
         <view class="share-sheet-head"><text>分享商品</text></view>
         <view class="share-option" @click="openPromotionCode">
-          <view class="share-option-main"><text class="share-option-title">推广码</text><text class="share-option-desc">生成推广码，扫码进入自动绑定关系</text></view>
+          <view class="share-option-main"><text class="share-option-title">推广码</text></view>
         </view>
         <button class="share-option share-option-button" open-type="share" @click="closeShareSheet">
-          <view class="share-option-main"><text class="share-option-title">分享好友</text><text class="share-option-desc">分享给微信好友，点击进入自动绑定关系</text></view>
+          <view class="share-option-main"><text class="share-option-title">分享好友</text></view>
         </button>
       </view>
     </view>
@@ -284,7 +304,6 @@ onMounted(() => {
 .promotion-row { display: flex; align-items: center; min-height: 74rpx; margin-top: 24rpx; padding: 0 18rpx; background: #fff0e6; box-sizing: border-box; }
 .promotion-label { color: #444; font-size: 23rpx; white-space: nowrap; }
 .promotion-value { margin: 0 10rpx; color: #df1919; font-size: 34rpx; font-weight: 700; line-height: 1; }
-.promotion-arrow { width: 22rpx; height: 26rpx; margin-left: auto; flex-shrink: 0; }
 .tag-row { display: flex; align-items: center; gap: 32rpx; padding: 24rpx 0 28rpx; border-bottom: 1px solid #eee; }
 .tag { display: flex; align-items: center; color: #555; font-size: 23rpx; }
 .tag-icon { width: 36rpx; height: 36rpx; margin-right: 12rpx; flex-shrink: 0; }
@@ -308,7 +327,6 @@ onMounted(() => {
 .share-option-button::after { border: 0; }
 .share-option-main { display: flex; flex-direction: column; align-items: flex-start; }
 .share-option-title { color: #222; font-size: 28rpx; font-weight: 600; }
-.share-option-desc { margin-top: 8rpx; color: #999; font-size: 22rpx; }
 .sheet-head { position: relative; display: flex; align-items: center; justify-content: center; min-height: 54rpx; }
 .sheet-title { color: #222; font-size: 30rpx; font-weight: 700; }
 .sheet-close { position: absolute; right: 0; color: #888; font-size: 42rpx; font-weight: 300; line-height: 1; }

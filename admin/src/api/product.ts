@@ -49,9 +49,9 @@ function normalizeProductBinaryOrNull(value: unknown): ProductFundStatusValue {
   return normalizeProductBinary(value)
 }
 
-type ProductFundStatusPatch = Pick<ProductListItem, 'promotionEnabled' | 'dividendEnabled'>
+type ProductFundStatusPatch = Pick<ProductListItem, 'promotionFund' | 'promotionEnabled' | 'dividendFund' | 'dividendEnabled'>
 
-/** 缓存当前会话已经通过商品详情确认过的资金开关状态。 */
+/** 缓存当前会话已经通过商品详情确认过的资金状态。 */
 const fundStatusByProductId = new Map<string, ProductFundStatusPatch>()
 
 /** 将商品接口响应中的长整型和媒体字段统一为前端模型。 */
@@ -133,13 +133,13 @@ function normalizeProductList(result: ProductPageResult): ProductPageResult {
 }
 
 /**
- * 商品列表接口的旧响应不含两项资金开关，按需用详情接口补齐，避免把 undefined 显示成禁用。
- * 详情读取失败时保留 null，让界面显示待查询而不是伪造业务状态。
+ * 商品列表接口不含两项资金金额/开关时，按需用详情接口补齐，保证列表与编辑详情一致。
+ * 详情读取失败时保留 null/undefined，让界面显示待查询或占位而不是伪造业务数据。
  */
 async function hydrateProductFundStatuses(list: ProductListItem[]): Promise<ProductListItem[]> {
   const missingFundStatusIds = [...new Set(
     list
-      .filter((item) => item.promotionEnabled == null || item.dividendEnabled == null)
+      .filter((item) => item.promotionFund == null || item.dividendFund == null || item.promotionEnabled == null || item.dividendEnabled == null)
       .map((item) => item.id),
   )]
   const unresolvedIds = missingFundStatusIds.filter((id) => !fundStatusByProductId.has(id))
@@ -152,7 +152,9 @@ async function hydrateProductFundStatuses(list: ProductListItem[]): Promise<Prod
       try {
         const detail = await getAdminProductDetail(productId)
         fundStatusByProductId.set(productId, {
+          promotionFund: detail.promotionFund,
           promotionEnabled: detail.promotionEnabled,
+          dividendFund: detail.dividendFund,
           dividendEnabled: detail.dividendEnabled,
         })
       } catch {

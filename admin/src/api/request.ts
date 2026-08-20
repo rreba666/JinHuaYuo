@@ -28,7 +28,7 @@ export const request = axios.create({
 // 请求拦截器统一注入管理员 Token。
 request.interceptors.request.use((config) => {
   const token = localStorage.getItem('admin_token')
-  if (token) config.headers.Authorization = `Bearer ${token}`
+  if (token && !config.headers.Authorization) config.headers.Authorization = `Bearer ${token}`
   return config
 })
 

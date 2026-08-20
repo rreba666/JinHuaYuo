@@ -23,15 +23,15 @@ const shipFormRef = ref<FormInstance>()
 const batchShipFormRef = ref<FormInstance>()
 const verifyFormRef = ref<FormInstance>()
 const addressFormRef = ref<FormInstance>()
-const shipForm = reactive({ expressCompany: '', expressNo: '' })
-const batchShipForm = reactive({ expressCompany: '', expressNo: '' })
+const shipForm = reactive({ expressCompany: '', expressCompanyCode: '', expressNo: '' })
+const batchShipForm = reactive({ expressCompany: '', expressCompanyCode: '', expressNo: '' })
 const verifyForm = reactive({ orderId: '', orderNo: '', code: '' })
 const addressForm = reactive<OrderAddressUpdateDTO>({ receiverName: '', receiverPhone: '', receiverAddress: '' })
 const refundForm = reactive({ orderId: '', orderNo: '', reason: '' })
 const dateRange = ref<[string, string] | null>(null)
 const orderNoInput = ref('')
 const shipRules: FormRules = {
-  expressCompany: [{ required: true, message: '请输入快递公司', trigger: 'blur' }],
+  expressCompanyCode: [{ required: true, message: '请选择快递公司', trigger: 'change' }],
   expressNo: [{ required: true, message: '请输入快递单号', trigger: 'blur' }],
 }
 const verifyRules: FormRules = {
@@ -53,6 +53,24 @@ const statusOptions: Array<{ label: string; value: OrderStatus }> = [
   { label: '退款中', value: 6 },
   { label: '已退款', value: 7 },
   { label: '已核销', value: 8 },
+]
+const expressCompanyOptions = [
+  { label: '顺丰速运', value: 'shunfeng' },
+  { label: '圆通速递', value: 'yuantong' },
+  { label: '中通快递', value: 'zhongtong' },
+  { label: '申通快递', value: 'shentong' },
+  { label: '韵达快递', value: 'yunda' },
+  { label: '京东物流', value: 'jd' },
+  { label: 'EMS', value: 'ems' },
+  { label: '邮政快递包裹（国内）', value: 'youzhengguonei' },
+  { label: '邮政国际包裹', value: 'youzhengguoji' },
+  { label: '百世快递', value: 'huitongkuaidi' },
+  { label: '极兔速递', value: 'jtexpress' },
+  { label: '德邦物流', value: 'debangkuaidi' },
+  { label: '天天快递', value: 'tiantian' },
+  { label: '宅急送', value: 'zhaijisong' },
+  { label: '中通快运', value: 'zhongtongkuaiyun' },
+  { label: '韵达快运', value: 'yundakuaiyun' },
 ]
 const hasSelection = computed(() => selected.value.length > 0)
 const isPickupOrder = computed(() => route.path === '/orders/pickup')
@@ -77,6 +95,12 @@ function isRefundable(order: Order): boolean {
 /** 仅已发货及后续物流订单允许查询轨迹，拦截状态异常但残留单号的数据。 */
 function isTraceable(order: { pickupType: Order['pickupType']; status: OrderStatus; expressNo?: string }): boolean {
   return order.pickupType === 0 && order.status >= 2 && Boolean(order.expressNo?.trim())
+}
+
+/** 下拉框只提交后端需要的编码，同时把对应名称写入发货 DTO。 */
+function syncExpressCompany(form: { expressCompany: string; expressCompanyCode: string }, code: string): void {
+  form.expressCompanyCode = code
+  form.expressCompany = expressCompanyOptions.find((option) => option.value === code)?.label || ''
 }
 
 /** 切换订单状态页签，并只提交当前接口支持的状态参数。 */
@@ -177,6 +201,7 @@ async function openTrace(): Promise<void> {
 
 async function openShip(order: Order): Promise<void> {
   shipForm.expressCompany = ''
+  shipForm.expressCompanyCode = ''
   shipForm.expressNo = ''
   shipVisible.value = true
   try {
@@ -201,6 +226,7 @@ async function submitShip(): Promise<void> {
 function openBatchShip(): void {
   if (!eligibleSelected.value.length) return
   batchShipForm.expressCompany = ''
+  batchShipForm.expressCompanyCode = ''
   batchShipForm.expressNo = ''
   if (eligibleSelected.value.length !== selected.value.length) {
     ElMessage.info(`已跳过 ${selected.value.length - eligibleSelected.value.length} 个不可发货订单`)
@@ -397,20 +423,20 @@ onMounted(() => { void loadList() })
 
     <el-dialog v-model="addressVisible" title="修改收货地址" width="560px" append-to-body>
       <el-form ref="addressFormRef" :model="addressForm" :rules="addressRules" label-width="90px">
-        <el-form-item label="收货人" prop="receiverName"><el-input v-model="addressForm.receiverName" /></el-form-item>
+        <el-form-item label="收货人" prop="receiverName"><el-input v-model="addressForm.receiverName" maxlength="30" show-word-limit /></el-form-item>
         <el-form-item label="手机号" prop="receiverPhone"><el-input v-model="addressForm.receiverPhone" maxlength="11" /></el-form-item>
-        <el-form-item label="收货地址" prop="receiverAddress"><el-input v-model="addressForm.receiverAddress" type="textarea" :rows="3" /></el-form-item>
+        <el-form-item label="收货地址" prop="receiverAddress"><el-input v-model="addressForm.receiverAddress" type="textarea" :rows="3" maxlength="200" show-word-limit /></el-form-item>
       </el-form>
       <template #footer><el-button @click="addressVisible = false">取消</el-button><el-button type="primary" @click="submitAddress">确认修改</el-button></template>
     </el-dialog>
 
     <el-dialog v-model="shipVisible" title="订单发货" width="520px" append-to-body>
-      <el-form ref="shipFormRef" :model="shipForm" :rules="shipRules" label-width="90px"><el-form-item label="快递公司" prop="expressCompany"><el-input v-model="shipForm.expressCompany" placeholder="例如：顺丰速运" /></el-form-item><el-form-item label="快递单号" prop="expressNo"><el-input v-model="shipForm.expressNo" placeholder="请输入快递单号" /></el-form-item></el-form>
+      <el-form ref="shipFormRef" :model="shipForm" :rules="shipRules" label-width="90px"><el-form-item label="快递公司" prop="expressCompanyCode"><el-select v-model="shipForm.expressCompanyCode" placeholder="请选择快递公司" style="width: 100%" @change="syncExpressCompany(shipForm, $event)"><el-option v-for="option in expressCompanyOptions" :key="option.value" :label="option.label" :value="option.value" /></el-select></el-form-item><el-form-item label="快递单号" prop="expressNo"><el-input v-model="shipForm.expressNo" placeholder="请输入快递单号" /></el-form-item></el-form>
       <template #footer><el-button @click="shipVisible = false">取消</el-button><el-button type="primary" :loading="store.shipping" @click="submitShip">确认发货</el-button></template>
     </el-dialog>
 
     <el-dialog v-model="batchShipVisible" title="批量发货" width="520px" append-to-body>
-      <el-form ref="batchShipFormRef" :model="batchShipForm" :rules="shipRules" label-width="90px"><el-form-item label="快递公司" prop="expressCompany"><el-input v-model="batchShipForm.expressCompany" placeholder="例如：顺丰速运" /></el-form-item><el-form-item label="快递单号" prop="expressNo"><el-input v-model="batchShipForm.expressNo" placeholder="请输入快递单号" /></el-form-item></el-form>
+      <el-form ref="batchShipFormRef" :model="batchShipForm" :rules="shipRules" label-width="90px"><el-form-item label="快递公司" prop="expressCompanyCode"><el-select v-model="batchShipForm.expressCompanyCode" placeholder="请选择快递公司" style="width: 100%" @change="syncExpressCompany(batchShipForm, $event)"><el-option v-for="option in expressCompanyOptions" :key="option.value" :label="option.label" :value="option.value" /></el-select></el-form-item><el-form-item label="快递单号" prop="expressNo"><el-input v-model="batchShipForm.expressNo" placeholder="请输入快递单号" /></el-form-item></el-form>
       <template #footer><el-button @click="batchShipVisible = false">取消</el-button><el-button type="primary" :loading="store.shipping" @click="submitBatchShip">确认批量发货</el-button></template>
     </el-dialog>
 

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
-import { adjustDaily, adjustPool, confirmPool, getBonusDetails, getBonusPools, getDividendLimits, getPendingPromotion, getPromotionRelations, getUnsettledDailyDetails, rebindPromotionRelation, resetDividendLimit, settleProfit, unbindPromotionRelation } from '@/api/profit'
-import type { ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, PromotionBinding, PromotionBindingSource, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit } from '@/types/profit'
+import { adjustDaily, adjustPool, confirmPool, getBonusDetails, getBonusPools, getDividendLimits, getPendingPromotion, getPromotionRelations, getUnsettledDailyDetails, injectBonusPool, rebindPromotionRelation, resetDividendLimit, settleProfit, unbindPromotionRelation } from '@/api/profit'
+import type { BonusInjectDTO, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, PromotionBinding, PromotionBindingSource, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit } from '@/types/profit'
 
 export const useProfitStore = defineStore('profit', () => {
   const pendingPromotion = ref<import('@/types/profit').PendingPromotionRecord[]>([])
@@ -56,10 +56,11 @@ export const useProfitStore = defineStore('profit', () => {
     } finally { relationActionLoading.value = false }
   }
   async function settle(startDate: string, endDate: string): Promise<void> { await runAction(() => settleProfit(startDate, endDate)) }
+  async function inject(payload: BonusInjectDTO): Promise<void> { await runAction(() => injectBonusPool(payload)) }
   async function confirm(poolId: string): Promise<void> { await runAction(() => confirmPool(poolId)) }
   async function adjust(poolId: string, payload: ProfitAdjustPoolDTO): Promise<void> { await runAction(() => adjustPool(poolId, payload)) }
   async function adjustDetail(detailId: string, payload: ProfitAdjustDailyDTO): Promise<void> { await runAction(() => adjustDaily(detailId, payload)) }
   async function resetLimit(userId: string): Promise<void> { await runAction(() => resetDividendLimit(userId)) }
 
-  return { pendingPromotion, pendingTotal, pendingPage, pendingSize, relations, relationTotal, relationPage, relationSize, relationLoading, relationActionLoading, relationFilters, sevenDayPools, poolDetails, unsettledDaily, dividendLimits, loading, actionLoading, fetchAll, fetchRelations, fetchPoolDetails, rebindRelation, unbindRelation, settle, confirm, adjust, adjustDetail, resetLimit }
+  return { pendingPromotion, pendingTotal, pendingPage, pendingSize, relations, relationTotal, relationPage, relationSize, relationLoading, relationActionLoading, relationFilters, sevenDayPools, poolDetails, unsettledDaily, dividendLimits, loading, actionLoading, fetchAll, fetchRelations, fetchPoolDetails, rebindRelation, unbindRelation, inject, settle, confirm, adjust, adjustDetail, resetLimit }
 })

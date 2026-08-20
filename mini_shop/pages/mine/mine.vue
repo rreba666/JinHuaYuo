@@ -6,6 +6,8 @@ import { getAuth, isLoggedIn, isRegisteredUser } from '@/utils/auth'
 import { getPromotionCode } from '@/api/promotion'
 import { getAnnouncementList, type Announcement } from '@/api/announcement'
 import { uploadFile } from '@/utils/request'
+import { loadFrozenPromotionAmount } from '@/utils/promotion-freeze'
+import { createThrottle } from '@/utils/interaction'
 import PromotionCodePoster from '@/components/PromotionCodePoster.vue'
 
 const menuTop = ref(0)
@@ -21,8 +23,15 @@ const avatarUploading = ref(false)
 const avatarTempPath = ref('')
 const profileForm = reactive({ nickname: '', avatarUrl: '' })
 const registeredUser = computed(() => isRegisteredUser(user.value?.identity))
+const promotionFrozenAmount = ref(0)
+const promotionDisplayAmount = computed(() => {
+  const withdrawable = Number(wallet.value?.pendingPromotion || 0)
+  return (Number.isFinite(withdrawable) ? withdrawable : 0) + promotionFrozenAmount.value
+})
 /** 启用中的公告列表（公开接口，个人页订单模块下方横向滚动展示）。 */
 const announcements = ref<Announcement[]>([])
+const announcementVisible = ref(false)
+const activeAnnouncement = ref<Announcement | null>(null)
 
 // 仅映射设计稿中已有的本地切图，缺失资源的条目由模板保留占位块。
 const orderEntries = [
@@ -45,7 +54,7 @@ const menuItems = [
 
 const incomeEntries = computed(() => [
   { label: '我的余额', value: wallet.value?.balance },
-  { label: '推广收益', value: wallet.value?.pendingPromotion },
+  { label: '推广收益', value: promotionDisplayAmount.value },
   { label: '平台红包', value: wallet.value?.pendingBonus },
 ])
 
@@ -55,13 +64,13 @@ const pendingBonus = computed(() => Number(wallet.value?.pendingBonus || 0))
 const lastSeenBonus = ref(Number(uni.getStorageSync('bonus_last_seen') || 0))
 /** 是否有未查看的新分红红包（红点显示条件）。 */
 const hasUnseenBonus = computed(() => pendingBonus.value > lastSeenBonus.value)
-/** 红包弹窗展示金额（纯数字积分，不含货币符号）。 */
-const redPacketAmount = computed(() => {
-  const value = pendingBonus.value
-  return value.toFixed(2).replace(/\.00$/, '').replace(/\.(\d)0$/, '.$1')
-})
 /** 红包弹窗可见状态。 */
 const redPacketVisible = ref(false)
+/** 红包弹窗打开时锁定的未转余额分红总额，避免使用旧钱包快照。 */
+const redPacketDisplayAmount = ref(0)
+const redPacketLoading = ref(false)
+const navigationThrottle = createThrottle(500)
+let dataLoadPromise: Promise<void> | null = null
 /** 推广码弹窗状态（个人页二维码按钮点击后展示小程序码）。 */
 const promotionCodeVisible = ref(false)
 const promotionCodeLoading = ref(false)
@@ -85,9 +94,18 @@ async function loadData(): Promise<void> {
   try { user.value = await getUserProfile() } catch { user.value = null /* 资料失败按游客处理 */ }
   if (!registeredUser.value) {
     wallet.value = null
+    promotionFrozenAmount.value = 0
     return
   }
-  try { wallet.value = await getWalletInfo() } catch { /* 未登录时显示默认收益 */ }
+  try {
+    const [walletInfo, frozenAmount] = await Promise.all([getWalletInfo(), loadFrozenPromotionAmount()])
+    wallet.value = walletInfo
+    promotionFrozenAmount.value = frozenAmount
+    if (!redPacketVisible.value) redPacketDisplayAmount.value = Number(wallet.value?.pendingBonus || 0)
+  } catch {
+    wallet.value = null
+    promotionFrozenAmount.value = 0
+  }
 }
 
 /** 加载启用中的公告列表，失败时保持空态。 */
@@ -95,7 +113,32 @@ async function loadAnnouncements(): Promise<void> {
   try { announcements.value = await getAnnouncementList() } catch { announcements.value = [] }
 }
 
+/** 合并首次挂载与页面重新显示时的并发刷新，避免重复请求。 */
+function refreshData(): Promise<void> {
+  if (dataLoadPromise) return dataLoadPromise
+  const pending = loadData()
+  dataLoadPromise = pending
+  pending.then(
+    () => { if (dataLoadPromise === pending) dataLoadPromise = null },
+    () => { if (dataLoadPromise === pending) dataLoadPromise = null },
+  )
+  return pending
+}
+
+/** 打开公告详情，完整展示当前公告内容。 */
+function openAnnouncement(item: Announcement): void {
+  activeAnnouncement.value = item
+  announcementVisible.value = true
+}
+
+/** 关闭公告详情并清理当前选中项。 */
+function closeAnnouncement(): void {
+  announcementVisible.value = false
+  activeAnnouncement.value = null
+}
+
 function goOrder(key: string): void {
+  if (!navigationThrottle()) return
   if (key === 'completed') {
     // 退款售后入口直接落到订单列表的「退款售后」分类
     uni.navigateTo({ url: '/subpkg-order/orders/list?tab=aftersale' })
@@ -115,6 +158,7 @@ function goOrder(key: string): void {
 }
 
 function goMenu(key: string): void {
+  if (!navigationThrottle()) return
   if (key === 'invoice') { uni.navigateTo({ url: '/subpkg-order/invoice/list' }); return }
   if (key === 'favorite') { uni.navigateTo({ url: '/subpkg-wallet/favorite/list' }); return }
   if (key === 'promotion') { goPromotionCenter(); return }
@@ -125,6 +169,7 @@ function goMenu(key: string): void {
 
 /** 处理收益卡点击：余额进钱包、推广收益进推广页；平台红包按红点状态分流。 */
 function goIncome(index: number): void {
+  if (!navigationThrottle()) return
   if (!registeredUser.value) return
   if (index === 0) {
     goWallet()
@@ -144,11 +189,30 @@ function goIncome(index: number): void {
   }
 }
 
-/** 打开红包弹窗并标记本次分红已查看（红点消失，直到下次新分红）。 */
-function openRedPacket(): void {
-  redPacketVisible.value = true
-  lastSeenBonus.value = pendingBonus.value
-  uni.setStorageSync('bonus_last_seen', pendingBonus.value)
+/** 格式化红包总额，纯数字积分，不含货币符号。 */
+function formatRedPacketAmount(value: unknown): string {
+  const amount = Number(value || 0)
+  if (!Number.isFinite(amount)) return '0'
+  return amount.toFixed(2).replace(/\.00$/, '').replace(/\.(\d)0$/, '.$1')
+}
+
+/** 刷新钱包后打开红包弹窗，展示当前未转余额的分红总额。 */
+async function openRedPacket(): Promise<void> {
+  if (redPacketLoading.value) return
+  redPacketLoading.value = true
+  try {
+    wallet.value = await getWalletInfo()
+    redPacketDisplayAmount.value = Number(wallet.value?.pendingBonus || 0)
+    lastSeenBonus.value = redPacketDisplayAmount.value
+    uni.setStorageSync('bonus_last_seen', redPacketDisplayAmount.value)
+    redPacketVisible.value = true
+  } catch (error) {
+    redPacketDisplayAmount.value = pendingBonus.value
+    redPacketVisible.value = true
+    uni.showToast({ title: error instanceof Error ? error.message : '红包金额刷新失败', icon: 'none' })
+  } finally {
+    redPacketLoading.value = false
+  }
 }
 
 /** 关闭红包弹窗。 */
@@ -187,6 +251,7 @@ async function openPromotionCode(): Promise<void> {
 }
 
 function goAllOrders(): void {
+  if (!navigationThrottle()) return
   uni.navigateTo({ url: '/subpkg-order/orders/list' })
 }
 
@@ -262,10 +327,10 @@ onMounted(() => {
       menuHeight.value = menuButton.height
     }
   } catch { /* 非微信环境没有胶囊按钮 */ }
-  void loadData()
+  void refreshData()
 })
 
-onShow(() => { void loadData() })
+onShow(() => { void refreshData() })
 </script>
 
 <template>
@@ -289,8 +354,7 @@ onShow(() => { void loadData() })
           <image v-if="registeredUser" class="member-card-background" src="/static/my/vip会员背景_slices/vip会员背景.png" mode="scaleToFill" />
           <view v-else class="member-mark" />
           <text :class="['member-label', { 'member-label-registered': registeredUser }]">{{ registeredUser ? '您已是vip会员用户啦' : '游客' }}</text>
-          <view v-if="registeredUser" class="member-benefits"><text>查看权益</text><image class="benefits-arrow benefits-arrow-white" src="/static/my/右_白/右.png" mode="aspectFit" /></view>
-          <view v-else class="member-end" />
+          <view v-if="!registeredUser" class="member-end" />
         </view>
 
         <view v-if="registeredUser" class="income-strip">
@@ -319,11 +383,13 @@ onShow(() => { void loadData() })
       <!-- 公告栏：订单模块下方、功能选项上方，横向滚动展示 -->
       <view v-if="announcements.length" class="announcement-bar">
         <text class="announcement-label">公告</text>
-        <scroll-view class="announcement-scroll" scroll-x :show-scrollbar="false">
-          <view class="announcement-track">
-            <text v-for="item in announcements" :key="item.id" class="announcement-item">{{ item.content }}</text>
+        <view class="announcement-scroll">
+          <view class="announcement-marquee">
+            <view v-for="copy in 2" :key="copy" class="announcement-group">
+              <text v-for="item in announcements" :key="`${copy}-${item.id}`" class="announcement-item" @click="openAnnouncement(item)">{{ item.content }}</text>
+            </view>
           </view>
-        </scroll-view>
+        </view>
       </view>
 
       <view class="menu-section">
@@ -337,6 +403,18 @@ onShow(() => { void loadData() })
       </view>
 
     </scroll-view>
+
+    <view v-show="announcementVisible" class="announcement-mask" @click="closeAnnouncement">
+      <view class="announcement-dialog" @click.stop>
+        <view class="announcement-dialog-head">
+          <text class="announcement-dialog-title">公告详情</text>
+          <text class="announcement-dialog-close" @click="closeAnnouncement">×</text>
+        </view>
+        <scroll-view class="announcement-detail-scroll" scroll-y>
+          <text class="announcement-detail-content">{{ activeAnnouncement?.content || '' }}</text>
+        </scroll-view>
+      </view>
+    </view>
 
     <view v-show="profileEditorVisible" class="mask" @click="profileEditorVisible = false">
       <view class="sheet" @click.stop>
@@ -355,7 +433,7 @@ onShow(() => { void loadData() })
     <view v-show="redPacketVisible" class="mask redpacket-mask" @click="closeRedPacket">
       <view class="redpacket-sheet" @click.stop>
         <image class="redpacket-bg" src="/static/my/红包_slices/编组.png" mode="aspectFit" />
-        <text class="redpacket-amount">{{ redPacketAmount }}</text>
+        <text class="redpacket-amount">{{ formatRedPacketAmount(redPacketDisplayAmount) }}</text>
         <view class="redpacket-action" @click="openRedPacketPage" />
       </view>
     </view>
@@ -386,13 +464,11 @@ onShow(() => { void loadData() })
 .member-mark, .member-end { position: relative; z-index: 1; width: 38.17rpx; height: 38.17rpx; flex-shrink: 0; background: #55565a; }
 .member-label { position: relative; z-index: 1; margin-left: 19.08rpx; font-size: 26.72rpx; font-weight: 500; }
 .member-label-registered { margin-top: 48rpx; margin-left: 114rpx; }
-.member-benefits { position: relative; z-index: 1; display: flex; align-items: center; gap: 8rpx; margin-top: 48rpx; margin-left: auto; color: #FFFFFF; font-size: 22.9rpx; font-weight: 600; white-space: nowrap; }
-.benefits-arrow { width: 14rpx; height: 16rpx; }
 .member-end { position: relative; z-index: 1; margin-left: auto; }
 .income-strip { position: relative; z-index: 1; display: flex; height: 196rpx; margin: -196rpx -38.17rpx 0; padding: 38rpx 38.17rpx 50rpx; box-sizing: border-box; overflow: hidden; background: linear-gradient(104deg, #303134 0%, #5c5d61 48%, #28292b 100%); box-shadow: inset 0 1rpx rgba(255, 255, 255, .24); }
 .income-strip::after { position: absolute; top: -120%; left: -16%; width: 34%; height: 340%; background: linear-gradient(108deg, transparent 0%, rgba(255, 255, 255, .11) 46%, rgba(255, 255, 255, .03) 62%, transparent 100%); content: ''; transform: rotate(16deg); pointer-events: none; }
 .income-item { position: relative; z-index: 1; display: flex; flex: 1 1 0; min-width: 0; flex-direction: column; align-items: center; justify-content: center; }
-.income-item + .income-item::before { position: absolute; top: 54rpx; left: 0; width: 2rpx; height: 84rpx; background: rgba(255, 255, 255, .72); content: ''; }
+.income-item + .income-item::before { position: absolute; top: 50%; left: 0; width: 2rpx; height: 116rpx; background: rgba(255, 255, 255, .72); content: ''; transform: translateY(-50%); }
 .income-value { display: block; width: 100%; padding: 0 8rpx; box-sizing: border-box; color: #fff; font-size: 42rpx; font-weight: 700; line-height: 58rpx; text-align: center; white-space: nowrap; }
 .income-value-small { font-size: 36rpx; }
 .income-value-compact { font-size: 30rpx; }
@@ -413,9 +489,19 @@ onShow(() => { void loadData() })
 
 .announcement-bar { display: flex; align-items: center; gap: 16rpx; padding: 20rpx 38.17rpx; background: #fff; border-bottom: 22.9rpx solid #f5f5f5; }
 .announcement-label { flex-shrink: 0; padding: 4rpx 14rpx; border-radius: 8rpx; color: #fff; background: #916448; font-size: 22rpx; font-weight: 600; }
-.announcement-scroll { flex: 1; min-width: 0; white-space: nowrap; }
-.announcement-track { display: flex; align-items: center; gap: 48rpx; }
+.announcement-scroll { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; }
+.announcement-marquee { display: inline-flex; width: max-content; min-width: 200vw; animation: announcement-marquee 18s linear infinite; will-change: transform; }
+.announcement-group { display: flex; flex: 0 0 auto; align-items: center; gap: 48rpx; min-width: 100vw; padding-right: 48rpx; box-sizing: border-box; }
 .announcement-item { flex-shrink: 0; color: #4F4F4F; font-size: 24rpx; white-space: nowrap; }
+.announcement-item:active { opacity: .65; }
+@keyframes announcement-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.announcement-mask { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 40rpx; box-sizing: border-box; background: rgba(0, 0, 0, .52); }
+.announcement-dialog { width: 100%; max-width: 680rpx; overflow: hidden; border-radius: 12rpx; background: #fff; }
+.announcement-dialog-head { position: relative; display: flex; align-items: center; justify-content: center; height: 92rpx; border-bottom: 1rpx solid #f0f0f0; }
+.announcement-dialog-title { color: #222; font-size: 30rpx; font-weight: 600; }
+.announcement-dialog-close { position: absolute; top: 16rpx; right: 24rpx; color: #888; font-size: 42rpx; font-weight: 400; line-height: 42rpx; }
+.announcement-detail-scroll { height: 520rpx; padding: 30rpx 32rpx; box-sizing: border-box; }
+.announcement-detail-content { color: #4F4F4F; font-size: 26rpx; font-weight: 400; line-height: 42rpx; white-space: pre-wrap; word-break: break-all; }
 
 .menu-section { padding: 0 0 120rpx; background: #fff; font-family: 'PingFang SC', '苹方-简', sans-serif; font-weight: 500; }
 .menu-list { background: #fff; }
