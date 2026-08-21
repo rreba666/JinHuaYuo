@@ -584,7 +584,7 @@ onUnload(() => {
             <view class="type-chip" :class="{ active: withdrawOption === 'BANK_CARD' }" @click="selectWithdrawOption('BANK_CARD')">银行卡提现</view>
           </view>
           <text class="panel-title panel-section-title">提现金额</text>
-          <input v-model="withdrawAmount" class="panel-input" type="digit" :placeholder="`请输入提现余额，最低 ${withdrawMinimumLabel}`" />
+          <input v-model="withdrawAmount" class="panel-input" maxlength="11" type="digit" :placeholder="`请输入提现余额，最低 ${withdrawMinimumLabel}`" />
           <text v-if="withdrawOption === 'BANK_CARD'" class="fee-hint">银行卡信息取自实名认证资料，平台审核通过后人工打款；提现将收取 5% 手续费。</text>
           <text v-else class="fee-hint">提现将收取 5% 手续费，提交后进入审核。</text>
           <text v-if="withdrawAmountNumber > 0" class="fee-calc">手续费 ¥{{ formatMoney(withdrawFee) }}，实际到账 ¥{{ formatMoney(withdrawActual) }}</text>
@@ -619,7 +619,7 @@ onUnload(() => {
         <view v-show="currentTab === 'transfer'" class="panel-card">
           <text class="panel-title">转账账号</text>
           <view class="search-row">
-            <input v-model="transferUserId" class="panel-input search-input" type="number" placeholder="请输入接收人账号或ID" />
+            <input v-model="transferUserId" class="panel-input search-input" maxlength="19" type="number" placeholder="请输入接收人账号或ID" />
             <button class="search-button" :disabled="searching" @click="handleSearchRecipient">
               {{ searching ? '查找中...' : '查找' }}
             </button>
@@ -633,7 +633,7 @@ onUnload(() => {
             </view>
           </view>
           <text class="panel-title panel-section-title">转出金额</text>
-          <input v-model="transferAmount" class="panel-input" type="digit" placeholder="请输入转出余额" />
+          <input v-model="transferAmount" class="panel-input" maxlength="11" type="digit" placeholder="请输入转出余额" />
           <button class="panel-button" :disabled="transferSubmitting" @click="handleTransfer">
             {{ transferSubmitting ? '提交中...' : '确认转账' }}
           </button>

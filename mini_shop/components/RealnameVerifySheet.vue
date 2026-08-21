@@ -116,11 +116,11 @@ watch(() => props.modelValue, (nextVisible) => {
         </view>
         <view class="field-group">
           <text class="field-label">电话号</text>
-          <input v-model="form.bankPhone" class="field-input" maxlength="20" type="number" placeholder="请输入银行预留手机号" />
+          <input v-model="form.bankPhone" class="field-input" maxlength="11" type="number" placeholder="请输入银行预留手机号" />
         </view>
         <view class="field-group">
           <text class="field-label">银行卡</text>
-          <input v-model="form.bankCardNo" class="field-input" maxlength="32" type="number" placeholder="请输入银行卡号" />
+          <input v-model="form.bankCardNo" class="field-input" maxlength="19" type="number" placeholder="请输入银行卡号" />
         </view>
         <text v-show="errorMessage" class="sheet-error">{{ errorMessage }}</text>
       </scroll-view>
