@@ -9,9 +9,15 @@ import { submitInvoice } from '@/api/invoice'
 import { getWalletInfo } from '@/api/user'
 import { getProductDetail } from '@/api/product'
 import { DIVIDEND_PURCHASE_LIMIT, PURCHASE_LIMIT_MESSAGE, getDividendQuantity, isDividendEligible } from '@/utils/dividend-limit'
+import { cleanDigits, cleanText, validateEmail, validateMobile, validateTaxNumber, validateText } from '@/utils/input-validation'
 
 type PickupType = 0 | 1
 type InvoiceType = 'personal' | 'company'
+const PAYMENT_CONTACT_NAME_MAX_LENGTH = 32
+const PAYMENT_ADDRESS_MAX_LENGTH = 200
+const PAYMENT_REMARK_MAX_LENGTH = 100
+const PAYMENT_INVOICE_COMPANY_MAX_LENGTH = 100
+const PAYMENT_INVOICE_EMAIL_MAX_LENGTH = 254
 
 interface Address {
   name: string
@@ -88,15 +94,28 @@ function loadFormCache(): void {
   try {
     const cached = uni.getStorageSync(PAYMENT_FORM_CACHE_KEY) as Partial<PaymentFormCache> | undefined
     if (!cached) return
-    if (cached.address) selectedAddress.value = cached.address
-    if (typeof cached.contactName === 'string') contactName.value = cached.contactName
-    if (typeof cached.contactPhone === 'string') contactPhone.value = cached.contactPhone
+    if (cached.address) {
+      selectedAddress.value = {
+        name: cleanText(cached.address.name),
+        phone: cleanDigits(cached.address.phone),
+        detail: cleanText(cached.address.detail),
+      }
+    }
+    if (typeof cached.contactName === 'string') contactName.value = cleanText(cached.contactName)
+    if (typeof cached.contactPhone === 'string') contactPhone.value = cleanDigits(cached.contactPhone)
     if (typeof cached.invoiceEnabled === 'boolean') invoiceEnabled.value = cached.invoiceEnabled
     if (cached.invoiceType === 'personal' || cached.invoiceType === 'company') invoiceType.value = cached.invoiceType
-    if (cached.invoiceForm) Object.assign(invoiceForm, cached.invoiceForm)
+    if (cached.invoiceForm) {
+      Object.assign(invoiceForm, {
+        name: cleanText(cached.invoiceForm.name),
+        companyName: cleanText(cached.invoiceForm.companyName),
+        taxNumber: cleanText(cached.invoiceForm.taxNumber).replace(/\s+/g, '').toUpperCase(),
+        email: cleanText(cached.invoiceForm.email),
+      })
+    }
     // 已有发票内容时视为已填好，避免再次弹出发票抽屉
     invoiceSaved.value = Boolean(invoiceForm.name || invoiceForm.companyName)
-    if (typeof cached.remark === 'string') remark.value = cached.remark
+    if (typeof cached.remark === 'string') remark.value = cleanText(cached.remark)
   } catch { /* 缓存读取失败忽略 */ }
 }
 
@@ -405,15 +424,22 @@ function openAddressEditor(): void {
 
 /** 校验并保存本地地址。 */
 function saveAddress(): void {
-  if (!addressForm.name.trim() || !addressForm.phone.trim() || !addressForm.detail.trim()) {
-    uni.showToast({ title: '请填写完整地址', icon: 'none' })
+  const name = validateText(addressForm.name, { label: '收货人姓名', maxLength: PAYMENT_CONTACT_NAME_MAX_LENGTH })
+  const phone = validateMobile(addressForm.phone)
+  const detail = validateText(addressForm.detail, { label: '详细地址', maxLength: PAYMENT_ADDRESS_MAX_LENGTH })
+  if (!name.ok) {
+    uni.showToast({ title: name.message, icon: 'none' })
     return
   }
-  if (!/^1\d{10}$/.test(addressForm.phone.trim())) {
-    uni.showToast({ title: '手机号格式不正确', icon: 'none' })
+  if (!phone.ok) {
+    uni.showToast({ title: phone.message, icon: 'none' })
     return
   }
-  selectedAddress.value = { ...addressForm }
+  if (!detail.ok) {
+    uni.showToast({ title: detail.message, icon: 'none' })
+    return
+  }
+  selectedAddress.value = { name: name.value, phone: phone.value, detail: detail.value }
   addressSheetVisible.value = false
 }
 
@@ -453,14 +479,44 @@ function changeInvoiceType(type: InvoiceType): void {
 }
 
 /** 校验并保存发票信息。 */
-function completeInvoice(): void {
-  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invoiceForm.email.trim())
-  const personalValid = invoiceForm.name.trim() && emailValid
-  const companyValid = invoiceForm.companyName.trim() && invoiceForm.taxNumber.trim() && emailValid
-  if (!(invoiceType.value === 'personal' ? personalValid : companyValid)) {
-    uni.showToast({ title: '请填写完整发票信息', icon: 'none' })
-    return
+function normalizeInvoiceForm(): boolean {
+  const email = validateEmail(invoiceForm.email)
+  if (!email.ok || email.value.length > PAYMENT_INVOICE_EMAIL_MAX_LENGTH) {
+    uni.showToast({ title: email.ok ? '电子邮箱不能超过254个字符' : email.message, icon: 'none' })
+    return false
   }
+  if (invoiceType.value === 'personal') {
+    const name = validateText(invoiceForm.name, { label: '发票姓名', maxLength: PAYMENT_CONTACT_NAME_MAX_LENGTH })
+    if (!name.ok) {
+      uni.showToast({ title: name.message, icon: 'none' })
+      return false
+    }
+    invoiceForm.name = name.value
+    invoiceForm.email = email.value
+    invoiceForm.companyName = cleanText(invoiceForm.companyName)
+    invoiceForm.taxNumber = cleanText(invoiceForm.taxNumber).replace(/\s+/g, '').toUpperCase()
+    return true
+  }
+
+  const companyName = validateText(invoiceForm.companyName, { label: '公司名称', maxLength: PAYMENT_INVOICE_COMPANY_MAX_LENGTH })
+  const taxNumber = validateTaxNumber(invoiceForm.taxNumber)
+  if (!companyName.ok) {
+    uni.showToast({ title: companyName.message, icon: 'none' })
+    return false
+  }
+  if (!taxNumber.ok) {
+    uni.showToast({ title: taxNumber.message, icon: 'none' })
+    return false
+  }
+  invoiceForm.name = cleanText(invoiceForm.name)
+  invoiceForm.companyName = companyName.value
+  invoiceForm.taxNumber = taxNumber.value
+  invoiceForm.email = email.value
+  return true
+}
+
+function completeInvoice(): void {
+  if (!normalizeInvoiceForm()) return
   invoiceSaved.value = true
   invoiceDrawerVisible.value = false
 }
@@ -468,6 +524,53 @@ function completeInvoice(): void {
 /** 关闭发票抽屉，不清除已填写的本地内容。 */
 function closeInvoiceDrawer(): void {
   invoiceDrawerVisible.value = false
+}
+
+/** 最终校验结算页所有用户输入，防止缓存或绕过抽屉直接提交脏值。 */
+function validateCheckoutInputs(isExistingOrder: boolean): boolean {
+  const normalizedRemark = validateText(remark.value, { label: '订单备注', maxLength: PAYMENT_REMARK_MAX_LENGTH, required: false })
+  if (!normalizedRemark.ok) {
+    uni.showToast({ title: normalizedRemark.message, icon: 'none' })
+    return false
+  }
+  remark.value = normalizedRemark.value
+
+  if (!isExistingOrder && pickupType.value === 0 && selectedAddress.value) {
+    const name = validateText(selectedAddress.value.name, { label: '收货人姓名', maxLength: PAYMENT_CONTACT_NAME_MAX_LENGTH })
+    const phone = validateMobile(selectedAddress.value.phone)
+    const detail = validateText(selectedAddress.value.detail, { label: '详细地址', maxLength: PAYMENT_ADDRESS_MAX_LENGTH })
+    if (!name.ok) {
+      uni.showToast({ title: name.message, icon: 'none' })
+      return false
+    }
+    if (!phone.ok) {
+      uni.showToast({ title: phone.message, icon: 'none' })
+      return false
+    }
+    if (!detail.ok) {
+      uni.showToast({ title: detail.message, icon: 'none' })
+      return false
+    }
+    selectedAddress.value = { name: name.value, phone: phone.value, detail: detail.value }
+  }
+
+  if (!isExistingOrder && pickupType.value === 1) {
+    const name = validateText(contactName.value, { label: '自提联系人姓名', maxLength: PAYMENT_CONTACT_NAME_MAX_LENGTH })
+    const phone = validateMobile(contactPhone.value, '自提联系人手机号')
+    if (!name.ok) {
+      uni.showToast({ title: name.message, icon: 'none' })
+      return false
+    }
+    if (!phone.ok) {
+      uni.showToast({ title: phone.message, icon: 'none' })
+      return false
+    }
+    contactName.value = name.value
+    contactPhone.value = phone.value
+  }
+
+  if (invoiceEnabled.value && invoiceSaved.value && !normalizeInvoiceForm()) return false
+  return true
 }
 
 /** 将分红商品购买机会错误转换为面向用户的业务提示。 */
@@ -501,8 +604,11 @@ async function submitPayment(): Promise<void> {
     openShopPicker()
     return
   }
-  if (!isExistingOrder && pickupType.value === 1 && (!contactName.value.trim() || !/^1\d{10}$/.test(contactPhone.value.trim()))) {
-    uni.showToast({ title: '请填写正确的联系方式', icon: 'none' })
+  if (!isExistingOrder && pickupType.value === 1 && (!contactName.value.trim() || !contactPhone.value.trim())) {
+    uni.showToast({ title: '请填写完整的自提联系方式', icon: 'none' })
+    return
+  }
+  if (!validateCheckoutInputs(isExistingOrder)) {
     return
   }
   if (invoiceEnabled.value && !invoiceSaved.value) {
@@ -650,7 +756,7 @@ function backToCart(): void {
         <text class="section-title">联系方式</text>
         <view class="form-line">
           <text class="form-label">姓名<span class="required">*</span></text>
-          <input v-model="contactName" class="form-input" placeholder="请输入" placeholder-class="input-placeholder" />
+        <input v-model="contactName" class="form-input" maxlength="32" placeholder="请输入" placeholder-class="input-placeholder" />
         </view>
         <view class="form-line">
           <text class="form-label">手机号<span class="required">*</span></text>
@@ -751,9 +857,9 @@ function backToCart(): void {
     <view v-show="addressSheetVisible" class="mask" @click="addressSheetVisible = false">
       <view class="sheet" @click.stop>
         <view class="sheet-head"><text class="sheet-title">配送地址</text><text class="sheet-close" @click="addressSheetVisible = false">×</text></view>
-        <view class="sheet-form-line"><text class="form-label">姓名<span class="required">*</span></text><input v-model="addressForm.name" class="sheet-input" placeholder="请输入" placeholder-class="input-placeholder" /></view>
+        <view class="sheet-form-line"><text class="form-label">姓名<span class="required">*</span></text><input v-model="addressForm.name" class="sheet-input" maxlength="32" placeholder="请输入" placeholder-class="input-placeholder" /></view>
         <view class="sheet-form-line"><text class="form-label">手机号<span class="required">*</span></text><input v-model="addressForm.phone" class="sheet-input" type="number" maxlength="11" placeholder="请输入" placeholder-class="input-placeholder" /></view>
-        <view class="sheet-form-line"><text class="form-label">详细地址<span class="required">*</span></text><input v-model="addressForm.detail" class="sheet-input" placeholder="请输入" placeholder-class="input-placeholder" /></view>
+        <view class="sheet-form-line"><text class="form-label">详细地址<span class="required">*</span></text><input v-model="addressForm.detail" class="sheet-input" maxlength="200" placeholder="请输入" placeholder-class="input-placeholder" /></view>
         <view class="sheet-submit" @click="saveAddress">保存地址</view>
       </view>
     </view>
@@ -776,13 +882,13 @@ function backToCart(): void {
           <view class="type-choice" :class="{ active: invoiceType === 'company' }" @click="changeInvoiceType('company')"><view class="radio" :class="{ active: invoiceType === 'company' }"><view class="radio-dot" /></view><text>公司</text></view>
         </view>
         <view v-show="invoiceType === 'personal'" class="drawer-fields">
-          <view class="sheet-form-line"><text class="form-label">姓名<span class="required">*</span></text><input v-model="invoiceForm.name" class="sheet-input" placeholder="请输入" placeholder-class="input-placeholder" /></view>
-          <view class="sheet-form-line"><text class="form-label">电子邮箱<span class="required">*</span></text><input v-model="invoiceForm.email" class="sheet-input" type="text" placeholder="请输入" placeholder-class="input-placeholder" /></view>
+          <view class="sheet-form-line"><text class="form-label">姓名<span class="required">*</span></text><input v-model="invoiceForm.name" class="sheet-input" maxlength="32" placeholder="请输入" placeholder-class="input-placeholder" /></view>
+          <view class="sheet-form-line"><text class="form-label">电子邮箱<span class="required">*</span></text><input v-model="invoiceForm.email" class="sheet-input" maxlength="254" type="text" placeholder="请输入" placeholder-class="input-placeholder" /></view>
         </view>
         <view v-show="invoiceType === 'company'" class="drawer-fields">
-          <view class="sheet-form-line"><text class="form-label">公司名称<span class="required">*</span></text><input v-model="invoiceForm.companyName" class="sheet-input" placeholder="请输入" placeholder-class="input-placeholder" /></view>
-          <view class="sheet-form-line"><text class="form-label">纳税人识别号<span class="required">*</span></text><input v-model="invoiceForm.taxNumber" class="sheet-input" placeholder="请输入" placeholder-class="input-placeholder" /></view>
-          <view class="sheet-form-line"><text class="form-label">电子邮箱<span class="required">*</span></text><input v-model="invoiceForm.email" class="sheet-input" type="text" placeholder="请输入" placeholder-class="input-placeholder" /></view>
+          <view class="sheet-form-line"><text class="form-label">公司名称<span class="required">*</span></text><input v-model="invoiceForm.companyName" class="sheet-input" maxlength="100" placeholder="请输入" placeholder-class="input-placeholder" /></view>
+          <view class="sheet-form-line"><text class="form-label">纳税人识别号<span class="required">*</span></text><input v-model="invoiceForm.taxNumber" class="sheet-input" maxlength="20" placeholder="请输入" placeholder-class="input-placeholder" /></view>
+          <view class="sheet-form-line"><text class="form-label">电子邮箱<span class="required">*</span></text><input v-model="invoiceForm.email" class="sheet-input" maxlength="254" type="text" placeholder="请输入" placeholder-class="input-placeholder" /></view>
         </view>
         <view class="sheet-submit" @click="completeInvoice">完成</view>
       </view>
