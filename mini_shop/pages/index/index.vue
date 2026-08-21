@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { onLoad, onPageScroll, onShareAppMessage } from '@dcloudio/uni-app'
+import { onLoad, onPageScroll, onShareAppMessage, onShow } from '@dcloudio/uni-app'
 import { getHomepageData } from '@/api/homepage'
 import type { HomepageMediaItem, HomepageProduct } from '@/api/homepage'
 import { bindStoredPromotionIfLoggedIn, buildPromotionSharePath, capturePromotionContext } from '@/utils/promotion'
 import { createThrottle } from '@/utils/interaction'
+import RequestState from '@/components/RequestState.vue'
 
 const brandName = ref('今华有·臻选品质人生')
 const products = ref<HomepageProduct[]>([])
 const homepageMedia = ref<HomepageMediaItem | null>(null)
 const loading = ref(true)
+const loadError = ref('')
+let homepageLoadPromise: Promise<void> | null = null
 const welfareTab = ref(0)
 const navigationThrottle = createThrottle(500)
 
@@ -63,14 +66,29 @@ function isRecommendTextEnabled(value: HomepageProduct['recommendTextEnabled']):
 }
 
 async function loadHomepage(): Promise<void> {
+  loadError.value = ''
   try {
     const data = await getHomepageData()
     const enabled = (data.mediaList || []).find((item: HomepageMediaItem) => item.isEnabled === 1)
     homepageMedia.value = enabled || null
     if (enabled?.description) brandName.value = enabled.description
     products.value = (data.recommendedProducts || []).slice(0, 6)
-  } catch { /* 接口失败使用默认展示 */ }
+  } catch (error) {
+    loadError.value = error instanceof Error ? error.message : '首页加载失败，请重试'
+  }
   finally { loading.value = false }
+}
+
+/** 复用首页首屏请求，避免页面生命周期重叠时重复加载。 */
+function refreshHomepage(): Promise<void> {
+  if (homepageLoadPromise) return homepageLoadPromise
+  const pending = loadHomepage()
+  homepageLoadPromise = pending
+  pending.then(
+    () => { if (homepageLoadPromise === pending) homepageLoadPromise = null },
+    () => { if (homepageLoadPromise === pending) homepageLoadPromise = null },
+  )
+  return pending
 }
 
 function goProduct(id: string): void {
@@ -142,8 +160,10 @@ onMounted(() => {
     }
   } catch { /* 非微信环境忽略 */ }
   // 始终加载数据，登录态由 API 服务器校验，失败时自动兜底
-  loadHomepage()
+  void refreshHomepage()
 })
+
+onShow(() => { void refreshHomepage() })
 </script>
 
 <template>
@@ -165,6 +185,8 @@ onMounted(() => {
     <video v-else-if="heroVideo" class="hero-video" :src="heroVideo" :poster="homepageMedia?.coverUrl?.[0]" autoplay loop muted />
     <!-- 无轮播/视频时灰色占位 -->
     <view v-else class="hero-placeholder" />
+
+    <RequestState v-if="!loading && loadError" :error="loadError" @retry="loadHomepage" />
 
     <!-- ====== 悬浮导航栏（覆盖在轮播图上方，与胶囊按钮同行） ====== -->
     <view class="nav-backdrop" :style="navBackdropStyle" />

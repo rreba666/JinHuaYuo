@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { convertWallet, getDividendRecords, getWalletInfo, getUserProfile, type DividendRecord, type UserProfile, type WalletInfo } from '@/api/user'
 import { isRegisteredUser } from '@/utils/auth'
+import RequestState from '@/components/RequestState.vue'
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
@@ -11,10 +12,12 @@ const records = ref<DividendRecord[]>([])
 const recordsPage = ref(1)
 const recordsTotal = ref(0)
 const loading = ref(false)
+const loadError = ref('')
 const loadingMore = ref(false)
 const converting = ref(false)
 const user = ref<UserProfile | null>(null)
 const registeredUser = computed(() => isRegisteredUser(user.value?.identity))
+let pageLoadPromise: Promise<void> | null = null
 
 /** 自定义导航栏样式。 */
 const navStyle = computed(() => ({ top: `${menuTop.value}px`, height: `${menuHeight.value}px` }))
@@ -41,25 +44,42 @@ function formatTime(value: string | null | undefined): string {
 
 /** 加载钱包与红包流水（逐笔）。 */
 async function loadData(): Promise<void> {
-  await ensureUser()
-  if (!registeredUser.value) return
   loading.value = true
+  loadError.value = ''
   try {
-    wallet.value = await getWalletInfo()
-  } catch {
-    wallet.value = null
-  }
-  try {
-    const result = await getDividendRecords({ page: 1, pageSize: 10 })
-    records.value = result.list || []
-    recordsPage.value = result.page || 1
-    recordsTotal.value = result.total || 0
-  } catch {
-    records.value = []
-    recordsTotal.value = 0
+    await ensureUser()
+    if (!registeredUser.value) return
+
+    let failed = false
+    try {
+      wallet.value = await getWalletInfo()
+    } catch {
+      failed = true
+    }
+    try {
+      const result = await getDividendRecords({ page: 1, pageSize: 10 })
+      records.value = result.list || []
+      recordsPage.value = result.page || 1
+      recordsTotal.value = result.total || 0
+    } catch {
+      failed = true
+    }
+    if (failed) loadError.value = '部分红包数据加载失败，请重试'
   } finally {
     loading.value = false
   }
+}
+
+/** 复用首次加载请求，避免 onMounted 与 onShow 同时进入时重复拉取。 */
+function refreshData(): Promise<void> {
+  if (pageLoadPromise) return pageLoadPromise
+  const pending = loadData()
+  pageLoadPromise = pending
+  pending.then(
+    () => { if (pageLoadPromise === pending) pageLoadPromise = null },
+    () => { if (pageLoadPromise === pending) pageLoadPromise = null },
+  )
+  return pending
 }
 
 /** 上拉加载更多分红流水。 */
@@ -117,10 +137,10 @@ onMounted(() => {
     const rect = uni.getMenuButtonBoundingClientRect()
     if (rect) { menuTop.value = rect.top; menuHeight.value = rect.height }
   } catch { /* 非微信环境忽略 */ }
-  void loadData()
+  void refreshData()
 })
 
-onShow(() => { void loadData() })
+onShow(() => { void refreshData() })
 </script>
 
 <template>
@@ -147,6 +167,7 @@ onShow(() => { void loadData() })
             <text>金额</text>
           </view>
           <view class="table-line" />
+          <RequestState v-if="!loading && loadError" :error="loadError" @retry="refreshData" />
           <view v-show="loading" class="source-empty"><text>加载中...</text></view>
           <view v-show="!loading && !records.length" class="source-empty"><text>暂无红包记录</text></view>
           <view v-show="!loading && records.length" class="source-list">

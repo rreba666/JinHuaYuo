@@ -277,7 +277,7 @@ function goBack(): void {
 /** 配置微信转发卡片，转发后仍回到推广收益页。 */
 onShareAppMessage(() => {
   const path = buildPromotionSharePath('/pages/index/index')
-  return { title: '分享赚钱，即刻兑现', path }
+  return { title: '分享赚钱，即刻兑现', path, imageUrl: '/static/logo.png' }
 })
 
 /** 捕获推广收益页的原生分享参数，兼容已登录用户扫码后直接补绑定。 */

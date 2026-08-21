@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { onLoad, onShareAppMessage } from '@dcloudio/uni-app'
+import { onLoad, onShareAppMessage, onShow } from '@dcloudio/uni-app'
 import { addSkuToCartWithStock } from '@/api/cart'
 import { favoriteProduct, unfavoriteProduct } from '@/api/favorite'
 import { getUserProfile, type UserProfile } from '@/api/user'
@@ -19,6 +19,7 @@ const product = ref<ProductDetail | null>(null)
 const loading = ref(true)
 const errorMessage = ref('')
 const actionLoading = ref(false)
+const paymentNavigationLoading = ref(false)
 /** 当前商品是否已收藏（进页从详情 favorite 字段初始化）。 */
 const favorite = ref(false)
 /** 收藏操作进行中，防止连点重复请求。 */
@@ -161,14 +162,21 @@ async function addProductToCart(): Promise<void> {
 
 /** 立即购买：直接跳转确认订单页，由支付页按 skuId 直接下单（items），不污染购物车。 */
 async function buyNow(): Promise<void> {
-  if (!product.value || actionLoading.value) return
+  if (!product.value || actionLoading.value || paymentNavigationLoading.value) return
   const skuId = selectedSku.value?.id
   const stock = Number(selectedSku.value?.stock ?? 0)
   if (!skuId || !Number.isFinite(stock) || stock <= 0) {
     uni.showToast({ title: '暂无可购买规格', icon: 'none' })
     return
   }
-  uni.navigateTo({ url: `/subpkg-order/payment/payment?productId=${product.value.id}&skuId=${skuId}&quantity=1` })
+  paymentNavigationLoading.value = true
+  uni.navigateTo({
+    url: `/subpkg-order/payment/payment?productId=${product.value.id}&skuId=${skuId}&quantity=1`,
+    fail: (error) => {
+      paymentNavigationLoading.value = false
+      uni.showToast({ title: error?.errMsg || '打开确认订单失败', icon: 'none' })
+    },
+  })
 }
 
 /** 打开分享抽屉。 */
@@ -213,6 +221,11 @@ onMounted(() => {
   } catch {
     // 非微信环境没有胶囊按钮，使用默认导航尺寸。
   }
+})
+
+onShow(() => {
+  // 从确认订单页返回时允许再次购买。
+  paymentNavigationLoading.value = false
 })
 </script>
 
@@ -265,7 +278,7 @@ onMounted(() => {
     <view v-show="!loading && !errorMessage && product" class="product-detail-actions">
       <view class="cart-action" @click="goCart"><image class="cart-icon" src="/static/ProductDetails/购物车_slices/购物车.png" mode="aspectFit" /><text>购物车</text></view>
       <view class="action-button add-button" @click="addProductToCart">加入购物车</view>
-      <view class="action-button buy-button" @click="buyNow">立即支付</view>
+      <view class="action-button buy-button" :class="{ disabled: paymentNavigationLoading }" @click="buyNow">{{ paymentNavigationLoading ? '打开中...' : '立即支付' }}</view>
     </view>
 
     <!-- 分享抽屉（推广码 / 分享好友） -->
@@ -316,6 +329,7 @@ onMounted(() => {
 .action-button { display: flex; align-items: center; justify-content: center; height: 82rpx; font-size: 28rpx; box-sizing: border-box; }
 .add-button { flex: 1; border: 2rpx solid #222; color: #222; background: #fff; }
 .buy-button { flex: 1; color: #fff; background: #050505; }
+.action-button.disabled { opacity: .55; }
 .state { padding: 180rpx 32rpx; color: #8a96a8; text-align: center; }
 .error { color: #d94d3f; }
 /* 分享抽屉 */

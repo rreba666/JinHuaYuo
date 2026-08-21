@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import { getCategoryList, getCategoryProducts, type CategoryNode, type CategoryProduct } from '@/api/category'
 import { addSkuToCartWithStock } from '@/api/cart'
 import { getProductDetail } from '@/api/product'
 import { ApiRequestError, isApiRequestError } from '@/utils/request'
 import { PURCHASE_LIMIT_ERROR_CODE, PURCHASE_LIMIT_MESSAGE } from '@/utils/dividend-limit'
 import { createThrottle } from '@/utils/interaction'
+import RequestState from '@/components/RequestState.vue'
 
 const menuTop = ref(0)
 const menuLeft = ref(0)
@@ -31,6 +33,8 @@ const goods = ref<CategoryProduct[]>([])
 const categoryGoodsCache = new Map<string, CategoryProduct[]>()
 let goodsRequestToken = 0
 const loading = ref(true)
+const loadError = ref('')
+let categoryLoadPromise: Promise<void> | null = null
 const busy = ref(false)
 const cartAdding = ref(false)
 const navigationThrottle = createThrottle(500)
@@ -43,14 +47,28 @@ const scrollHeightStyle = computed(() => ({
 
 /** 请求 GET /api/category/list 获取2级分类树，展示所有一级分类 */
 async function loadCats(): Promise<void> {
+  loadError.value = ''
   try {
     const list = await getCategoryList()
     if (list?.length) cats.value = list
   } catch (e) {
     console.error('分类列表加载失败:', e)
+    loadError.value = e instanceof Error ? e.message : '分类加载失败，请重试'
   }
   await loadGoods(cats.value[active.value].id)
   loading.value = false
+}
+
+/** 复用分类首屏请求，避免 onMounted 与 onShow 重叠时重复加载。 */
+function refreshCategories(): Promise<void> {
+  if (categoryLoadPromise) return categoryLoadPromise
+  const pending = loadCats()
+  categoryLoadPromise = pending
+  pending.then(
+    () => { if (categoryLoadPromise === pending) categoryLoadPromise = null },
+    () => { if (categoryLoadPromise === pending) categoryLoadPromise = null },
+  )
+  return pending
 }
 
 
@@ -72,7 +90,9 @@ async function loadGoods(catId: string): Promise<void> {
     if (r?.list?.length) console.log('分类商品加载成功:', r.list.length, '条, 首个:', JSON.stringify(r.list[0]))
   } catch (e) {
     console.error('分类商品加载失败:', e)
-    if (requestToken === goodsRequestToken) goods.value = []
+    if (requestToken === goodsRequestToken) {
+      loadError.value = e instanceof Error ? e.message : '商品加载失败，请重试'
+    }
   } finally {
     if (requestToken === goodsRequestToken) busy.value = false
   }
@@ -132,8 +152,10 @@ onMounted(() => {
   try { const s = uni.getSystemInfoSync(); winW.value = s.windowWidth || 375 } catch { /* */ }
   try { const r = uni.getMenuButtonBoundingClientRect(); if (r) { menuTop.value = r.top; menuLeft.value = r.left; menuH.value = r.height } } catch { /* */ }
   // 始终加载数据，登录态由 API 服务器校验，失败时自动兜底
-  loadCats()
+  void refreshCategories()
 })
+
+onShow(() => { void refreshCategories() })
 </script>
 
 <template>
@@ -172,7 +194,8 @@ onMounted(() => {
               <text class="c-name">{{ it.name }}</text>
             </view>
           </view>
-          <view v-show="!busy && !goods.length && !loading" class="empty-msg"><text>暂无商品</text></view>
+          <RequestState v-if="!busy && loadError" :error="loadError" @retry="loadCats" />
+          <view v-show="!busy && !loadError && !goods.length && !loading" class="empty-msg"><text>暂无商品</text></view>
           <view v-show="loading" class="ld"><text class="ld-t">加载中...</text></view>
         </scroll-view>
       </view>

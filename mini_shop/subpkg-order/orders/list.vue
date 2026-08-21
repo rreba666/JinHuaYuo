@@ -29,6 +29,8 @@ const total = ref(0)
 const loading = ref(false)
 const loadingMore = ref(false)
 const loaded = ref(false)
+const actionLoading = ref<string | null>(null)
+const navigationLoading = ref(false)
 /** 当前 tab 是否为「退款售后」。 */
 const isAfterSaleTab = computed(() => tabs[activeIndex.value]?.key === 'aftersale')
 const empty = computed(() => loaded.value && !loading.value && !(isAfterSaleTab.value ? afterSales.value.length : list.value.length))
@@ -42,6 +44,7 @@ const navStyle = computed(() => ({ top: `${menuTop.value}px`, height: `${menuHei
 const bodyTop = computed(() => menuTop.value + menuHeight.value)
 
 async function load(reset = true): Promise<void> {
+  if (loading.value || loadingMore.value) return
   const token = ++requestToken
   const nextPage = reset ? 1 : page.value + 1
   const currentLength = isAfterSaleTab.value ? afterSales.value.length : list.value.length
@@ -83,9 +86,24 @@ async function load(reset = true): Promise<void> {
   }
 }
 
-function selectTab(index: number): void { activeIndex.value = index; void load(true) }
+function selectTab(index: number): void {
+  if (index === activeIndex.value) return
+  if (loading.value || loadingMore.value) {
+    uni.showToast({ title: '正在加载，请稍候', icon: 'none' })
+    return
+  }
+  activeIndex.value = index
+  void load(true)
+}
 function openDetail(order: OrderSummary): void { uni.navigateTo({ url: `/subpkg-order/orders/detail?orderId=${order.id}` }) }
-function pay(order: OrderSummary): void { uni.navigateTo({ url: `/subpkg-order/payment/payment?orderId=${order.id}` }) }
+function pay(order: OrderSummary): void {
+  if (navigationLoading.value) return
+  navigationLoading.value = true
+  uni.navigateTo({
+    url: `/subpkg-order/payment/payment?orderId=${order.id}`,
+    fail: () => { navigationLoading.value = false },
+  })
+}
 /** 返回上一页；无上一页（分享/直达进入）时回首页。 */
 function goBack(): void {
   const pages = getCurrentPages()
@@ -93,26 +111,38 @@ function goBack(): void {
   else uni.switchTab({ url: '/pages/index/index' })
 }
 async function cancel(order: OrderSummary): Promise<void> {
+  if (actionLoading.value) return
+  actionLoading.value = `cancel:${order.id}`
+  const confirmed = await new Promise<boolean>((resolve) => {
+    uni.showModal({ title: '提示', content: '确定取消订单吗？', success: (res) => resolve(res.confirm), fail: () => resolve(false) })
+  })
+  if (!confirmed) { actionLoading.value = null; return }
   try { await cancelOrder(order.id); uni.showToast({ title: '订单已取消', icon: 'success' }); await load(true) }
   catch (error) { uni.showToast({ title: error instanceof Error ? error.message : '取消订单失败', icon: 'none' }) }
+  finally { actionLoading.value = null }
 }
 
 /** 确认收货（物流订单）。 */
 async function receive(order: OrderSummary): Promise<void> {
+  if (actionLoading.value) return
+  actionLoading.value = `receive:${order.id}`
   const confirmed = await new Promise<boolean>((resolve) => {
     uni.showModal({ title: '提示', content: '确认已收到商品吗？', success: (res) => resolve(res.confirm), fail: () => resolve(false) })
   })
-  if (!confirmed) return
+  if (!confirmed) { actionLoading.value = null; return }
   try { await receiveOrder(order.id); uni.showToast({ title: '已确认收货', icon: 'success' }); await load(true) }
   catch (error) { uni.showToast({ title: error instanceof Error ? error.message : '确认收货失败', icon: 'none' }) }
+  finally { actionLoading.value = null }
 }
 
 /** 申请退款（自提订单）。 */
 async function refund(order: OrderSummary): Promise<void> {
+  if (actionLoading.value) return
+  actionLoading.value = `refund:${order.id}`
   const confirmed = await new Promise<boolean>((resolve) => {
     uni.showModal({ title: '提示', content: '确定申请退款吗？', success: (res) => resolve(res.confirm), fail: () => resolve(false) })
   })
-  if (!confirmed) return
+  if (!confirmed) { actionLoading.value = null; return }
   try {
     await refundOrder(order.id)
     uni.showToast({ title: '退款申请已提交', icon: 'success' })
@@ -128,6 +158,8 @@ async function refund(order: OrderSummary): Promise<void> {
       return
     }
     uni.showToast({ title: error instanceof Error ? error.message : '退款申请失败', icon: 'none' })
+  } finally {
+    actionLoading.value = null
   }
 }
 
@@ -162,7 +194,10 @@ onLoad((options?: Record<string, string | undefined>) => {
   }
   void load(true)
 })
-onShow(() => { if (loaded.value) void load(true) })
+onShow(() => {
+  navigationLoading.value = false
+  if (loaded.value) void load(true)
+})
 </script>
 
 <template>
@@ -218,17 +253,17 @@ onShow(() => { if (loaded.value) void load(true) })
 
           <view class="card-actions">
             <template v-if="order.status === 0">
-              <text class="btn outline" @click.stop="cancel(order)">取消订单</text>
-              <text class="btn primary" @click.stop="pay(order)">去支付</text>
+              <text class="btn outline" :class="{ disabled: !!actionLoading }" @click.stop="cancel(order)">{{ actionLoading === 'cancel:' + order.id ? '处理中...' : '取消订单' }}</text>
+              <text class="btn primary" :class="{ disabled: navigationLoading }" @click.stop="pay(order)">{{ navigationLoading ? '打开中...' : '去支付' }}</text>
             </template>
             <text v-if="order.status === 1 && order.pickupType === 0" class="btn outline" @click.stop="openDetail(order)">查看详情</text>
             <template v-if="order.status === 2">
               <text class="btn outline" @click.stop="openDetail(order)">查看物流</text>
-              <text v-if="order.deliveryStatus === 1" class="btn primary" @click.stop="receive(order)">确认收货</text>
+              <text v-if="order.deliveryStatus === 1" class="btn primary" :class="{ disabled: !!actionLoading }" @click.stop="receive(order)">{{ actionLoading === 'receive:' + order.id ? '处理中...' : '确认收货' }}</text>
             </template>
             <template v-if="order.status === 1 && order.pickupType === 1">
               <text v-if="processingOrderIds.has(String(order.id))" class="btn outline">售后中</text>
-              <text v-else class="btn outline" @click.stop="refund(order)">退款</text>
+              <text v-else class="btn outline" :class="{ disabled: !!actionLoading }" @click.stop="refund(order)">{{ actionLoading === 'refund:' + order.id ? '处理中...' : '退款' }}</text>
               <text class="btn primary" @click.stop="openDetail(order)">去自提</text>
             </template>
           </view>
@@ -269,6 +304,7 @@ onShow(() => { if (loaded.value) void load(true) })
 .card-reject { display: block; margin-top: 16rpx; color: #d40000; font-size: 24rpx; }
 .card-actions { display: flex; justify-content: flex-end; gap: 16rpx; margin-top: 24rpx; }
 .btn { display: flex; align-items: center; justify-content: center; min-width: 160rpx; height: 52rpx; padding: 0 24rpx; border-radius: 8rpx; font-size: 26rpx; box-sizing: border-box; }
+.btn.disabled { opacity: .5; }
 .btn.outline { color: #000; border: 2rpx solid #222; }
 .btn.primary { color: #916448; background: rgba(192, 172, 155, 0.49); }
 .state, .more { padding: 120rpx 0; color: #999; text-align: center; font-size: 26rpx; }.more { padding: 28rpx 0; }

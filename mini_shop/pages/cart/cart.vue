@@ -4,6 +4,7 @@ import { onShow } from '@dcloudio/uni-app'
 import { getCartList, toggleChecked, updateQuantity, checkAll, removeCartItem, removeCartBatch, type CartItem } from '@/api/cart'
 import { DIVIDEND_PURCHASE_LIMIT, PURCHASE_LIMIT_MESSAGE, getDividendQuantity } from '@/utils/dividend-limit'
 import { createThrottle } from '@/utils/interaction'
+import RequestState from '@/components/RequestState.vue'
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
@@ -13,6 +14,7 @@ const bodyTop = computed(() => menuTop.value + menuHeight.value + uni.upx2px(48)
 
 const items = ref<CartItem[]>([])
 const loading = ref(true)
+const loadError = ref('')
 const editMode = ref(false)
 const busy = ref(false)
 const navigationThrottle = createThrottle(500)
@@ -26,7 +28,13 @@ const checkedTotal = computed(() => {
 const isAllChecked = computed(() => items.value.length > 0 && items.value.every((i) => i.checked))
 
 async function loadList(): Promise<void> {
-  try { items.value = await getCartList({ resolveDividendEligibility: true }) } catch (e) { console.error('购物车列表加载失败:', e) } finally { loading.value = false }
+  loadError.value = ''
+  try {
+    items.value = await getCartList({ resolveDividendEligibility: true })
+  } catch (e) {
+    loadError.value = e instanceof Error ? e.message : '购物车加载失败，请重试'
+    console.error('购物车列表加载失败:', e)
+  } finally { loading.value = false }
 }
 function refreshList(): Promise<void> {
   if (listLoadPromise) return listLoadPromise
@@ -110,15 +118,17 @@ onShow(() => { loading.value = true; void refreshList() })
 
     <view class="bd" :style="{ paddingTop: bodyTop + 'px' }">
       <view v-if="loading" class="st"><text class="st-t">加载中...</text></view>
+      <RequestState v-else-if="loadError && !items.length" :error="loadError" @retry="refreshList" />
       <view v-else-if="!items.length" class="st">
         <view class="st-icon">🛒</view>
         <text class="st-t">购物车是空的</text>
       </view>
+      <RequestState v-if="!loading && loadError && items.length" :error="loadError" @retry="refreshList" />
       <view v-if="!loading && items.length && dividendQuantity > DIVIDEND_PURCHASE_LIMIT" class="limit-warning">
         <text class="limit-warning-t">补贴商品当前共{{ dividendQuantity }}件，最多同时存在3件，请减少后再结算</text>
       </view>
       <!-- scroll-view 用 padding，和 category.vue 一致 -->
-      <scroll-view v-else-if="!loading && items.length" class="lst" scroll-y>
+      <scroll-view v-if="!loading && items.length" class="lst" scroll-y>
         <view v-for="it in items" :key="it.cartId" class="row">
           <!-- 勾选框 -->
           <view class="chk" @click="onToggle(it)">

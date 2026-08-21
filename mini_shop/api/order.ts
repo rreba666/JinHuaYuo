@@ -2,6 +2,8 @@ import { request } from '@/utils/request'
 
 export type OrderStatus = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
 export type PickupType = 0 | 1
+/** 地址修改申请状态：0=待审核，1=已通过，2=已拒绝。 */
+export type AddressChangeRequestStatus = 0 | 1 | 2
 
 export interface OrderItemDTO {
   skuId: number
@@ -73,6 +75,34 @@ export interface OrderDetail extends OrderSummary {
   pickupUrl?: string
 }
 
+/** C 端提交订单地址修改申请的请求体。 */
+export interface AddressChangeRequestDTO {
+  receiverName: string
+  receiverPhone: string
+  receiverAddress: string
+  reason?: string
+}
+
+/** 订单地址修改申请详情，兼容后端 BIGINT 字段的字符串序列化。 */
+export interface OrderAddressChangeRequest {
+  id: string
+  orderId: string
+  orderNo: string
+  userId: string
+  oldReceiverName: string
+  oldReceiverPhone: string
+  oldReceiverAddress: string
+  newReceiverName: string
+  newReceiverPhone: string
+  newReceiverAddress: string
+  reason: string
+  status: AddressChangeRequestStatus
+  rejectReason: string
+  reviewedBy: string
+  reviewedAt: string
+  createTime: string
+}
+
 /** 自提二维码信息（独立接口 GET /api/order/pickup-code/{orderId} 返回）。 */
 export interface PickupCodeVO {
   pickupType: PickupType
@@ -133,6 +163,48 @@ export function getPickupCode(orderId: number | string): Promise<PickupCodeVO> {
     ...data,
     pickupUrl: normalizePickupUrl(data.pickupUrl),
   }))
+}
+
+/** 将后端返回的地址申请字段归一化，避免 BIGINT 和可空文本影响页面渲染。 */
+function normalizeAddressChangeRequest(data: OrderAddressChangeRequest): OrderAddressChangeRequest {
+  const text = (value: unknown): string => value == null ? '' : String(value)
+  const status = Number(data.status)
+  return {
+    ...data,
+    id: text(data.id),
+    orderId: text(data.orderId),
+    orderNo: text(data.orderNo),
+    userId: text(data.userId),
+    oldReceiverName: text(data.oldReceiverName),
+    oldReceiverPhone: text(data.oldReceiverPhone),
+    oldReceiverAddress: text(data.oldReceiverAddress),
+    newReceiverName: text(data.newReceiverName),
+    newReceiverPhone: text(data.newReceiverPhone),
+    newReceiverAddress: text(data.newReceiverAddress),
+    reason: text(data.reason),
+    status: (status === 1 || status === 2 ? status : 0) as AddressChangeRequestStatus,
+    rejectReason: text(data.rejectReason),
+    reviewedBy: text(data.reviewedBy),
+    reviewedAt: text(data.reviewedAt),
+    createTime: text(data.createTime),
+  }
+}
+
+/** 查询当前用户指定订单最新的一条地址修改申请。 */
+export function getAddressChangeRequest(orderId: number | string): Promise<OrderAddressChangeRequest | null> {
+  return request<OrderAddressChangeRequest | null>({
+    url: `/api/order/${orderId}/address-change-request`,
+    method: 'GET',
+  }).then((data) => data ? normalizeAddressChangeRequest(data) : null)
+}
+
+/** 提交订单地址修改申请，审核通过前不会改变订单地址。 */
+export function submitAddressChangeRequest(orderId: number | string, data: AddressChangeRequestDTO): Promise<void> {
+  return request<void>({
+    url: `/api/order/${orderId}/address-change-request`,
+    method: 'POST',
+    data,
+  })
 }
 
 /** 取消待支付订单。 */

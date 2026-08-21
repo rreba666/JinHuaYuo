@@ -2,6 +2,7 @@
 import { onLoad, onReachBottom } from '@dcloudio/uni-app'
 import { computed, onMounted, ref } from 'vue'
 import { getProductList, type ProductCard } from '@/api/product'
+import RequestState from '@/components/RequestState.vue'
 
 const keyword = ref('')
 const sortBy = ref('')
@@ -11,6 +12,7 @@ const total = ref(0)
 const loading = ref(false)
 const loadingMore = ref(false)
 const loaded = ref(false)
+const loadError = ref('')
 const systemWidth = ref(0)
 const menuTop = ref(0)
 const menuLeft = ref(0)
@@ -39,6 +41,7 @@ async function load(reset = true): Promise<void> {
   if (loading.value || loadingMore.value) return
   if (!reset && products.value.length >= total.value) return
   const nextPage = reset ? 1 : page.value + 1
+  if (reset) loadError.value = ''
   if (reset) loading.value = true
   else loadingMore.value = true
   try {
@@ -53,6 +56,7 @@ async function load(reset = true): Promise<void> {
     total.value = Number(result.total || products.value.length)
     loaded.value = true
   } catch (error) {
+    loadError.value = error instanceof Error ? error.message : '商品查询失败，请重试'
     uni.showToast({ title: error instanceof Error ? error.message : '商品查询失败', icon: 'none' })
   } finally {
     loading.value = false
@@ -62,6 +66,8 @@ async function load(reset = true): Promise<void> {
 
 /** 提交关键词搜索。 */
 function submitSearch(): void { void load(true) }
+
+function retrySearch(): void { void load(true) }
 
 /** 切换排序方式并刷新商品列表。 */
 function changeSort(value: string): void {
@@ -117,7 +123,8 @@ onMounted(() => {
 
     <scroll-view class="content" scroll-y @scrolltolower="load(false)">
       <view v-show="loading && !products.length" class="state">加载中...</view>
-      <view v-show="!loading && loaded && !products.length" class="state">暂无相关商品</view>
+      <RequestState v-if="!loading && !products.length && loadError" :error="loadError" @retry="retrySearch" />
+      <view v-show="!loading && loaded && !loadError && !products.length" class="state">暂无相关商品</view>
       <view v-show="products.length" class="grid">
         <view v-for="item in products" :key="String(item.id)" class="card" @click="goDetail(item.id)">
           <image v-show="item.mainImage" class="image" :src="item.mainImage" mode="aspectFill" />

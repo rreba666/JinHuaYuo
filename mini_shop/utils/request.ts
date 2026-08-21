@@ -1,5 +1,6 @@
 import developmentEnv from '../.env?raw'
 import productionEnv from '../.env.production?raw'
+import { clearAuth } from './auth'
 
 /** 统一表示网络、HTTP 和后端业务失败，并保留后端业务码。 */
 export class ApiRequestError extends Error {
@@ -30,6 +31,17 @@ interface ApiResponse<T> {
   data?: T
 }
 
+/** 统一处理会话失效，保留调用方自己的错误提示和业务分支。 */
+function handleUnauthorized(statusCode: number, businessCode?: number): void {
+  if (statusCode !== 401 && Number(businessCode) !== 401) return
+  clearAuth()
+  const pages = getCurrentPages()
+  const currentRoute = pages.length ? pages[pages.length - 1]?.route || '' : ''
+  if (currentRoute !== 'pages/login/login') {
+    uni.reLaunch({ url: '/pages/login/login' })
+  }
+}
+
 /** 发起 uni-app 网络请求，统一处理鉴权头和后端错误。 */
 export function request<T = unknown>(options: UniApp.RequestOptions): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -51,16 +63,19 @@ export function request<T = unknown>(options: UniApp.RequestOptions): Promise<T>
     uni.request({
       ...options,
       url: `${API_BASE_URL}${options.url}`,
+      timeout: options.timeout ?? 15000,
       header,
       success: (response) => {
         const body = (response.data && typeof response.data === 'object'
           ? response.data
           : {}) as ApiResponse<T>
         if (response.statusCode < 200 || response.statusCode >= 300) {
+          handleUnauthorized(response.statusCode, body.code)
           reject(new ApiRequestError(body.message || '网络异常，请稍后重试', body.code))
           return
         }
         if (body.success === false || (body.code != null && body.code !== 0)) {
+          handleUnauthorized(response.statusCode, body.code)
           reject(new ApiRequestError(body.message || '请求失败', body.code))
           return
         }

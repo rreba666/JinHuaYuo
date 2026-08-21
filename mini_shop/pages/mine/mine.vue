@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getUserProfile, getWalletInfo, updateUserProfile, type UserProfile, type WalletInfo } from '@/api/user'
 import { getAuth, isLoggedIn, isRegisteredUser } from '@/utils/auth'
@@ -62,13 +62,23 @@ const incomeEntries = computed(() => [
 const pendingBonus = computed(() => Number(wallet.value?.pendingBonus || 0))
 /** 上次已查看的分红金额（本地缓存，用于红点提示新分红）。 */
 const lastSeenBonus = ref(Number(uni.getStorageSync('bonus_last_seen') || 0))
-/** 是否有未查看的新分红红包（红点显示条件）。 */
-const hasUnseenBonus = computed(() => pendingBonus.value > lastSeenBonus.value)
+/** 本地开发预览开关，正式构建仍按真实未读红包触发。 */
+const redPacketPreviewEnabled = import.meta.env.DEV
+/** 是否有未查看的新分红红包（开发环境临时允许预览）。 */
+const hasUnseenBonus = computed(() => redPacketPreviewEnabled || pendingBonus.value > lastSeenBonus.value)
 /** 红包弹窗可见状态。 */
 const redPacketVisible = ref(false)
 /** 红包弹窗打开时锁定的未转余额分红总额，避免使用旧钱包快照。 */
 const redPacketDisplayAmount = ref(0)
+/** 红包弹窗内用于递增动画的金额，不参与业务计算。 */
+const redPacketAnimatedAmount = ref(0)
+/** 红包弹窗动效状态，每次打开时重新触发 CSS 动画。 */
+const redPacketMotionVisible = ref(false)
 const redPacketLoading = ref(false)
+const redPacketMotionDuration = 600
+const redPacketActionPressed = ref(false)
+let redPacketActionTimer: ReturnType<typeof setTimeout> | null = null
+let redPacketMotionTimer: ReturnType<typeof setInterval> | null = null
 const navigationThrottle = createThrottle(500)
 let dataLoadPromise: Promise<void> | null = null
 /** 推广码弹窗状态（个人页二维码按钮点击后展示小程序码）。 */
@@ -196,6 +206,44 @@ function formatRedPacketAmount(value: unknown): string {
   return amount.toFixed(2).replace(/\.00$/, '').replace(/\.(\d)0$/, '.$1')
 }
 
+/** 清理红包金额递增计时器，避免快速开关时叠加动画。 */
+function clearRedPacketMotionTimer(): void {
+  if (redPacketMotionTimer !== null) {
+    clearInterval(redPacketMotionTimer)
+    redPacketMotionTimer = null
+  }
+}
+
+/** 清理红包按钮点击后的延迟跳转，避免关闭后仍然跳页。 */
+function clearRedPacketActionTimer(): void {
+  if (redPacketActionTimer !== null) {
+    clearTimeout(redPacketActionTimer)
+    redPacketActionTimer = null
+  }
+  redPacketActionPressed.value = false
+}
+
+/** 重置并启动红包弹窗的金额和视觉动效。 */
+function startRedPacketMotion(): void {
+  clearRedPacketMotionTimer()
+  redPacketAnimatedAmount.value = 0
+  redPacketMotionVisible.value = true
+
+  const targetAmount = Number(redPacketDisplayAmount.value)
+  if (!Number.isFinite(targetAmount) || targetAmount <= 0) return
+
+  const startedAt = Date.now()
+  redPacketMotionTimer = setInterval(() => {
+    const progress = Math.min((Date.now() - startedAt) / redPacketMotionDuration, 1)
+    const easedProgress = 1 - Math.pow(1 - progress, 3)
+    redPacketAnimatedAmount.value = targetAmount * easedProgress
+    if (progress >= 1) {
+      redPacketAnimatedAmount.value = targetAmount
+      clearRedPacketMotionTimer()
+    }
+  }, 16)
+}
+
 /** 刷新钱包后打开红包弹窗，展示当前未转余额的分红总额。 */
 async function openRedPacket(): Promise<void> {
   if (redPacketLoading.value) return
@@ -206,9 +254,11 @@ async function openRedPacket(): Promise<void> {
     lastSeenBonus.value = redPacketDisplayAmount.value
     uni.setStorageSync('bonus_last_seen', redPacketDisplayAmount.value)
     redPacketVisible.value = true
+    startRedPacketMotion()
   } catch (error) {
     redPacketDisplayAmount.value = pendingBonus.value
     redPacketVisible.value = true
+    startRedPacketMotion()
     uni.showToast({ title: error instanceof Error ? error.message : '红包金额刷新失败', icon: 'none' })
   } finally {
     redPacketLoading.value = false
@@ -218,13 +268,33 @@ async function openRedPacket(): Promise<void> {
 /** 关闭红包弹窗。 */
 function closeRedPacket(): void {
   redPacketVisible.value = false
+  redPacketMotionVisible.value = false
+  redPacketAnimatedAmount.value = 0
+  clearRedPacketMotionTimer()
+  clearRedPacketActionTimer()
+}
+
+/** 点击「开心收下」先播放按压反馈，再进入红包页。 */
+function handleRedPacketAction(): void {
+  if (!redPacketVisible.value || redPacketActionTimer !== null) return
+  redPacketActionPressed.value = true
+  redPacketActionTimer = setTimeout(() => {
+    redPacketActionTimer = null
+    redPacketActionPressed.value = false
+    openRedPacketPage()
+  }, 520)
 }
 
 /** 点击「开心收下」进入红包页。 */
 function openRedPacketPage(): void {
-  redPacketVisible.value = false
+  closeRedPacket()
   uni.navigateTo({ url: '/subpkg-wallet/redpacket/redpacket' })
 }
+
+onUnmounted(() => {
+  clearRedPacketMotionTimer()
+  clearRedPacketActionTimer()
+})
 
 /** 生成并展示带当前推广者身份的小程序码（个人页二维码按钮）。 */
 async function openPromotionCode(): Promise<void> {
@@ -430,11 +500,11 @@ onShow(() => { void refreshData() })
     </view>
 
     <!-- 平台红包弹窗 -->
-    <view v-show="redPacketVisible" class="mask redpacket-mask" @click="closeRedPacket">
-      <view class="redpacket-sheet" @click.stop>
+    <view v-show="redPacketVisible" class="mask redpacket-mask" :class="{ 'redpacket-mask-in': redPacketMotionVisible }" @click="closeRedPacket">
+      <view class="redpacket-sheet" :class="{ 'redpacket-sheet-in': redPacketMotionVisible, 'redpacket-sheet-action-pressed': redPacketActionPressed }" @click.stop>
         <image class="redpacket-bg" src="/static/my/红包_slices/编组.png" mode="aspectFit" />
-        <text class="redpacket-amount">{{ formatRedPacketAmount(redPacketDisplayAmount) }}</text>
-        <view class="redpacket-action" @click="openRedPacketPage" />
+        <text class="redpacket-amount">{{ formatRedPacketAmount(redPacketAnimatedAmount) }}</text>
+        <view class="redpacket-action" :class="{ 'redpacket-button-pulse': redPacketMotionVisible, 'redpacket-button-pressed': redPacketActionPressed }" @click="handleRedPacketAction" />
       </view>
     </view>
 
@@ -520,8 +590,23 @@ onShow(() => { void refreshData() })
 .avatar-placeholder { color: #888; font-size: 24rpx; }
 .avatar-tip { display: block; margin-top: 12rpx; color: #999; font-size: 22rpx; text-align: center; }
 .redpacket-mask { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.81); }
+.redpacket-mask-in { animation: redpacket-mask-fade-in 320ms ease-out both; }
 .redpacket-sheet { position: relative; width: 620rpx; height: 1104rpx; }
+.redpacket-sheet-in { overflow: hidden; animation: redpacket-sheet-enter 420ms cubic-bezier(.22, .8, .28, 1) both; }
+.redpacket-sheet-in::before { position: absolute; top: 242rpx; right: 62rpx; bottom: 246rpx; left: 62rpx; z-index: 2; border-radius: 96rpx; background: rgba(255, 232, 150, .16); box-shadow: inset 0 0 52rpx rgba(255, 239, 188, .75), inset 0 0 118rpx rgba(255, 255, 255, .32), 0 0 52rpx rgba(255, 117, 214, .42), 0 0 118rpx rgba(255, 220, 150, .22); content: ''; opacity: 0; pointer-events: none; animation: redpacket-background-glow 1.8s 100ms ease-in-out infinite alternate both; }
+.redpacket-sheet-in::after { position: absolute; top: -20%; bottom: -20%; left: -36%; z-index: 3; width: 28%; background: linear-gradient(105deg, transparent 0%, rgba(255, 255, 255, .04) 35%, rgba(255, 255, 255, .28) 50%, rgba(255, 255, 255, .04) 65%, transparent 100%); content: ''; pointer-events: none; transform: rotate(16deg) translateX(-260%); animation: redpacket-shine 850ms 160ms ease-out both; }
 .redpacket-bg { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; }
-.redpacket-amount { position: absolute; left: 0; right: 0; top: 51%; z-index: 1; color: #916448; font-size: 60rpx; font-weight: 700; text-align: center; line-height: 1; }
-.redpacket-action { position: absolute; left: 50%; top: 62%; z-index: 1; width: 224rpx; height: 80rpx; transform: translateX(-50%); }
+.redpacket-amount { position: absolute; left: 0; right: 0; top: 51%; z-index: 4; color: #916448; font-size: 60rpx; font-weight: 700; text-align: center; line-height: 1; }
+.redpacket-action { position: absolute; left: 50%; top: 62%; z-index: 4; width: 224rpx; height: 80rpx; transform: translateX(-50%); }
+.redpacket-action::after { position: absolute; inset: 0; border: 2rpx solid rgba(255, 255, 255, .82); border-radius: 40rpx; box-shadow: 0 0 0 rgba(255, 255, 255, 0); content: ''; opacity: 0; pointer-events: none; }
+.redpacket-button-pulse::after { animation: redpacket-button-pulse 1.8s ease-in-out 680ms infinite; }
+.redpacket-sheet-action-pressed { animation: redpacket-sheet-click 520ms cubic-bezier(.25, .8, .25, 1) both; }
+.redpacket-button-pressed::after { animation: redpacket-button-press-glow 520ms cubic-bezier(.25, .8, .25, 1) both; }
+@keyframes redpacket-mask-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes redpacket-sheet-enter { from { opacity: 0; transform: translateY(36rpx) scale(.94); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes redpacket-background-glow { from { opacity: .42; } to { opacity: 1; } }
+@keyframes redpacket-shine { from { transform: rotate(16deg) translateX(-260%); } to { transform: rotate(16deg) translateX(620%); } }
+@keyframes redpacket-button-pulse { 0%, 100% { opacity: 0; box-shadow: 0 0 0 rgba(255, 255, 255, 0); } 50% { opacity: .76; box-shadow: 0 0 18rpx rgba(255, 255, 255, .76); } }
+@keyframes redpacket-sheet-click { 0% { transform: translateY(0) scale(1); } 28% { transform: translateY(2rpx) scale(.98); } 56% { transform: translateY(4rpx) scale(.94); } 78% { transform: translateY(-2rpx) scale(1.025); } 100% { transform: translateY(0) scale(1); } }
+@keyframes redpacket-button-press-glow { 0% { opacity: .62; box-shadow: 0 0 12rpx rgba(255, 255, 255, .56); } 32% { opacity: .78; box-shadow: 0 0 22rpx rgba(255, 255, 255, .72); } 62% { opacity: 1; box-shadow: 0 0 34rpx rgba(255, 255, 255, .98); } 100% { opacity: .18; box-shadow: 0 0 6rpx rgba(255, 255, 255, .22); } }
 </style>
