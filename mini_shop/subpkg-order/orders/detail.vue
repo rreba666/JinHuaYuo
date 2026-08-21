@@ -6,6 +6,7 @@ import { getEnabledShops, type EnabledShop } from '@/api/shop'
 import { getAfterSaleList } from '@/api/after-sale'
 import { getAuth } from '@/utils/auth'
 import { isApiRequestError } from '@/utils/request'
+import { cleanDigits, cleanText, validateMobile, validateText } from '@/utils/input-validation'
 // @ts-ignore uqrcode 为 UMD 单文件库（随分包 subpkg-order 打包，避免主包出现未使用的 JS 文件）
 import UQRCode from '@/subpkg-order/utils/uqrcode'
 
@@ -223,7 +224,7 @@ function getAddressChangeDraftKey(orderId: string): string | null {
 
 /** 只允许完整手机号进入可编辑表单，避免把后端脱敏值当成提交数据。 */
 function isEditableAddressChangePhone(value: unknown): boolean {
-  return /^1[3-9]\d{9}$/.test(String(value || '').trim())
+  return validateMobile(value).ok
 }
 
 /** 判断地址修改表单是否存在可缓存内容。 */
@@ -239,11 +240,12 @@ function loadAddressChangeDraft(orderId: string): AddressChangeForm | null {
     const cached = uni.getStorageSync(key) as Partial<AddressChangeForm> | undefined
     if (!cached || typeof cached !== 'object') return null
     const cachedPhone = typeof cached.receiverPhone === 'string' ? cached.receiverPhone : ''
+    const normalizedPhone = validateMobile(cachedPhone)
     return {
-      receiverName: typeof cached.receiverName === 'string' ? cached.receiverName : '',
-      receiverPhone: isEditableAddressChangePhone(cachedPhone) ? cachedPhone : '',
-      receiverAddress: typeof cached.receiverAddress === 'string' ? cached.receiverAddress : '',
-      reason: typeof cached.reason === 'string' ? cached.reason : '',
+      receiverName: cleanText(cached.receiverName),
+      receiverPhone: normalizedPhone.ok ? normalizedPhone.value : '',
+      receiverAddress: cleanText(cached.receiverAddress),
+      reason: cleanText(cached.reason),
     }
   } catch {
     // 本地缓存读取失败时回退到订单当前地址。
@@ -256,7 +258,12 @@ function saveAddressChangeDraft(orderId: string): void {
   const key = getAddressChangeDraftKey(orderId)
   if (!key) return
   try {
-    uni.setStorageSync(key, { ...addressChangeForm })
+    uni.setStorageSync(key, {
+      receiverName: cleanText(addressChangeForm.receiverName),
+      receiverPhone: cleanDigits(addressChangeForm.receiverPhone),
+      receiverAddress: cleanText(addressChangeForm.receiverAddress),
+      reason: cleanText(addressChangeForm.reason),
+    })
   } catch {
     // 本地缓存写入失败时仍允许用户继续提交。
   }
@@ -344,10 +351,10 @@ function openAddressChangeForm(): void {
   const rejectedPhone = isEditableAddressChangePhone(rejectedRequest?.newReceiverPhone) ? rejectedRequest?.newReceiverPhone : ''
   const orderPhone = isEditableAddressChangePhone(order.value.receiverPhone) ? order.value.receiverPhone : ''
   Object.assign(addressChangeForm, draft || {
-    receiverName: rejectedRequest?.newReceiverName || order.value.receiverName || '',
-    receiverPhone: rejectedPhone || orderPhone,
-    receiverAddress: rejectedRequest?.newReceiverAddress || order.value.receiverAddress || '',
-    reason: rejectedRequest?.reason || '',
+    receiverName: cleanText(rejectedRequest?.newReceiverName || order.value.receiverName || ''),
+    receiverPhone: cleanDigits(rejectedPhone || orderPhone),
+    receiverAddress: cleanText(rejectedRequest?.newReceiverAddress || order.value.receiverAddress || ''),
+    reason: cleanText(rejectedRequest?.reason || ''),
   })
   addressChangeVisible.value = true
 }
@@ -359,22 +366,32 @@ function closeAddressChangeForm(): void {
 
 /** 校验地址修改申请字段，校验通过后才允许调用后端接口。 */
 function validateAddressChangeForm(): boolean {
-  const name = addressChangeForm.receiverName.trim()
-  const phone = addressChangeForm.receiverPhone.trim()
-  const address = addressChangeForm.receiverAddress.trim()
-  const reason = addressChangeForm.reason.trim()
-  if (!name || !phone || !address) {
-    uni.showToast({ title: '请填写完整收货信息', icon: 'none' })
+  const name = validateText(addressChangeForm.receiverName, { label: '收货人姓名', maxLength: 32 })
+  const phone = validateMobile(addressChangeForm.receiverPhone)
+  const address = validateText(addressChangeForm.receiverAddress, { label: '详细地址', maxLength: 200 })
+  const reason = validateText(addressChangeForm.reason, { label: '修改原因', maxLength: 255, required: false })
+  if (!name.ok) {
+    uni.showToast({ title: name.message, icon: 'none' })
     return false
   }
-  if (name.length > 30 || address.length > 200 || reason.length > 255) {
-    uni.showToast({ title: '地址信息长度超出限制', icon: 'none' })
+  if (!phone.ok) {
+    uni.showToast({ title: phone.message, icon: 'none' })
     return false
   }
-  if (!/^1[3-9]\d{9}$/.test(phone)) {
-    uni.showToast({ title: '手机号格式不正确', icon: 'none' })
+  if (!address.ok) {
+    uni.showToast({ title: address.message, icon: 'none' })
     return false
   }
+  if (!reason.ok) {
+    uni.showToast({ title: reason.message, icon: 'none' })
+    return false
+  }
+  Object.assign(addressChangeForm, {
+    receiverName: name.value,
+    receiverPhone: phone.value,
+    receiverAddress: address.value,
+    reason: reason.value,
+  })
   return true
 }
 
@@ -384,10 +401,10 @@ async function submitAddressChange(): Promise<void> {
   addressChangeSubmitting.value = true
   const orderId = String(order.value.id)
   const data: AddressChangeRequestDTO = {
-    receiverName: addressChangeForm.receiverName.trim(),
-    receiverPhone: addressChangeForm.receiverPhone.trim(),
-    receiverAddress: addressChangeForm.receiverAddress.trim(),
-    reason: addressChangeForm.reason.trim(),
+    receiverName: addressChangeForm.receiverName,
+    receiverPhone: addressChangeForm.receiverPhone,
+    receiverAddress: addressChangeForm.receiverAddress,
+    reason: addressChangeForm.reason,
   }
   saveAddressChangeDraft(orderId)
   try {
@@ -514,7 +531,7 @@ onUnload(() => {
     <view v-if="addressChangeVisible" class="address-change-mask" @click="closeAddressChangeForm">
       <view class="address-change-sheet" @click.stop>
         <view class="address-change-header"><text class="address-change-title">修改收货地址</text><text class="address-change-close" @click="closeAddressChangeForm">×</text></view>
-        <view class="address-change-field"><text class="address-change-label">姓名<span class="address-change-required">*</span></text><input v-model="addressChangeForm.receiverName" class="address-change-input" maxlength="30" placeholder="请输入收货人姓名" placeholder-class="input-placeholder" /></view>
+        <view class="address-change-field"><text class="address-change-label">姓名<span class="address-change-required">*</span></text><input v-model="addressChangeForm.receiverName" class="address-change-input" maxlength="32" placeholder="请输入收货人姓名" placeholder-class="input-placeholder" /></view>
         <view class="address-change-field"><text class="address-change-label">手机号<span class="address-change-required">*</span></text><input v-model="addressChangeForm.receiverPhone" class="address-change-input" type="number" maxlength="11" placeholder="请输入手机号" placeholder-class="input-placeholder" /></view>
         <view class="address-change-field"><text class="address-change-label">详细地址<span class="address-change-required">*</span></text><input v-model="addressChangeForm.receiverAddress" class="address-change-input" maxlength="200" placeholder="请输入详细地址" placeholder-class="input-placeholder" /></view>
         <view class="address-change-reason-field"><text class="address-change-label">修改原因</text><textarea v-model="addressChangeForm.reason" class="address-change-textarea" maxlength="255" placeholder="请输入修改原因（选填）" placeholder-class="input-placeholder" /></view>
