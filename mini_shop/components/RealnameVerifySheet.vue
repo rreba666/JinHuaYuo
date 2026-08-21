@@ -2,6 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { verifyRealname, type RealnameStatus, type RealnameVerifyDTO } from '@/api/realname'
 import { isApiRequestError } from '@/utils/request'
+import { validateBankCard, validateIdCard, validateMobile, validateText } from '@/utils/input-validation'
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{
@@ -9,7 +10,6 @@ const emit = defineEmits<{
   verified: [status: RealnameStatus]
 }>()
 
-const CERT_NO_PATTERN = /^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[0-9Xx]$/
 const visible = computed(() => props.modelValue)
 const submitting = ref(false)
 const errorMessage = ref('')
@@ -34,40 +34,45 @@ function close(): void {
   emit('update:modelValue', false)
 }
 
-function validateForm(): boolean {
-  const certName = form.certName.trim()
-  const certNo = form.certNo.trim().toUpperCase()
-  const bankCardNo = form.bankCardNo.replace(/\s+/g, '')
-  const bankPhone = form.bankPhone.replace(/\s+/g, '')
-  if (!certName) {
-    errorMessage.value = '请输入真实姓名'
-    return false
+function validateForm(): RealnameVerifyDTO | null {
+  const certName = validateText(form.certName, { label: '真实姓名', maxLength: 32 })
+  if (!certName.ok) {
+    errorMessage.value = certName.message
+    return null
   }
-  if (!CERT_NO_PATTERN.test(certNo)) {
-    errorMessage.value = '请输入正确的18位身份证号'
-    return false
+  const certNo = validateIdCard(form.certNo)
+  if (!certNo.ok) {
+    errorMessage.value = certNo.message
+    return null
   }
-  if (bankCardNo && !/^\d{6,32}$/.test(bankCardNo)) {
-    errorMessage.value = '银行卡号只能填写6-32位数字'
-    return false
+
+  const bankCardInput = form.bankCardNo.trim()
+  const bankPhoneInput = form.bankPhone.trim()
+  const bankCardNo = bankCardInput ? validateBankCard(bankCardInput) : null
+  if (bankCardNo && !bankCardNo.ok) {
+    errorMessage.value = bankCardNo.message
+    return null
   }
-  if (bankPhone && !/^\d{6,20}$/.test(bankPhone)) {
-    errorMessage.value = '电话号只能填写6-20位数字'
-    return false
+  const bankPhone = bankPhoneInput ? validateMobile(bankPhoneInput, '银行预留手机号') : null
+  if (bankPhone && !bankPhone.ok) {
+    errorMessage.value = bankPhone.message
+    return null
   }
-  return true
+
+  return {
+    certName: certName.value,
+    certNo: certNo.value,
+    ...(bankCardNo ? { bankCardNo: bankCardNo.value } : {}),
+    ...(bankPhone ? { bankPhone: bankPhone.value } : {}),
+  }
 }
 
 async function submitForm(): Promise<void> {
-  if (submitting.value || !validateForm()) return
+  if (submitting.value) return
+  const payload = validateForm()
+  if (!payload) return
   submitting.value = true
   errorMessage.value = ''
-  const payload: RealnameVerifyDTO = {
-    certName: form.certName.trim(),
-    certNo: form.certNo.trim().toUpperCase(),
-    ...(form.bankCardNo.trim() ? { bankCardNo: form.bankCardNo.replace(/\s+/g, '') } : {}),
-    ...(form.bankPhone.trim() ? { bankPhone: form.bankPhone.replace(/\s+/g, '') } : {}),
-  }
   try {
     const status = await verifyRealname(payload)
     clearSensitiveInput()

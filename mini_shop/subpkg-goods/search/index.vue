@@ -3,7 +3,9 @@ import { onLoad, onReachBottom } from '@dcloudio/uni-app'
 import { computed, onMounted, ref } from 'vue'
 import { getProductList, type ProductCard } from '@/api/product'
 import RequestState from '@/components/RequestState.vue'
+import { cleanText } from '@/utils/input-validation'
 
+const SEARCH_KEYWORD_MAX_LENGTH = 50
 const keyword = ref('')
 const sortBy = ref('')
 const products = ref<ProductCard[]>([])
@@ -65,7 +67,15 @@ async function load(reset = true): Promise<void> {
 }
 
 /** 提交关键词搜索。 */
-function submitSearch(): void { void load(true) }
+function submitSearch(): void {
+  const normalized = cleanText(keyword.value)
+  if (Array.from(normalized).length > SEARCH_KEYWORD_MAX_LENGTH) {
+    uni.showToast({ title: `搜索内容不能超过${SEARCH_KEYWORD_MAX_LENGTH}个字符`, icon: 'none' })
+    return
+  }
+  keyword.value = normalized
+  void load(true)
+}
 
 function retrySearch(): void { void load(true) }
 
@@ -80,7 +90,7 @@ function changeSort(value: string): void {
 function goDetail(id: string | number): void { uni.navigateTo({ url: `/subpkg-goods/detail/detail?id=${id}` }) }
 
 onLoad((options?: Record<string, string | undefined>) => {
-  keyword.value = options?.keyword || ''
+  keyword.value = Array.from(cleanText(options?.keyword || '')).slice(0, SEARCH_KEYWORD_MAX_LENGTH).join('')
   void load(true)
 })
 onReachBottom(() => { void load(false) })
@@ -106,7 +116,7 @@ onMounted(() => {
     <view class="nav" :style="navStyle">
       <view class="back" @click="uni.navigateBack()">‹</view>
       <view class="search-box">
-        <input v-model="keyword" class="search-input" confirm-type="search" placeholder="搜索商品" @confirm="submitSearch" />
+        <input v-model="keyword" class="search-input" maxlength="50" confirm-type="search" placeholder="搜索商品" @confirm="submitSearch" />
         <text class="search-action" @click="submitSearch">搜索</text>
       </view>
     </view>
