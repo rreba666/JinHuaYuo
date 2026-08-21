@@ -8,6 +8,7 @@ import RealnameVerifySheet from '@/components/RealnameVerifySheet.vue'
 import { clearAuth, getAuth, hasWalletNoticeSeen, isRegisteredUser, markWalletNoticeSeen } from '@/utils/auth'
 import { isApiRequestError } from '@/utils/request'
 import { MERCHANT_TRANSFER_APP_ID, MERCHANT_TRANSFER_MCH_ID, TRANSFER_MIN_AMOUNT, WITHDRAW_MIN_AMOUNT } from '@/utils/wallet-config'
+import { validateAmount, validatePositiveInteger } from '@/utils/input-validation'
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
@@ -427,15 +428,16 @@ async function executeWithdraw(amount: number): Promise<void> {
 }
 
 async function handleWithdraw(): Promise<void> {
-  const amount = Number(withdrawAmount.value)
-  if (!Number.isFinite(amount) || amount < WITHDRAW_MIN_AMOUNT) {
-    uni.showToast({ title: `请输入至少 ${withdrawMinimumLabel.value} 的提现余额`, icon: 'none' })
+  const amountResult = validateAmount(withdrawAmount.value, {
+    label: '提现金额',
+    min: WITHDRAW_MIN_AMOUNT,
+    max: availableBalance.value,
+  })
+  if (!amountResult.ok) {
+    uni.showToast({ title: amountResult.message, icon: 'none' })
     return
   }
-  if (amount > availableBalance.value) {
-    uni.showToast({ title: '提现余额超过可用余额', icon: 'none' })
-    return
-  }
+  const amount = amountResult.value
 
   pendingWithdrawAmount.value = amount
   if (!(await ensureRealnameReady('withdraw'))) return
@@ -444,11 +446,13 @@ async function handleWithdraw(): Promise<void> {
 
 async function handleSearchRecipient(): Promise<void> {
   if (searching.value) return
-  const userId = Number(transferUserId.value)
-  if (!Number.isInteger(userId) || userId <= 0) {
-    uni.showToast({ title: '请输入正确的用户ID', icon: 'none' })
+  const userIdResult = validatePositiveInteger(transferUserId.value, '用户ID')
+  if (!userIdResult.ok) {
+    uni.showToast({ title: userIdResult.message, icon: 'none' })
     return
   }
+  const userId = userIdResult.value
+  transferUserId.value = String(userId)
 
   searching.value = true
   try {
@@ -487,19 +491,20 @@ async function executeTransfer(payload: { toUserId: number; amount: number }): P
 }
 
 async function handleTransfer(): Promise<void> {
-  const amount = Number(transferAmount.value)
   if (!recipient.value) {
     uni.showToast({ title: '请先查找接收人', icon: 'none' })
     return
   }
-  if (!Number.isFinite(amount) || amount < TRANSFER_MIN_AMOUNT) {
-    uni.showToast({ title: '请输入有效转账余额', icon: 'none' })
+  const amountResult = validateAmount(transferAmount.value, {
+    label: '转账金额',
+    min: TRANSFER_MIN_AMOUNT,
+    max: availableBalance.value,
+  })
+  if (!amountResult.ok) {
+    uni.showToast({ title: amountResult.message, icon: 'none' })
     return
   }
-  if (amount > availableBalance.value) {
-    uni.showToast({ title: '转账余额超过可用余额', icon: 'none' })
-    return
-  }
+  const amount = amountResult.value
   if (getAuth()?.userId != null && recipient.value.id === getAuth()?.userId) {
     uni.showToast({ title: '不能转给自己', icon: 'none' })
     return
