@@ -4,9 +4,11 @@ import {
   cleanText,
   validateAmount,
   validateBankCard,
+  validateEmail,
   validateIdCard,
   validateMobile,
   validatePositiveInteger,
+  validateTaxNumber,
 } from '../utils/input-validation.ts'
 
 test('cleanText removes controls and surrounding whitespace but preserves normal text', () => {
@@ -42,4 +44,9 @@ test('validatePositiveInteger rejects decimal, negative and scientific notation 
   assert.equal(validatePositiveInteger('1.2').ok, false)
   assert.equal(validatePositiveInteger('-1').ok, false)
   assert.equal(validatePositiveInteger('1e3').ok, false)
+})
+
+test('validateEmail rejects repeated dots and validateTaxNumber requires digits', () => {
+  assert.equal(validateEmail('user..name@example.com').ok, false)
+  assert.equal(validateTaxNumber('ABCDEFGHIJKLMNOPQ').ok, false)
 })

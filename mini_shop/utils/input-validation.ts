@@ -88,7 +88,15 @@ export function validateBankCard(value: unknown): ValidationResult<string> {
 
 export function validateEmail(value: unknown): ValidationResult<string> {
   const normalized = cleanText(value)
-  if (textLength(normalized) > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(normalized)) {
+  const atIndex = normalized.indexOf('@')
+  const local = atIndex > 0 ? normalized.slice(0, atIndex) : ''
+  const domain = atIndex > 0 ? normalized.slice(atIndex + 1) : ''
+  const valid = atIndex === normalized.lastIndexOf('@')
+    && !local.startsWith('.')
+    && !local.endsWith('.')
+    && !local.includes('..')
+    && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(normalized)
+  if (textLength(normalized) > 254 || !valid || !domain) {
     return fail('邮箱格式不正确')
   }
   return pass(normalized)
@@ -96,7 +104,7 @@ export function validateEmail(value: unknown): ValidationResult<string> {
 
 export function validateTaxNumber(value: unknown): ValidationResult<string> {
   const normalized = cleanText(value).replace(/\s+/g, '').toUpperCase()
-  if (!/^[0-9A-Z]{15,20}$/.test(normalized)) return fail('纳税人识别号格式不正确')
+  if (!/^[0-9A-Z]{15,20}$/.test(normalized) || !/\d/.test(normalized)) return fail('纳税人识别号格式不正确')
   return pass(normalized)
 }
 
