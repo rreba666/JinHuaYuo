@@ -5,12 +5,13 @@ import { addSkuToCartWithStock } from '@/api/cart'
 import { favoriteProduct, unfavoriteProduct } from '@/api/favorite'
 import { getUserProfile, type UserProfile } from '@/api/user'
 import { getProductDetail, type ProductDetail } from '@/api/product'
-import { getAuth, isRegisteredUser } from '@/utils/auth'
+import { getAuth, isLoggedIn, isRegisteredUser } from '@/utils/auth'
 import { bindStoredPromotionIfLoggedIn, buildPromotionSharePath, capturePromotionContext } from '@/utils/promotion'
 import { getPromotionCode } from '@/api/promotion'
 import { isApiRequestError } from '@/utils/request'
 import { PURCHASE_LIMIT_ERROR_CODE, PURCHASE_LIMIT_MESSAGE } from '@/utils/dividend-limit'
 import PromotionCodePoster from '@/components/PromotionCodePoster.vue'
+import LoginGuide from '@/components/LoginGuide.vue'
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
@@ -30,6 +31,7 @@ const shareSheetVisible = ref(false)
 const promotionCodeVisible = ref(false)
 const promotionCodeLoading = ref(false)
 const promotionCodeUrl = ref('')
+const loginGuideVisible = ref(false)
 
 const navStyle = computed(() => ({ top: `${menuTop.value}px`, height: `${menuHeight.value}px` }))
 const bodyTop = computed(() => menuTop.value + menuHeight.value + 10)
@@ -74,10 +76,15 @@ onLoad(async (options) => {
     loading.value = false
     return
   }
-  try { user.value = await getUserProfile() } catch { user.value = null }
+  // 商品详情是公开接口，先启动商品请求，避免用户资料接口阻塞游客首屏。
+  const productRequest = getProductDetail(String(options.id))
+  const profileRequest = isLoggedIn()
+    ? getUserProfile().catch(() => null)
+    : Promise.resolve(null)
   try {
-    product.value = await getProductDetail(String(options.id))
+    product.value = await productRequest
     favorite.value = Boolean(product.value.favorite)
+    user.value = await profileRequest
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '商品详情加载失败'
   } finally {
@@ -111,6 +118,10 @@ function goCart(): void {
 /** 切换收藏状态：已收藏→取消，未收藏→收藏。 */
 async function toggleFavorite(): Promise<void> {
   if (!product.value || favoriteLoading.value) return
+  if (!isLoggedIn()) {
+    loginGuideVisible.value = true
+    return
+  }
   favoriteLoading.value = true
   try {
     if (favorite.value) {
@@ -130,6 +141,10 @@ async function toggleFavorite(): Promise<void> {
 /** 将当前商品默认 SKU 加入购物车。 */
 async function addProductToCart(): Promise<void> {
   if (!product.value || actionLoading.value) return
+  if (!isLoggedIn()) {
+    loginGuideVisible.value = true
+    return
+  }
   const sku = selectedSku.value
   if (!sku) {
     uni.showToast({ title: '商品库存不足', icon: 'none' })
@@ -163,6 +178,10 @@ async function addProductToCart(): Promise<void> {
 /** 立即购买：直接跳转确认订单页，由支付页按 skuId 直接下单（items），不污染购物车。 */
 async function buyNow(): Promise<void> {
   if (!product.value || actionLoading.value || paymentNavigationLoading.value) return
+  if (!isLoggedIn()) {
+    loginGuideVisible.value = true
+    return
+  }
   const skuId = selectedSku.value?.id
   const stock = Number(selectedSku.value?.stock ?? 0)
   if (!skuId || !Number.isFinite(stock) || stock <= 0) {
@@ -193,8 +212,8 @@ function closeShareSheet(): void {
 async function openPromotionCode(): Promise<void> {
   shareSheetVisible.value = false
   if (promotionCodeLoading.value) return
-  if (!getAuth()?.userId) {
-    uni.showToast({ title: '请先登录后生成推广码', icon: 'none' })
+  if (!isLoggedIn() || !getAuth()?.userId) {
+    loginGuideVisible.value = true
     return
   }
   promotionCodeLoading.value = true
@@ -295,6 +314,7 @@ onShow(() => {
     </view>
 
     <PromotionCodePoster v-model="promotionCodeVisible" :loading="promotionCodeLoading" :code-url="promotionCodeUrl" />
+    <LoginGuide v-model="loginGuideVisible" />
   </view>
 </template>
 

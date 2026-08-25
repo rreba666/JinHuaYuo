@@ -32,6 +32,13 @@ export function cleanDigits(value: unknown): string {
   return String(value ?? '').trim().replace(/[\s-]+/g, '')
 }
 
+/** 将手机号整理为可编辑值；后端或缓存中的脱敏号码不能直接用于提交。 */
+export function normalizeEditableMobile(value: unknown): string {
+  const raw = String(value ?? '').trim()
+  if (!raw || raw.includes('*')) return ''
+  return cleanDigits(raw)
+}
+
 /** 清除身份证号输入空白并统一末位校验字符大小写。 */
 export function cleanIdCard(value: unknown): string {
   return String(value ?? '').trim().replace(/\s+/g, '').toUpperCase()

@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   cleanText,
+  normalizeEditableMobile,
   validateAmount,
   validateBankCard,
   validateEmail,
@@ -19,6 +20,11 @@ test('validateMobile accepts mainland mobile numbers and rejects malformed numbe
   assert.equal(validateMobile('13812341234').ok, true)
   assert.equal(validateMobile('12812341234').ok, false)
   assert.equal(validateMobile('1381234123').ok, false)
+})
+
+test('normalizeEditableMobile clears masked values but keeps a complete mobile number', () => {
+  assert.equal(normalizeEditableMobile('188****0536'), '')
+  assert.equal(normalizeEditableMobile(' 138 1234 1234 '), '13812341234')
 })
 
 test('validateIdCard rejects invalid date and checksum', () => {

@@ -39,10 +39,18 @@ const selectedTestPool = computed(() => store.sevenDayPools.find((pool) => pool.
 function money(value: number): string { return `¥ ${Number(value || 0).toFixed(2)}` }
 function statusType(status: string): 'success' | 'warning' | 'info' | 'danger' { return /CONFIRMED|SETTLED|SUCCESS|BOUND/i.test(status) ? 'success' : /REJECT|BLOCK|FAIL/i.test(status) ? 'danger' : /PENDING|WAIT/i.test(status) ? 'warning' : 'info' }
 function statusText(status: string): string { return ({ PENDING: '待处理', CONFIRMED: '已确认', SETTLED: '已结算', BOUND: '已绑定' } as Record<string, string>)[status] || status || '未知' }
+function contributionStatusText(status: string, statusDesc = ''): string { return statusDesc || ({ PENDING: '待确认（7天后自动确认）', CONFIRMING: '系统确认中', CONFIRMED: '已进入分红池', VOIDED: '订单退款，分红作废' } as Record<string, string>)[status] || status || '未知' }
+function contributionStatusType(status: string): 'success' | 'warning' | 'info' | 'danger' { return status === 'CONFIRMED' ? 'success' : status === 'VOIDED' ? 'danger' : status === 'PENDING' ? 'warning' : 'info' }
+function displayTime(value: string): string { return value || '未完成' }
 function showError(error: unknown, fallback: string): void { ElMessage.error(error instanceof Error ? error.message : fallback) }
 
 async function load(): Promise<void> { try { await store.fetchAll() } catch (error) { showError(error, '资金数据加载失败') } }
 async function loadRelations(): Promise<void> { try { await store.fetchRelations() } catch (error) { showError(error, '推广关系加载失败') } }
+async function loadContributions(): Promise<void> { try { await store.fetchContributions() } catch (error) { showError(error, '分红贡献加载失败') } }
+function handleTabChange(name: string | number): void { if (String(name) === 'contributions' && !store.contributions.length) void loadContributions() }
+function contributionStatusChange(): void { store.contributionPage = 1; void loadContributions() }
+function contributionPageChange(page: number): void { store.contributionPage = page; void loadContributions() }
+function contributionSizeChange(size: number): void { store.contributionSize = size; store.contributionPage = 1; void loadContributions() }
 function searchRelations(): void { store.relationPage = 1; void loadRelations() }
 function relationPageChange(page: number): void { store.relationPage = page; void loadRelations() }
 function relationSizeChange(size: number): void { store.relationSize = size; store.relationPage = 1; void loadRelations() }
@@ -133,7 +141,7 @@ onMounted(() => { void load(); void loadRelations() })
 <template>
   <section class="page-container page-enter">
     <div class="page-heading"><div><h1>推广资金管理</h1><p>推广金、奖池结算、用户分红额度与推广绑定关系。</p></div><el-button :loading="store.loading" @click="load"><el-icon><Refresh /></el-icon>刷新</el-button></div>
-    <el-tabs v-model="activeTab" class="profit-tabs">
+    <el-tabs v-model="activeTab" class="profit-tabs" @tab-change="handleTabChange">
       <el-tab-pane label="待推广金" name="promotion">
         <el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>待推广金</strong><span class="toolbar-count">共 {{ store.pendingTotal }} 条</span></div></div>
           <el-table :data="store.pendingPromotion" v-loading="store.loading" border stripe><el-table-column prop="id" label="记录 ID" width="110" /><el-table-column prop="orderNo" label="订单号" min-width="180" /><el-table-column prop="promoterUserId" label="推广用户" width="120" /><el-table-column prop="buyerUserId" label="购买用户" width="120" /><el-table-column label="金额" width="120"><template #default="{ row }">{{ money(row.amount) }}</template></el-table-column><el-table-column prop="createdAt" label="创建时间" min-width="180" /></el-table>
@@ -144,6 +152,14 @@ onMounted(() => { void load(); void loadRelations() })
         <el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>推广关系</strong><span class="toolbar-count">共 {{ store.relationTotal }} 条</span></div><div class="toolbar-actions"><el-input v-model="relationKeyword" placeholder="买家或推广员关键词" clearable class="relationKeyword" @keyup.enter="searchRelations" /><el-select v-model="relationSource" clearable placeholder="来源" class="relationSource"><el-option label="扫码绑定" value="SCAN" /><el-option label="手动绑定" value="MANUAL" /><el-option label="未知来源" value="UNKNOWN" /></el-select><el-button type="primary" :icon="Search" @click="searchRelations">搜索</el-button></div></div>
           <el-table :data="store.relations" v-loading="store.relationLoading" border stripe><el-table-column prop="buyerUserId" label="买家 ID" width="110" /><el-table-column prop="buyerName" label="买家" min-width="130" /><el-table-column prop="promoterUserId" label="推广员 ID" width="120" /><el-table-column prop="promoterName" label="推广员" min-width="130" /><el-table-column prop="bindTime" label="绑定时间" min-width="170" /><el-table-column prop="sourceDesc" label="来源" width="110" /><el-table-column label="状态" width="95"><template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.statusDesc || statusText(row.status) }}</el-tag></template></el-table-column><el-table-column label="操作" width="190" fixed="right"><template #default="{ row }"><div class="operator-actions"><el-button size="small" type="primary" :loading="store.relationActionLoading" @click="openRebind(row)"><el-icon><Edit /></el-icon>重新绑定</el-button><el-button size="small" type="danger" :loading="store.relationActionLoading" @click="unbindPromotionRelation(row)"><el-icon><Delete /></el-icon>解除绑定</el-button></div></template></el-table-column></el-table>
           <div class="table-pagination"><span>共 {{ store.relationTotal }} 条</span><el-pagination background layout="total, sizes, prev, pager, next" :current-page="store.relationPage" :page-size="store.relationSize" :total="store.relationTotal" @current-change="relationPageChange" @size-change="relationSizeChange" /></div>
+        </el-card>
+      </el-tab-pane>
+      <el-tab-pane label="分红贡献" name="contributions">
+        <el-alert title="分红贡献记录只读，不能人工确认" description="PENDING 记录表示已记录分红金额，等待系统自动确认；订单退款后会标记为作废。" type="info" :closable="false" show-icon class="contribution-alert" />
+        <el-card shadow="never" class="content-card">
+          <div class="toolbar"><div><strong>分红贡献记录</strong><span class="toolbar-count">共 {{ store.contributionTotal }} 条</span></div><div class="toolbar-actions"><el-select v-model="store.contributionStatus" clearable placeholder="全部状态" class="contribution-status" @change="contributionStatusChange"><el-option label="待确认" value="PENDING" /><el-option label="系统确认中" value="CONFIRMING" /><el-option label="已进入分红池" value="CONFIRMED" /><el-option label="订单退款，分红作废" value="VOIDED" /></el-select><el-button :loading="store.contributionLoading" @click="loadContributions"><el-icon><Refresh /></el-icon>刷新</el-button></div></div>
+          <el-table :data="store.contributions" v-loading="store.contributionLoading" border stripe empty-text="暂无分红贡献记录"><el-table-column prop="orderNo" label="订单号" min-width="190" /><el-table-column label="用户" min-width="150"><template #default="{ row }"><div>{{ row.userName || '未命名用户' }}</div><small class="muted-text">ID：{{ row.userId || '—' }}</small></template></el-table-column><el-table-column label="贡献金额" width="130"><template #default="{ row }">{{ money(row.amount) }}</template></el-table-column><el-table-column prop="paidAt" label="支付时间" min-width="170" /><el-table-column label="预计成熟时间" min-width="170"><template #default="{ row }">{{ displayTime(row.matureAt) }}</template></el-table-column><el-table-column label="状态" min-width="170"><template #default="{ row }"><el-tag :type="contributionStatusType(row.status)">{{ contributionStatusText(row.status, row.statusDesc) }}</el-tag></template></el-table-column><el-table-column label="确认时间" min-width="170"><template #default="{ row }">{{ displayTime(row.confirmedAt) }}</template></el-table-column><el-table-column prop="poolId" label="奖池 ID" width="110" /></el-table>
+          <div class="table-pagination"><span>共 {{ store.contributionTotal }} 条</span><el-pagination background layout="total, sizes, prev, pager, next" :current-page="store.contributionPage" :page-size="store.contributionSize" :total="store.contributionTotal" @current-change="contributionPageChange" @size-change="contributionSizeChange" /></div>
         </el-card>
       </el-tab-pane>
       <el-tab-pane label="分红测试" name="test">
@@ -208,6 +224,7 @@ onMounted(() => { void load(); void loadRelations() })
 .toolbar-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .relationKeyword { width: 220px; }
 .relationSource { width: 140px; }
+.contribution-status { width: 170px; }
 .table-pagination { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-top: 16px; }
 .dialog-context { color: var(--el-text-color-secondary); margin: 0 0 12px; }
 .test-alert { margin-bottom: 16px; }
@@ -227,6 +244,8 @@ onMounted(() => { void load(); void loadRelations() })
 .test-token-row :deep(.el-textarea__inner) { min-height: 52px; }
 .test-result-grid { display: grid; gap: 12px; }
 .test-result-grid :deep(.el-descriptions__title) { margin-top: 4px; font-size: 14px; }
-@media (max-width: 900px) { .toolbar-actions, .table-pagination { align-items: stretch; flex-direction: column; } .relationKeyword, .relationSource { width: 100%; } }
+.contribution-alert { margin-bottom: 16px; }
+.muted-text { color: var(--el-text-color-secondary); font-size: 12px; }
+@media (max-width: 900px) { .toolbar-actions, .table-pagination { align-items: stretch; flex-direction: column; } .relationKeyword, .relationSource, .contribution-status { width: 100%; } }
 @media (max-width: 1100px) { .test-step-grid { grid-template-columns: 1fr; } .test-result-card { grid-column: auto; } }
 </style>

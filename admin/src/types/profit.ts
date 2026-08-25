@@ -59,6 +59,20 @@ export interface SevenDayBonusDetail {
   updateTime: string
 }
 
+export interface DividendContribution {
+  id: string
+  orderNo: string
+  userId: string
+  userName: string
+  amount: number
+  paidAt: string
+  matureAt: string
+  status: string
+  statusDesc: string
+  confirmedAt: string
+  poolId: string
+}
+
 export interface UserDividendLimit {
   id: string
   userId: string
@@ -79,6 +93,7 @@ export interface ProfitResponse<T> {
 
 export type PromotionPage = PaginationResult<PendingPromotionRecord> & { page: number; pageSize: number }
 export type PromotionBindingPage = PaginationResult<PromotionBinding> & { page: number; pageSize: number }
+export type DividendContributionPage = PaginationResult<DividendContribution> & { page: number; pageSize: number }
 
 export interface ProfitAdjustPoolDTO {
   totalAmount: number

@@ -7,7 +7,9 @@ import { getProductDetail } from '@/api/product'
 import { ApiRequestError, isApiRequestError } from '@/utils/request'
 import { PURCHASE_LIMIT_ERROR_CODE, PURCHASE_LIMIT_MESSAGE } from '@/utils/dividend-limit'
 import { createThrottle } from '@/utils/interaction'
+import { isLoggedIn } from '@/utils/auth'
 import RequestState from '@/components/RequestState.vue'
+import LoginGuide from '@/components/LoginGuide.vue'
 
 const menuTop = ref(0)
 const menuLeft = ref(0)
@@ -37,6 +39,7 @@ const loadError = ref('')
 let categoryLoadPromise: Promise<void> | null = null
 const busy = ref(false)
 const cartAdding = ref(false)
+const loginGuideVisible = ref(false)
 const navigationThrottle = createThrottle(500)
 const categorySwitchThrottle = createThrottle(250)
 const bodyTop = computed(() => menuTop.value + menuH.value + 12)
@@ -117,6 +120,10 @@ function goSearch(): void {
 /** 将商品加入购物车，阻止事件冒泡避免同时跳转详情 */
 async function onAddCart(product: CategoryProduct): Promise<void> {
   if (cartAdding.value) return
+  if (!isLoggedIn()) {
+    loginGuideVisible.value = true
+    return
+  }
   cartAdding.value = true
   try {
     const detail = await getProductDetail(String(product.id))
@@ -200,6 +207,7 @@ onShow(() => { void refreshCategories() })
         </scroll-view>
       </view>
     </view>
+    <LoginGuide v-model="loginGuideVisible" />
   </view>
 </template>
 

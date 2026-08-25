@@ -1,19 +1,29 @@
 <script setup lang="ts">
 import { onLaunch, onShow } from '@dcloudio/uni-app'
-import { isLoggedIn } from '@/utils/auth'
 import { bindStoredPromotionIfLoggedIn, capturePromotionContext } from '@/utils/promotion'
 
-/** 应用启动时检查本地登录状态，避免已登录用户重复进入登录页。 */
+let redirectingToHome = false
+
+/** 启动时清理开发工具残留的登录页，游客也必须先进入公开首页。 */
+function ensureHomeEntry(): void {
+  if (redirectingToHome) return
+  const pages = getCurrentPages()
+  const currentRoute = pages[pages.length - 1]?.route
+  if (currentRoute !== 'pages/login/login') return
+
+  redirectingToHome = true
+  uni.reLaunch({
+    url: '/pages/index/index',
+    complete: () => { redirectingToHome = false },
+  })
+}
+
+/** 应用启动时检查启动页，避免游客被开发工具残留状态带入登录页。 */
 onLaunch((options) => {
   capturePromotionContext(options as Record<string, unknown>)
   void bindStoredPromotionIfLoggedIn()
-  if (isLoggedIn()) {
-    const pages = getCurrentPages()
-    const currentRoute = pages[pages.length - 1]?.route
-    if (currentRoute === 'pages/login/login') {
-      uni.reLaunch({ url: '/pages/index/index' })
-    }
-  }
+  // onLaunch 早于页面创建，延迟一次让页面栈完成初始化后再兜底。
+  setTimeout(ensureHomeEntry, 0)
 })
 
 /** 小程序从后台回到前台时再次捕获分享或扫码参数。 */

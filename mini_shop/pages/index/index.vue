@@ -267,7 +267,6 @@ onShow(() => { void refreshHomepage() })
         </view>
         <image v-if="bottomImages[welfareTab]" class="welfare-img" :src="bottomImages[welfareTab]" mode="aspectFill" lazy-load @click="handleWelfareImageTap(welfareTab)" />
         <view v-else class="welfare-placeholder" />
-        <text class="welfare-logo">今华有肽，年轻常在</text>
       </view>
     </view>
 
@@ -347,6 +346,4 @@ onShow(() => { void refreshHomepage() })
 /* 福利图区 301×214px, radius 5px */
 .welfare-img { width: 602rpx; height: 428rpx; margin-top: 44rpx; border-radius: 10rpx; }
 .welfare-placeholder { width: 602rpx; height: 428rpx; margin-top: 44rpx; background: #a9a9a9; border-radius: 10rpx; }
-/* 底部 logo 19px #232423, mt 31px */
-.welfare-logo { color: #232423; font-size: 38rpx; margin-top: 62rpx; }
 </style>

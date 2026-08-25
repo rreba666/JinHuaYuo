@@ -42,6 +42,21 @@ export interface ProfitRatesSaveDTO {
   remark?: string
 }
 
+export interface WithdrawRulesConfig {
+  minAmount: number
+  dailyAmountLimit: number
+  dailyCountLimit: number
+  feeRate: number
+  testUserMinAmount: number
+  testUserId: number | null
+  testSkipLock: boolean
+  maxConcurrent: number
+  frozenLimit: number
+  remark: string
+}
+
+export type WithdrawRulesSaveDTO = WithdrawRulesConfig
+
 /** 兼容旧版单项比例类型。 */
 export interface FundRateConfig {
   rate: number

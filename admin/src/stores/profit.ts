@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
-import { adjustDaily, adjustPool, confirmPool, getBonusDetails, getBonusPools, getDividendLimits, getPendingPromotion, getPromotionRelations, getUnsettledDailyDetails, injectBonusPool, rebindPromotionRelation, resetDividendLimit, settleProfit, unbindPromotionRelation } from '@/api/profit'
-import type { BonusInjectDTO, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, PromotionBinding, PromotionBindingSource, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit } from '@/types/profit'
+import { adjustDaily, adjustPool, confirmPool, getBonusDetails, getBonusPools, getDividendLimits, getPendingPromotion, getProfitContributions, getPromotionRelations, getUnsettledDailyDetails, injectBonusPool, rebindPromotionRelation, resetDividendLimit, settleProfit, unbindPromotionRelation } from '@/api/profit'
+import type { BonusInjectDTO, DividendContribution, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, PromotionBinding, PromotionBindingSource, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit } from '@/types/profit'
 
 export const useProfitStore = defineStore('profit', () => {
   const pendingPromotion = ref<import('@/types/profit').PendingPromotionRecord[]>([])
@@ -19,6 +19,12 @@ export const useProfitStore = defineStore('profit', () => {
   const poolDetails = ref<SevenDayBonusDetail[]>([])
   const unsettledDaily = ref<SevenDayBonusDetail[]>([])
   const dividendLimits = ref<UserDividendLimit[]>([])
+  const contributions = ref<DividendContribution[]>([])
+  const contributionTotal = ref(0)
+  const contributionPage = ref(1)
+  const contributionSize = ref(50)
+  const contributionStatus = ref('PENDING')
+  const contributionLoading = ref(false)
   const loading = ref(false)
   const actionLoading = ref(false)
 
@@ -44,6 +50,15 @@ export const useProfitStore = defineStore('profit', () => {
     } finally { relationLoading.value = false }
   }
 
+  async function fetchContributions(): Promise<void> {
+    contributionLoading.value = true
+    try {
+      const result = await getProfitContributions({ status: contributionStatus.value || undefined, page: contributionPage.value, size: contributionSize.value })
+      contributions.value = result.list
+      contributionTotal.value = result.total
+    } finally { contributionLoading.value = false }
+  }
+
   async function fetchPoolDetails(poolId: string): Promise<void> { poolDetails.value = await getBonusDetails(poolId) }
   async function runAction(action: () => Promise<void>): Promise<void> { actionLoading.value = true; try { await action(); await fetchAll() } finally { actionLoading.value = false } }
   async function rebindRelation(buyerUserId: string, promoterId: string): Promise<void> { relationActionLoading.value = true; try { await rebindPromotionRelation(buyerUserId, promoterId); await fetchRelations() } finally { relationActionLoading.value = false } }
@@ -62,5 +77,5 @@ export const useProfitStore = defineStore('profit', () => {
   async function adjustDetail(detailId: string, payload: ProfitAdjustDailyDTO): Promise<void> { await runAction(() => adjustDaily(detailId, payload)) }
   async function resetLimit(userId: string): Promise<void> { await runAction(() => resetDividendLimit(userId)) }
 
-  return { pendingPromotion, pendingTotal, pendingPage, pendingSize, relations, relationTotal, relationPage, relationSize, relationLoading, relationActionLoading, relationFilters, sevenDayPools, poolDetails, unsettledDaily, dividendLimits, loading, actionLoading, fetchAll, fetchRelations, fetchPoolDetails, rebindRelation, unbindRelation, inject, settle, confirm, adjust, adjustDetail, resetLimit }
+  return { pendingPromotion, pendingTotal, pendingPage, pendingSize, relations, relationTotal, relationPage, relationSize, relationLoading, relationActionLoading, relationFilters, sevenDayPools, poolDetails, unsettledDaily, dividendLimits, contributions, contributionTotal, contributionPage, contributionSize, contributionStatus, contributionLoading, loading, actionLoading, fetchAll, fetchRelations, fetchContributions, fetchPoolDetails, rebindRelation, unbindRelation, inject, settle, confirm, adjust, adjustDetail, resetLimit }
 })

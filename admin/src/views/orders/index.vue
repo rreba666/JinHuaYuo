@@ -6,7 +6,7 @@ import { useOrderStore } from '@/stores/order'
 import DataTable from '@/components/DataTable.vue'
 import type { Order, OrderAddressUpdateDTO, OrderRefundDTO, OrderStatus } from '@/types/order'
 import { isVerifiedStatus } from '@/utils/orderRules'
-import { Box, CircleCheck, Delete, View } from '@element-plus/icons-vue'
+import { Box, CircleCheck, Delete, RefreshLeft, View } from '@element-plus/icons-vue'
 
 const store = useOrderStore()
 const route = useRoute()
@@ -77,6 +77,7 @@ const isPickupOrder = computed(() => route.path === '/orders/pickup')
 const pageTitle = computed(() => isPickupOrder.value ? '自提订单' : '普通订单')
 const eligibleSelected = computed(() => selected.value.filter((order) => !isDeleted(order) && order.status === 1))
 const deletableSelected = computed(() => selected.value.filter((order) => !isDeleted(order)))
+const restorableSelected = computed(() => selected.value.filter((order) => isDeleted(order)))
 
 function statusType(status: OrderStatus): 'info' | 'warning' | 'primary' | 'success' | 'danger' {
   return ({ 0: 'info', 1: 'warning', 2: 'primary', 3: 'success', 4: 'success', 5: 'info', 6: 'warning', 7: 'danger', 8: 'success' } as const)[status]
@@ -288,6 +289,26 @@ async function removeSelected(): Promise<void> {
   }
 }
 
+/** 批量恢复软删除订单，跳过当前选择中的正常订单。 */
+async function restoreSelected(): Promise<void> {
+  if (!restorableSelected.value.length) {
+    ElMessage.info('请选择要恢复的订单')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`确认恢复选中的 ${restorableSelected.value.length} 个订单吗？`, '批量恢复订单二次确认', { type: 'warning', confirmButtonText: '确认恢复', cancelButtonText: '取消' })
+    const result = await store.restoreOrders(restorableSelected.value.map((order) => order.id))
+    selected.value = []
+    if (result.failedIds.length) {
+      ElMessage.warning(`恢复成功 ${result.successIds.length} 个，失败 ${result.failedIds.length} 个`)
+    } else {
+      ElMessage.success(`已恢复 ${result.successIds.length} 个订单`)
+    }
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '批量恢复失败')
+  }
+}
+
 /** 打开自提订单手工核销弹窗。 */
 function openVerify(order: Order): void {
   verifyForm.orderId = order.id
@@ -359,7 +380,8 @@ onMounted(() => { void loadList() })
          <div class="toolbar">
            <div><strong>自提订单</strong><span class="toolbar-count">共 {{ store.total }} 条</span></div>
            <div class="toolbar-actions pickup-order-actions">
-             <span v-if="hasSelection" class="selection-tip">已选择 {{ selected.length }} 项</span>
+           <span v-if="hasSelection" class="selection-tip">已选择 {{ selected.length }} 项</span>
+             <el-button type="warning" plain :disabled="!restorableSelected.length || store.restoring" :loading="store.restoring" @click="restoreSelected"><el-icon><RefreshLeft /></el-icon>批量恢复</el-button>
              <el-button type="danger" plain :disabled="!deletableSelected.length || store.deleting" :loading="store.deleting" @click="removeSelected">批量删除</el-button>
            </div>
          </div>
@@ -383,6 +405,7 @@ onMounted(() => { void loadList() })
         <div class="toolbar-actions">
           <span v-if="hasSelection" class="selection-tip">已选择 {{ selected.length }} 项</span>
           <el-button type="primary" plain :disabled="!eligibleSelected.length || store.shipping" :loading="store.shipping" @click="openBatchShip">批量发货</el-button>
+          <el-button type="warning" plain :disabled="!restorableSelected.length || store.restoring" :loading="store.restoring" @click="restoreSelected"><el-icon><RefreshLeft /></el-icon>批量恢复</el-button>
           <el-button type="danger" plain :disabled="!deletableSelected.length || store.deleting" :loading="store.deleting" @click="removeSelected">批量删除</el-button>
         </div>
       </div>

@@ -32,3 +32,11 @@ export function requestPayment(params: PrepayParams): Promise<void> {
 export function payByBalance(orderId: number | string): Promise<void> {
   return request<void>({ url: '/api/pay/balance', method: 'POST', data: { orderId } })
 }
+
+/**
+ * 微信收银台取消后安全切换到余额支付。
+ * 后端会先查询微信真实支付状态，确认未支付后释放微信占位并完成余额扣款。
+ */
+export function switchToBalance(orderId: number | string): Promise<void> {
+  return request<void>({ url: '/api/pay/switch-to-balance', method: 'POST', data: { orderId } })
+}

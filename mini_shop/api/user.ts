@@ -23,13 +23,14 @@ export interface WalletInfo {
 
 export type WithdrawType = 'PROMOTION' | 'BONUS' | 'BALANCE'
 
-/** 提现收款方式，当前后端仅支持银行卡人工打款。 */
-export type WithdrawMethod = 'BANK_CARD'
+/** 提现收款方式，两种方式均由后台按提现记录人工打款。 */
+export type WithdrawMethod = 'WECHAT_BALANCE' | 'BANK_CARD'
 
 export interface WithdrawDTO {
   amount: number
   type: WithdrawType
-  withdrawMethod?: WithdrawMethod
+  withdrawMethod: WithdrawMethod
+  idempotencyKey: string
 }
 
 export interface BalanceTransferDTO {
@@ -101,10 +102,15 @@ export function updateUserProfile(data: Partial<UserProfile>): Promise<UserProfi
   return request<UserProfile>({ url: '/api/user/profile', method: 'PUT', data })
 }
 
-/** 提交指定类型的钱包提现申请，后端要求金额最低 1。 */
-export function withdrawWallet(amount: number, type: WithdrawType = 'BALANCE', withdrawMethod?: WithdrawMethod): Promise<void> {
-  const data = { amount, type, ...(withdrawMethod ? { withdrawMethod } : {}) }
-  return request<void>({ url: '/api/wallet/withdraw', method: 'POST', data: data as WithdrawDTO })
+/** 提交指定类型的钱包提现申请，后端要求金额最低 1，且每次申请必须携带幂等键。 */
+export function withdrawWallet(amount: number, type: WithdrawType, withdrawMethod: WithdrawMethod, idempotencyKey: string): Promise<void> {
+  const data: WithdrawDTO = {
+    amount: Number(amount.toFixed(2)),
+    type,
+    withdrawMethod,
+    idempotencyKey,
+  }
+  return request<void>({ url: '/api/wallet/withdraw', method: 'POST', data })
 }
 
 /** 分页查询当前用户的提现记录。 */

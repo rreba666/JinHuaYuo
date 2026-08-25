@@ -2,13 +2,15 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getUserProfile, getWalletInfo, updateUserProfile, type UserProfile, type WalletInfo } from '@/api/user'
-import { getAuth, isLoggedIn, isRegisteredUser } from '@/utils/auth'
+import { clearAuth, getAuth, isLoggedIn, isRegisteredUser } from '@/utils/auth'
 import { getPromotionCode } from '@/api/promotion'
 import { getAnnouncementList, type Announcement } from '@/api/announcement'
 import { uploadFile } from '@/utils/request'
 import { loadFrozenPromotionAmount } from '@/utils/promotion-freeze'
 import { createThrottle } from '@/utils/interaction'
+import { validateText } from '@/utils/input-validation'
 import PromotionCodePoster from '@/components/PromotionCodePoster.vue'
+import LoginGuide from '@/components/LoginGuide.vue'
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
@@ -49,7 +51,8 @@ const menuItems = [
   { key: 'favorite', label: '我的收藏', icon: '/static/my/收藏_slices/收藏.png' },
   { key: 'materials', label: '商品素材', icon: '/static/my/商品素材_slices/商品素材.png' },
   { key: 'about', label: '关于我们', icon: '/static/my/关于我们_slices/关于我们.png' },
-  { key: 'privacy', label: '隐私政策协议', icon: '/static/my/隐私_slices/隐私.png' },
+  { key: 'agreement', label: '用户协议', icon: '/static/my/隐私_slices/隐私.png' },
+  { key: 'privacy', label: '隐私保护指引', icon: '/static/my/隐私_slices/隐私.png' },
 ]
 
 const incomeEntries = computed(() => [
@@ -85,6 +88,7 @@ let dataLoadPromise: Promise<void> | null = null
 const promotionCodeVisible = ref(false)
 const promotionCodeLoading = ref(false)
 const promotionCodeUrl = ref('')
+const loginGuideVisible = ref(false)
 
 function formatIncome(value?: number): string {
   return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(2) : '0.00'
@@ -101,6 +105,12 @@ function incomeValueClass(value?: number): string {
 async function loadData(): Promise<void> {
   // 公告为公开接口，游客也能查看
   void loadAnnouncements()
+  if (!isLoggedIn()) {
+    user.value = null
+    wallet.value = null
+    promotionFrozenAmount.value = 0
+    return
+  }
   try { user.value = await getUserProfile() } catch { user.value = null /* 资料失败按游客处理 */ }
   if (!registeredUser.value) {
     wallet.value = null
@@ -149,6 +159,10 @@ function closeAnnouncement(): void {
 
 function goOrder(key: string): void {
   if (!navigationThrottle()) return
+  if (!isLoggedIn()) {
+    showLoginGuide()
+    return
+  }
   if (key === 'completed') {
     // 退款售后入口直接落到订单列表的「退款售后」分类
     uni.navigateTo({ url: '/subpkg-order/orders/list?tab=aftersale' })
@@ -169,6 +183,12 @@ function goOrder(key: string): void {
 
 function goMenu(key: string): void {
   if (!navigationThrottle()) return
+  if (key === 'agreement') { uni.navigateTo({ url: '/pages/user-agreement/user-agreement' }); return }
+  if (key === 'privacy') { uni.navigateTo({ url: '/pages/privacy/privacy' }); return }
+  if (['invoice', 'favorite'].includes(key) && !isLoggedIn()) {
+    showLoginGuide()
+    return
+  }
   if (key === 'invoice') { uni.navigateTo({ url: '/subpkg-order/invoice/list' }); return }
   if (key === 'favorite') { uni.navigateTo({ url: '/subpkg-wallet/favorite/list' }); return }
   if (key === 'promotion') { goPromotionCenter(); return }
@@ -298,6 +318,10 @@ onUnmounted(() => {
 
 /** 生成并展示带当前推广者身份的小程序码（个人页二维码按钮）。 */
 async function openPromotionCode(): Promise<void> {
+  if (!isLoggedIn()) {
+    showLoginGuide()
+    return
+  }
   if (!registeredUser.value) {
     uni.showToast({ title: '完成订单后开放推广功能', icon: 'none' })
     return
@@ -322,10 +346,22 @@ async function openPromotionCode(): Promise<void> {
 
 function goAllOrders(): void {
   if (!navigationThrottle()) return
+  if (!isLoggedIn()) {
+    showLoginGuide()
+    return
+  }
   uni.navigateTo({ url: '/subpkg-order/orders/list' })
 }
 
+function showLoginGuide(): void {
+  loginGuideVisible.value = true
+}
+
 function goWallet(): void {
+  if (!isLoggedIn()) {
+    showLoginGuide()
+    return
+  }
   if (!registeredUser.value) {
     uni.showToast({ title: '完成订单后开放推广功能', icon: 'none' })
     return
@@ -333,8 +369,11 @@ function goWallet(): void {
   uni.navigateTo({ url: '/subpkg-wallet/withdraw/withdraw' })
 }
 
-/** 进入推广中心前再次校验身份，防止异步刷新期间出现越权跳转。 */
 function goPromotionCenter(): void {
+  if (!isLoggedIn()) {
+    showLoginGuide()
+    return
+  }
   if (!registeredUser.value) {
     uni.showToast({ title: '完成订单后开放推广功能', icon: 'none' })
     return
@@ -350,7 +389,14 @@ function goEditProfile(): void {
 
 /** 个人资料区点击：未登录先引导登录，已登录进入编辑资料。 */
 function handleProfileTap(): void {
-  if (!isLoggedIn()) {
+  if (!isLoggedIn() || !user.value) {
+    // 首次进入个人页时资料请求仍在进行，避免把有效会话误判为失效。
+    if (isLoggedIn() && dataLoadPromise) {
+      uni.showToast({ title: '用户信息加载中，请稍候', icon: 'none' })
+      return
+    }
+    // 资料为空且本地仍有 Token 时，先清理残留会话，避免登录页直接跳回首页。
+    if (isLoggedIn()) clearAuth()
     uni.navigateTo({ url: '/pages/login/login' })
     return
   }
@@ -368,7 +414,8 @@ function onChooseAvatar(event: { detail: { avatarUrl?: string } }): void {
 }
 
 async function saveProfile(): Promise<void> {
-  if (!profileForm.nickname.trim()) { uni.showToast({ title: '请输入昵称', icon: 'none' }); return }
+  const nickname = validateText(profileForm.nickname, { label: '昵称', maxLength: 32 })
+  if (!nickname.ok) { uni.showToast({ title: nickname.message, icon: 'none' }); return }
   profileSaving.value = true
   try {
     // 用户选了新头像时，先把微信临时文件上传成永久 URL
@@ -379,7 +426,7 @@ async function saveProfile(): Promise<void> {
       avatarTempPath.value = ''
     }
     // 仅允许修改昵称和头像，电话不允许编辑，保存时不上传 phone
-    user.value = await updateUserProfile({ nickname: profileForm.nickname.trim(), avatarUrl })
+    user.value = await updateUserProfile({ nickname: nickname.value, avatarUrl })
     profileEditorVisible.value = false
     uni.showToast({ title: '资料已保存', icon: 'success' })
   } catch (error) { uni.showToast({ title: error instanceof Error ? error.message : '资料保存失败', icon: 'none' }) }
@@ -509,6 +556,7 @@ onShow(() => { void refreshData() })
     </view>
 
     <PromotionCodePoster v-model="promotionCodeVisible" :loading="promotionCodeLoading" :code-url="promotionCodeUrl" />
+    <LoginGuide v-model="loginGuideVisible" />
   </view>
 </template>
 

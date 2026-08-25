@@ -2,6 +2,8 @@
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { computed, onMounted, ref } from 'vue'
 import { getInvoiceDetail, getInvoiceList, type InvoiceRequest } from '@/api/invoice'
+import { isLoggedIn } from '@/utils/auth'
+import LoginGuide from '@/components/LoginGuide.vue'
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
@@ -16,6 +18,7 @@ const loadingMore = ref(false)
 const loaded = ref(false)
 const detailVisible = ref(false)
 const detail = ref<InvoiceRequest | null>(null)
+const loginGuideVisible = ref(false)
 
 function invoiceTitle(item: InvoiceRequest): string { return item.type === 2 ? item.companyName || '公司抬头' : item.personalName || '个人抬头' }
 function statusClass(status: number): string { return status === 1 ? 'success' : status === 4 ? 'muted' : 'pending' }
@@ -43,7 +46,13 @@ async function showDetail(item: InvoiceRequest): Promise<void> {
   catch (error) { uni.showToast({ title: error instanceof Error ? error.message : '发票详情加载失败', icon: 'none' }) }
 }
 
-onLoad(() => { void load(true) })
+onLoad(() => {
+  if (!isLoggedIn()) {
+    loginGuideVisible.value = true
+    return
+  }
+  void load(true)
+})
 onShow(() => { if (loaded.value) void load(true) })
 
 onMounted(() => {
@@ -84,6 +93,8 @@ onMounted(() => {
         </template>
       </view>
     </view>
+
+    <LoginGuide v-model="loginGuideVisible" />
   </view>
 </template>
 

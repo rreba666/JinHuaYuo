@@ -31,19 +31,42 @@ interface ApiResponse<T> {
   data?: T
 }
 
-/** 统一处理会话失效，保留调用方自己的错误提示和业务分支。 */
+/** 清理失效会话，但不改变当前页面路由；是否引导登录由具体业务页面决定。 */
 function handleUnauthorized(statusCode: number, businessCode?: number): void {
   if (statusCode !== 401 && Number(businessCode) !== 401) return
   clearAuth()
-  const pages = getCurrentPages()
-  const currentRoute = pages.length ? pages[pages.length - 1]?.route || '' : ''
-  if (currentRoute !== 'pages/login/login') {
-    uni.reLaunch({ url: '/pages/login/login' })
-  }
+}
+
+/** 公开只读接口遇到旧 Token 时允许以游客身份重试一次。 */
+function isPublicBrowseRequest(url: string | undefined, method?: string): boolean {
+  if ((method || 'GET').toUpperCase() !== 'GET' || !url) return false
+  const path = url.split(/[?#]/, 1)[0]
+  return path === '/api/category/list'
+    || path === '/api/product/list'
+    || /^\/api\/product\/detail\/[^/]+$/.test(path)
+    || path === '/api/homepage'
+    || path === '/api/shop/all'
+    || /^\/api\/(public|setting|coupon|announcement)\//.test(path)
+    || path === '/api/image'
+    || path.startsWith('/api/image/')
+}
+
+function removeAuthorizationHeader(header: UniApp.RequestOptions['header']): UniApp.RequestOptions['header'] {
+  const next = { ...(header || {}) } as Record<string, string>
+  Object.keys(next)
+    .filter((key) => key.toLowerCase() === 'authorization')
+    .forEach((key) => { delete next[key] })
+  return next
+}
+
+/** 公开浏览请求遇到旧 Token 401 时，清理会话并以游客身份重试一次。 */
+function retryWithoutAuthorization<T>(options: UniApp.RequestOptions, resolve: (value: T) => void, reject: (reason?: unknown) => void): void {
+  clearAuth()
+  requestInternal<T>({ ...options, header: removeAuthorizationHeader(options.header) }, false).then(resolve, reject)
 }
 
 /** 发起 uni-app 网络请求，统一处理鉴权头和后端错误。 */
-export function request<T = unknown>(options: UniApp.RequestOptions): Promise<T> {
+function requestInternal<T = unknown>(options: UniApp.RequestOptions, allowPublicRetry: boolean): Promise<T> {
   return new Promise((resolve, reject) => {
     if (!API_BASE_URL) {
       reject(new ApiRequestError('未配置 VITE_API_BASE_URL，请检查 mini_shop 工程目录环境文件'))
@@ -69,6 +92,11 @@ export function request<T = unknown>(options: UniApp.RequestOptions): Promise<T>
         const body = (response.data && typeof response.data === 'object'
           ? response.data
           : {}) as ApiResponse<T>
+        const unauthorized = response.statusCode === 401 || Number(body.code) === 401
+        if (allowPublicRetry && token && isPublicBrowseRequest(options.url, options.method) && unauthorized) {
+          retryWithoutAuthorization(options, resolve, reject)
+          return
+        }
         if (response.statusCode < 200 || response.statusCode >= 300) {
           handleUnauthorized(response.statusCode, body.code)
           reject(new ApiRequestError(body.message || '网络异常，请稍后重试', body.code))
@@ -86,6 +114,11 @@ export function request<T = unknown>(options: UniApp.RequestOptions): Promise<T>
       },
     })
   })
+}
+
+/** 对外请求入口。公开浏览接口只有在旧 Token 失效时才会无 Token 重试一次。 */
+export function request<T = unknown>(options: UniApp.RequestOptions): Promise<T> {
+  return requestInternal<T>(options, true)
 }
 
 /**

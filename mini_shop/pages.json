@@ -1,16 +1,30 @@
 {
   "pages": [
     {
-      "path": "pages/login/login",
+      "path": "pages/index/index",
       "style": {
-        "navigationBarTitleText": "微信登录",
+        "navigationBarTitleText": "今华有",
         "navigationStyle": "custom"
       }
     },
     {
-      "path": "pages/index/index",
+      "path": "pages/privacy/privacy",
       "style": {
-        "navigationBarTitleText": "今华有",
+        "navigationBarTitleText": "隐私保护指引",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/user-agreement/user-agreement",
+      "style": {
+        "navigationBarTitleText": "用户协议",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/login/login",
+      "style": {
+        "navigationBarTitleText": "手机号快捷登录",
         "navigationStyle": "custom"
       }
     },

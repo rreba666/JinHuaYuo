@@ -4,6 +4,8 @@ import { computed, onMounted, ref } from 'vue'
 import { cancelOrder, getOrderList, receiveOrder, refundOrder, type OrderStatus, type OrderSummary } from '@/api/order'
 import { getAfterSaleList, type AfterSaleRecord } from '@/api/after-sale'
 import { isApiRequestError } from '@/utils/request'
+import { isLoggedIn } from '@/utils/auth'
+import LoginGuide from '@/components/LoginGuide.vue'
 
 /** 订单 tab 定义。「退款售后」走售后单接口（key='aftersale'），其余走订单列表。 */
 const tabs: Array<{ key: string; label: string; statuses: OrderStatus[]; pickupType?: 0 | 1 }> = [
@@ -34,6 +36,7 @@ const navigationLoading = ref(false)
 /** 当前 tab 是否为「退款售后」。 */
 const isAfterSaleTab = computed(() => tabs[activeIndex.value]?.key === 'aftersale')
 const empty = computed(() => loaded.value && !loading.value && !(isAfterSaleTab.value ? afterSales.value.length : list.value.length))
+const loginGuideVisible = ref(false)
 /** 请求竞态 token，快速切换 tab 时丢弃过期响应。 */
 let requestToken = 0
 
@@ -44,6 +47,13 @@ const navStyle = computed(() => ({ top: `${menuTop.value}px`, height: `${menuHei
 const bodyTop = computed(() => menuTop.value + menuHeight.value)
 
 async function load(reset = true): Promise<void> {
+  if (!isLoggedIn()) {
+    list.value = []
+    afterSales.value = []
+    loaded.value = true
+    loginGuideVisible.value = true
+    return
+  }
   if (loading.value || loadingMore.value) return
   const token = ++requestToken
   const nextPage = reset ? 1 : page.value + 1
@@ -272,6 +282,8 @@ onShow(() => {
 
       <view v-show="empty" class="state">{{ isAfterSaleTab ? '暂无售后单' : '暂无订单' }}</view><view v-show="loadingMore" class="more">加载中...</view>
     </scroll-view>
+
+    <LoginGuide v-model="loginGuideVisible" />
   </view>
 </template>
 

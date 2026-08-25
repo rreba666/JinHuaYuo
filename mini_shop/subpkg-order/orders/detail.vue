@@ -4,9 +4,10 @@ import { computed, reactive, ref, watch } from 'vue'
 import { cancelOrder, getAddressChangeRequest, getOrderDetail, getPickupCode, receiveOrder, refundOrder, submitAddressChangeRequest, type AddressChangeRequestDTO, type OrderAddressChangeRequest, type OrderDetail, type PickupCodeVO } from '@/api/order'
 import { getEnabledShops, type EnabledShop } from '@/api/shop'
 import { getAfterSaleList } from '@/api/after-sale'
-import { getAuth } from '@/utils/auth'
+import { getAuth, isLoggedIn } from '@/utils/auth'
 import { isApiRequestError } from '@/utils/request'
 import { cleanDigits, cleanText, validateMobile, validateText } from '@/utils/input-validation'
+import LoginGuide from '@/components/LoginGuide.vue'
 // @ts-ignore uqrcode 为 UMD 单文件库（随分包 subpkg-order 打包，避免主包出现未使用的 JS 文件）
 import UQRCode from '@/subpkg-order/utils/uqrcode'
 
@@ -14,6 +15,7 @@ const order = ref<OrderDetail | null>(null)
 const loading = ref(true)
 const actionLoading = ref(false)
 const errorMessage = ref('')
+const loginGuideVisible = ref(false)
 /** 自提码（独立 pickup-code 接口返回）。 */
 const pickupCode = ref('')
 /** 自提二维码内容（独立 pickup-code 接口返回）。 */
@@ -453,6 +455,11 @@ async function action(type: 'cancel' | 'receive' | 'refund'): Promise<void> {
 }
 onLoad((options?: Record<string, string | undefined>) => {
   if (!options?.orderId) { errorMessage.value = '订单参数缺失'; loading.value = false; return }
+  if (!isLoggedIn()) {
+    loading.value = false
+    loginGuideVisible.value = true
+    return
+  }
   void load(options.orderId)
 })
 onShow(() => {
@@ -538,6 +545,8 @@ onUnload(() => {
         <view class="address-change-submit" :class="{ disabled: addressChangeSubmitting }" @click="submitAddressChange">{{ addressChangeSubmitting ? '提交中...' : '提交审核' }}</view>
       </view>
     </view>
+
+    <LoginGuide v-model="loginGuideVisible" />
   </view>
 </template>
 

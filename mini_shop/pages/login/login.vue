@@ -3,16 +3,26 @@
     <view class="login-card">
       <image class="logo" src="/static/logo.png" mode="aspectFit" />
       <text class="title">欢迎来到商城</text>
-      <text class="subtitle">微信授权后即可开始购物</text>
+      <text class="subtitle">授权手机号后即可开始购物</text>
+      <view class="privacy-agreement" @click="privacyAgreed = !privacyAgreed">
+        <view class="privacy-checkbox" :class="{ checked: privacyAgreed }">
+          <text v-if="privacyAgreed" class="privacy-checkmark">✓</text>
+        </view>
+        <text class="privacy-agreement-text">我已阅读并同意</text>
+        <text class="privacy-link" @click.stop="openUserAgreement">《用户协议》</text>
+        <text class="privacy-agreement-text">和</text>
+        <text class="privacy-link" @click.stop="openPrivacy">《隐私保护指引》</text>
+      </view>
       <button
         class="login-button"
         type="primary"
         open-type="getPhoneNumber"
-        :disabled="loading"
+        :disabled="loading || !privacyAgreed"
         @getphonenumber="handlePhoneNumber"
       >
-        {{ loading ? '登录中...' : '微信一键登录' }}
+        {{ loading ? '登录中...' : '手机号快捷登录' }}
       </button>
+      <button class="cancel-button" :disabled="loading" @click="cancelLogin">暂不登录，先逛逛</button>
       <text v-if="errorMessage" class="error-message">{{ errorMessage }}</text>
     </view>
   </view>
@@ -30,6 +40,7 @@ import { clearPromotionContext, capturePromotionContext, getStoredPromoterId } f
 const loading = ref(false)
 const errorMessage = ref('')
 const restoringSession = ref(true)
+const privacyAgreed = ref(false)
 
 /** 首次打开登录页时恢复本地会话，避免已登录用户重复授权。 */
 function restoreExistingSession(): void {
@@ -42,9 +53,13 @@ function restoreExistingSession(): void {
 
 /** 处理微信手机号授权回调，并继续完成业务登录。 */
 async function handlePhoneNumber(event: UniApp.GetPhoneNumberResult): Promise<void> {
+  if (!privacyAgreed.value) {
+    errorMessage.value = '请先阅读并同意用户协议和隐私保护指引'
+    return
+  }
   if (loading.value) return
   if (!event.detail?.code) {
-    errorMessage.value = '需要获得手机号授权后才能登录'
+    errorMessage.value = '已取消登录，你可以继续浏览'
     return
   }
 
@@ -57,15 +72,6 @@ async function handlePhoneNumber(event: UniApp.GetPhoneNumberResult): Promise<vo
   try {
     const loginResult = await getWechatLoginCode()
     const authData = await loginByWechat(loginResult, event.detail.code, getStoredPromoterId())
-    // 打印 Token 到控制台方便测试
-    console.log('========== 登录成功 ==========')
-    console.log('Token:', authData.token)
-    console.log('UserId:', authData.userId)
-    console.log('IsNewUser:', authData.isNewUser)
-    console.log('ExpireAt:', authData.expireAt)
-    console.log('完整 authData:', JSON.stringify(authData))
-    console.log('Bearer 头:', `Bearer ${authData.token}`)
-    console.log('==============================')
     saveAuth(authData)
     const profile = await profilePromise
     if (profile) {
@@ -84,6 +90,28 @@ async function handlePhoneNumber(event: UniApp.GetPhoneNumberResult): Promise<vo
   }
 }
 
+function openUserAgreement(): void {
+  uni.navigateTo({ url: '/pages/user-agreement/user-agreement' })
+}
+
+function openPrivacy(): void {
+  uni.navigateTo({ url: '/pages/privacy/privacy' })
+}
+
+/** 用户拒绝授权或暂不登录时返回原页面，无法返回时回到首页。 */
+function cancelLogin(): void {
+  if (loading.value) return
+  const pages = getCurrentPages()
+  if (pages.length > 1) {
+    uni.navigateBack({
+      delta: 1,
+      fail: () => uni.switchTab({ url: '/pages/index/index' }),
+    })
+    return
+  }
+  uni.switchTab({ url: '/pages/index/index' })
+}
+
 /** 登录页也捕获入口参数，避免分享链接直接打开登录页时丢失推广者身份。 */
 onLoad((options) => {
   capturePromotionContext(options as Record<string, unknown>)
@@ -96,12 +124,10 @@ function getWechatLoginCode(): Promise<string> {
     uni.login({
       provider: 'weixin',
       success: (result) => {
-		console.log(result)
         if (result.code) resolve(result.code)
-        else reject(new Error('微信登录凭证获取失败'))
-		
+        else reject(new Error('登录凭证获取失败'))
       },
-      fail: () => reject(new Error('微信登录失败，请稍后重试')),
+      fail: () => reject(new Error('登录失败，请稍后重试')),
     })
   })
 }
@@ -146,6 +172,45 @@ function getWechatLoginCode(): Promise<string> {
   font-size: 27rpx;
 }
 
+.privacy-agreement {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  margin-top: 42rpx;
+  padding: 10rpx 0;
+  color: #8a96a8;
+  font-size: 24rpx;
+  line-height: 36rpx;
+}
+
+.privacy-checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30rpx;
+  height: 30rpx;
+  margin-right: 10rpx;
+  box-sizing: border-box;
+  border: 2rpx solid #c7cfda;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.privacy-checkbox.checked {
+  border-color: #22272e;
+  background: #22272e;
+}
+
+.privacy-checkmark {
+  color: #fff;
+  font-size: 20rpx;
+  line-height: 1;
+}
+
+.privacy-agreement-text { white-space: nowrap; }
+.privacy-link { margin: 0 6rpx; color: #22272e; font-weight: 600; white-space: nowrap; }
+
 .login-button {
   width: 100%;
   margin-top: 72rpx;
@@ -153,6 +218,24 @@ function getWechatLoginCode(): Promise<string> {
   background: #07c160;
   font-size: 31rpx;
 }
+
+.login-button[disabled] { opacity: .5; }
+
+.cancel-button {
+  width: 100%;
+  height: 72rpx;
+  margin: 18rpx 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 36rpx;
+  color: #7d8796;
+  background: transparent;
+  font-size: 26rpx;
+  line-height: 72rpx;
+}
+
+.cancel-button::after { border: 0; }
+.cancel-button[disabled] { opacity: .5; }
 
 .error-message {
   margin-top: 24rpx;

@@ -1,5 +1,5 @@
 import { request } from './request'
-import type { BonusInjectDTO, DividendRecordTestItem, DividendRecordTestResult, DividendSlotTestItem, DividendSlotTestResult, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, ProfitResponse, PromotionBinding, PromotionBindingPage, PromotionBindingQuery, PromotionPage, PendingPromotionRecord, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
+import type { BonusInjectDTO, DividendContribution, DividendContributionPage, DividendRecordTestItem, DividendRecordTestResult, DividendSlotTestItem, DividendSlotTestResult, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, ProfitResponse, PromotionBinding, PromotionBindingPage, PromotionBindingQuery, PromotionPage, PendingPromotionRecord, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
 
 function unwrap<T>(response: { data: ProfitResponse<T> }, fallback: string): T {
   const result = response.data
@@ -38,6 +38,35 @@ function normalizePool(value: unknown): SevenDayBonusPool {
 function normalizeDetail(value: unknown): SevenDayBonusDetail {
   const row = (value || {}) as Partial<SevenDayBonusDetail>
   return { ...row, id: String(row.id ?? ''), poolId: String(row.poolId ?? ''), poolDate: String(row.poolDate ?? ''), dailyAmount: Number(row.dailyAmount ?? 0), dailyUserCount: Number(row.dailyUserCount ?? 0), createTime: String(row.createTime ?? ''), updateTime: String(row.updateTime ?? '') }
+}
+
+function normalizeContribution(value: unknown): DividendContribution {
+  const row = (value || {}) as Record<string, unknown>
+  const user = (row.user || {}) as Record<string, unknown>
+  return {
+    id: String(row.id ?? row.contributionId ?? ''),
+    orderNo: String(row.orderNo ?? row.orderNumber ?? ''),
+    userId: String(row.userId ?? row.buyerUserId ?? user.id ?? ''),
+    userName: String(row.userName ?? row.buyerName ?? row.nickname ?? user.nickname ?? ''),
+    amount: Number(row.amount ?? row.contributionAmount ?? 0),
+    paidAt: String(row.paidAt ?? row.paymentTime ?? row.payTime ?? ''),
+    matureAt: String(row.matureAt ?? row.expectedMatureTime ?? row.maturityTime ?? ''),
+    status: String(row.status ?? ''),
+    statusDesc: String(row.statusDesc ?? row.statusName ?? ''),
+    confirmedAt: String(row.confirmedAt ?? row.confirmTime ?? ''),
+    poolId: String(row.poolId ?? row.bonusPoolId ?? ''),
+  }
+}
+
+function normalizeContributionPage(value: unknown, page: number, size: number): DividendContributionPage {
+  const raw = (value || {}) as Record<string, unknown>
+  const list = Array.isArray(raw.list) ? raw.list : []
+  return {
+    total: Number(raw.total ?? list.length) || 0,
+    page: Number(raw.page ?? page) || page,
+    pageSize: Number(raw.pageSize ?? raw.size ?? size) || size,
+    list: list.map(normalizeContribution),
+  }
 }
 
 function normalizeLimit(value: unknown): UserDividendLimit {
@@ -143,6 +172,10 @@ export async function getBonusDetails(poolId: string): Promise<SevenDayBonusDeta
 export async function getUnsettledDailyDetails(): Promise<SevenDayBonusDetail[]> {
   const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/daily/unsettled'), '未结算奖池查询失败')
   return Array.isArray(data) ? data.map(normalizeDetail) : []
+}
+
+export async function getProfitContributions(query: { status?: string; page: number; size: number }): Promise<DividendContributionPage> {
+  return normalizeContributionPage(unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/contributions', { params: query }), '分红贡献查询失败'), query.page, query.size)
 }
 
 export async function getDividendLimits(): Promise<UserDividendLimit[]> {

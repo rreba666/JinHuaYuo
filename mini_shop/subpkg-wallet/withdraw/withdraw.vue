@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { onShow, onUnload } from '@dcloudio/uni-app'
-import { getRealnameStatus } from '@/api/realname'
+import { getRealnameStatus, type RealnameStatus } from '@/api/realname'
 import { applyTransferAuth, getTransferAuthStatus, type TransferAuthState } from '@/api/transfer-auth'
-import { getUserProfile, getWalletInfo, searchUser, transferWallet, withdrawWallet, getWithdrawals, type UserProfile, type UserSearchVO, type WalletInfo, type WithdrawRecord } from '@/api/user'
+import { getUserProfile, getWalletInfo, searchUser, transferWallet, withdrawWallet, getWithdrawals, type UserProfile, type UserSearchVO, type WalletInfo, type WithdrawMethod, type WithdrawRecord, type WithdrawType } from '@/api/user'
 import RealnameVerifySheet from '@/components/RealnameVerifySheet.vue'
-import { clearAuth, getAuth, hasWalletNoticeSeen, isRegisteredUser, markWalletNoticeSeen } from '@/utils/auth'
+import { clearAuth, getAuth, hasWalletNoticeSeen, isLoggedIn, isRegisteredUser, markWalletNoticeSeen } from '@/utils/auth'
 import { isApiRequestError } from '@/utils/request'
 import { MERCHANT_TRANSFER_APP_ID, MERCHANT_TRANSFER_MCH_ID, TRANSFER_MIN_AMOUNT, WITHDRAW_MIN_AMOUNT } from '@/utils/wallet-config'
 import { validateAmount, validatePositiveInteger } from '@/utils/input-validation'
+import LoginGuide from '@/components/LoginGuide.vue'
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
@@ -37,6 +38,9 @@ const realnameVerified = ref(false)
 const realnameChecking = ref(false)
 const pendingAction = ref<'withdraw' | 'transfer' | null>(null)
 const pendingWithdrawAmount = ref<number | null>(null)
+/** 当前提现申请的幂等键和请求指纹，网络重试时必须复用。 */
+const pendingWithdrawIdempotencyKey = ref<string | null>(null)
+const pendingWithdrawFingerprint = ref<string | null>(null)
 const pendingTransfer = ref<{ toUserId: number; amount: number } | null>(null)
 /** 免确认收款授权状态（''=未授权，WAIT_USER_CONFIRM=待确认，TAKING_EFFECT=已授权）。 */
 const transferAuthState = ref<TransferAuthState>('')
@@ -47,6 +51,7 @@ let authPollTimer: ReturnType<typeof setTimeout> | null = null
 const MIN_TRANSFER_AUTH_SDK_VERSION = '3.7.9'
 const accessChecking = ref(false)
 const accessDenied = ref(false)
+const loginGuideVisible = ref(false)
 const registeredUser = computed(() => isRegisteredUser(user.value?.identity))
 
 const navStyle = computed(() => ({ top: `${menuTop.value}px`, height: `${menuHeight.value}px` }))
@@ -67,6 +72,30 @@ const needAuth = computed(() => transferAuthState.value !== 'TAKING_EFFECT')
 
 function formatMoney(value: number): string {
   return Number.isFinite(value) ? value.toFixed(2) : '0.00'
+}
+
+function createWithdrawIdempotencyKey(): string {
+  const cryptoApi = (globalThis as typeof globalThis & { crypto?: { randomUUID?: () => string } }).crypto
+  const uuid = cryptoApi?.randomUUID?.()
+  const fallback = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`
+  return `wd-${uuid || fallback}`.slice(0, 64)
+}
+
+/** 同一金额、来源和收款方式复用 key；任一项变化都开启新的提现申请。 */
+function getWithdrawIdempotencyKey(amount: number, type: WithdrawType, withdrawMethod: WithdrawMethod): string {
+  const fingerprint = `${amount.toFixed(2)}|${type}|${withdrawMethod}`
+  if (pendingWithdrawFingerprint.value === fingerprint && pendingWithdrawIdempotencyKey.value) {
+    return pendingWithdrawIdempotencyKey.value
+  }
+  const idempotencyKey = createWithdrawIdempotencyKey()
+  pendingWithdrawFingerprint.value = fingerprint
+  pendingWithdrawIdempotencyKey.value = idempotencyKey
+  return idempotencyKey
+}
+
+function clearWithdrawRequestContext(): void {
+  pendingWithdrawFingerprint.value = null
+  pendingWithdrawIdempotencyKey.value = null
 }
 
 /** 比较微信基础库版本号，避免低版本调用授权 API 后只返回笼统 fail。 */
@@ -173,6 +202,10 @@ function denyGuestAccess(): void {
 /** 刷新用户身份，只有注册用户才加载余额、授权和提现数据。 */
 async function ensureRegisteredAccess(): Promise<boolean> {
   if (accessDenied.value || accessChecking.value) return false
+  if (!isLoggedIn()) {
+    loginGuideVisible.value = true
+    return false
+  }
   accessChecking.value = true
   try {
     user.value = await getUserProfile()
@@ -389,21 +422,23 @@ async function ensureRealnameReady(action: 'withdraw' | 'transfer'): Promise<boo
 
 /** 切换提现方式，零钱和银行卡分别走各自的后端收款流程。 */
 function selectWithdrawOption(option: 'BALANCE' | 'BANK_CARD'): void {
+  if (withdrawSubmitting.value || withdrawOption.value === option) return
+  clearWithdrawRequestContext()
+  pendingWithdrawAmount.value = null
   withdrawOption.value = option
 }
 
 async function executeWithdraw(amount: number): Promise<void> {
   if (withdrawSubmitting.value) return
+  const withdrawMethod: WithdrawMethod = withdrawOption.value === 'BANK_CARD' ? 'BANK_CARD' : 'WECHAT_BALANCE'
+  const idempotencyKey = getWithdrawIdempotencyKey(amount, 'BALANCE', withdrawMethod)
   withdrawSubmitting.value = true
   try {
-    if (withdrawOption.value === 'BANK_CARD') {
-      await withdrawWallet(amount, 'BALANCE', 'BANK_CARD')
-    } else {
-      await withdrawWallet(amount, 'BALANCE')
-    }
+    await withdrawWallet(amount, 'BALANCE', withdrawMethod, idempotencyKey)
     withdrawAmount.value = ''
     pendingWithdrawAmount.value = null
     pendingAction.value = null
+    clearWithdrawRequestContext()
     await loadWallet()
     await loadWithdrawRecords(true)
     uni.showToast({ title: '提现申请已提交，待审核', icon: 'success' })
@@ -428,6 +463,7 @@ async function executeWithdraw(amount: number): Promise<void> {
 }
 
 async function handleWithdraw(): Promise<void> {
+  if (withdrawSubmitting.value) return
   const amountResult = validateAmount(withdrawAmount.value, {
     label: '提现金额',
     min: WITHDRAW_MIN_AMOUNT,
@@ -439,6 +475,8 @@ async function handleWithdraw(): Promise<void> {
   }
   const amount = amountResult.value
 
+  const withdrawMethod: WithdrawMethod = withdrawOption.value === 'BANK_CARD' ? 'BANK_CARD' : 'WECHAT_BALANCE'
+  getWithdrawIdempotencyKey(amount, 'BALANCE', withdrawMethod)
   pendingWithdrawAmount.value = amount
   if (!(await ensureRealnameReady('withdraw'))) return
   await executeWithdraw(amount)
@@ -516,8 +554,12 @@ async function handleTransfer(): Promise<void> {
   await executeTransfer(payload)
 }
 
-async function handleRealnameVerified(): Promise<void> {
-  realnameVerified.value = true
+async function handleRealnameVerified(status: RealnameStatus): Promise<void> {
+  realnameVerified.value = status.verified
+  if (!status.verified) {
+    uni.showToast({ title: '实名认证未完成，请核对信息后重试', icon: 'none' })
+    return
+  }
   realnameVisible.value = false
 
   const action = pendingAction.value
@@ -536,6 +578,14 @@ async function handleRealnameVerified(): Promise<void> {
 
 watch(transferUserId, () => {
   recipient.value = null
+})
+
+watch(withdrawAmount, (next, previous) => {
+  if (withdrawSubmitting.value) return
+  if (next !== previous && pendingWithdrawIdempotencyKey.value) {
+    clearWithdrawRequestContext()
+    pendingWithdrawAmount.value = null
+  }
 })
 
 onMounted(() => {
@@ -584,7 +634,7 @@ onUnload(() => {
             <view class="type-chip" :class="{ active: withdrawOption === 'BANK_CARD' }" @click="selectWithdrawOption('BANK_CARD')">银行卡提现</view>
           </view>
           <text class="panel-title panel-section-title">提现金额</text>
-          <input v-model="withdrawAmount" class="panel-input" maxlength="11" type="digit" :placeholder="`请输入提现余额，最低 ${withdrawMinimumLabel}`" />
+          <input v-model="withdrawAmount" class="panel-input" maxlength="11" type="digit" :disabled="withdrawSubmitting" :placeholder="`请输入提现余额，最低 ${withdrawMinimumLabel}`" />
           <text v-if="withdrawOption === 'BANK_CARD'" class="fee-hint">银行卡信息取自实名认证资料，平台审核通过后人工打款；提现将收取 5% 手续费。</text>
           <text v-else class="fee-hint">提现将收取 5% 手续费，提交后进入审核。</text>
           <text v-if="withdrawAmountNumber > 0" class="fee-calc">手续费 ¥{{ formatMoney(withdrawFee) }}，实际到账 ¥{{ formatMoney(withdrawActual) }}</text>
@@ -662,6 +712,11 @@ onUnload(() => {
       </view>
     </scroll-view>
 
+    <view v-if="!registeredUser && !loginGuideVisible" class="access-empty">
+      <text class="access-empty-title">登录后即可体验完整功能</text>
+      <text class="access-empty-text">登录后即可使用余额转账和提现</text>
+    </view>
+
     <view v-show="walletNoticeVisible" class="mask" @click="acknowledgeWalletNotice">
       <view class="notice-card" @click.stop>
         <view class="notice-head">
@@ -673,7 +728,12 @@ onUnload(() => {
       </view>
     </view>
 
-    <RealnameVerifySheet v-model="realnameVisible" @verified="handleRealnameVerified" />
+    <RealnameVerifySheet
+      v-model="realnameVisible"
+      :required-bank-info="withdrawOption === 'BANK_CARD'"
+      @verified="handleRealnameVerified"
+    />
+    <LoginGuide v-model="loginGuideVisible" />
   </view>
 </template>
 
@@ -685,6 +745,9 @@ onUnload(() => {
 .nav-spacer { width: 34rpx; height: 34rpx; }
 .page-scroll { position: absolute; inset: 0; width: 100%; height: 100%; box-sizing: border-box; }
 .page-content { padding: 0 30rpx 56rpx; box-sizing: border-box; }
+.access-empty { position: absolute; top: 50%; right: 0; left: 0; display: flex; align-items: center; flex-direction: column; transform: translateY(-50%); }
+.access-empty-title { color: #172033; font-size: 30rpx; font-weight: 700; }
+.access-empty-text { margin-top: 16rpx; color: #98a2b3; font-size: 24rpx; }
 .hero-card { position: relative; overflow: hidden; margin-top: 20rpx; padding: 36rpx 30rpx 32rpx; border-radius: 28rpx; background: #ff6427; box-shadow: 0 14rpx 28rpx rgba(255, 90, 31, .22); color: #fff; }
 .hero-card-bg { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; }
 .hero-label { position: relative; z-index: 1; display: block; font-size: 24rpx; opacity: .92; }

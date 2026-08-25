@@ -43,8 +43,20 @@
       { "type": "file", "value": "static/ProductDetails/已收藏_slices/已收藏@2x.png" },
       { "type": "file", "value": "static/ProductDetails/右备份_slices/右备份@2x.png" },
       { "type": "file", "value": "static/Promotion/绑定人数_slices/绑定人数@2x.png" },
-      { "type": "file", "value": "static/Promotion/推广背景_slices/推广背景@2x.png" },
-      { "type": "file", "value": "static/Promotion/推广金_slices/推广金@2x.png" }
+      { "type": "file", "value": "static/Promotion/推广金_slices/推广金@2x.png" },
+      { "type": "file", "value": "static/bg/推广码背景.png" },
+      { "type": "file", "value": "static/Promotion/推广背景_slices/推广背景.png" },
+      { "type": "file", "value": "static/my/推广金_slices/推广金.png" },
+      { "type": "file", "value": "static/tapbar/tapbar.png" },
+      { "type": "file", "value": "static/tapbar/tapbar_Selected.png" },
+      { "type": "file", "value": "static/tapbar/购物车.svg" },
+      { "type": "file", "value": "static/tapbar/购物车_select.svg" },
+      { "type": "file", "value": "static/tapbar/分类.svg" },
+      { "type": "file", "value": "static/tapbar/分类_select.svg" },
+      { "type": "file", "value": "static/tapbar/我的.svg" },
+      { "type": "file", "value": "static/tapbar/我的_select.svg" },
+      { "type": "file", "value": "static/tapbar/首页.svg" },
+      { "type": "file", "value": "static/tapbar/首页 _select.svg" }
     ],
     "include": []
   },

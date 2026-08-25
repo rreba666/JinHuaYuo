@@ -1,6 +1,6 @@
 import { request } from './request'
 import type { ApiResponse } from './request'
-import type { DividendCap, DividendCapSaveDTO, ProfitRatesConfig, ProfitRatesSaveDTO, SysConfig, SysConfigSaveDTO } from '@/types/setting'
+import type { DividendCap, DividendCapSaveDTO, ProfitRatesConfig, ProfitRatesSaveDTO, SysConfig, SysConfigSaveDTO, WithdrawRulesConfig, WithdrawRulesSaveDTO } from '@/types/setting'
 import { DEFAULT_DIVIDEND_RATE, DEFAULT_PROMOTION_RATE } from '@/utils/productPricing'
 
 const CUSTOMER_SERVICE_KEY = 'customer_service_phone'
@@ -76,6 +76,24 @@ export async function saveProfitRatesConfig(payload: ProfitRatesSaveDTO): Promis
   ensureSuccess(response.data, '商品资金比例保存失败')
 }
 
+export async function getWithdrawRules(): Promise<WithdrawRulesConfig> {
+  const response = await request.get<ApiResponse<WithdrawRulesConfig | null>>('/api/admin/setting/withdraw-rules')
+  const result = response.data
+  ensureSuccess(result, '提现规则查询失败')
+  return normalizeWithdrawRules(result.data)
+}
+
+export async function saveWithdrawRules(payload: WithdrawRulesSaveDTO): Promise<void> {
+  const data = normalizeWithdrawRules(payload)
+  if (data.minAmount < 0 || data.dailyAmountLimit < 0 || data.testUserMinAmount < 0 || data.frozenLimit < 0) throw new Error('提现金额规则不能小于 0')
+  if (!Number.isInteger(data.dailyCountLimit) || data.dailyCountLimit <= 0) throw new Error('每日提现次数必须为正整数')
+  if (!Number.isInteger(data.maxConcurrent) || data.maxConcurrent <= 0) throw new Error('并行提现笔数必须为正整数')
+  if (data.feeRate < 0 || data.feeRate > 1) throw new Error('手续费率必须在 0 到 1 之间')
+  if (data.testUserId !== null && (!Number.isInteger(data.testUserId) || data.testUserId <= 0)) throw new Error('测试用户 ID 必须为正整数')
+  const response = await request.post<ApiResponse<null>>('/api/admin/setting/withdraw-rules', data)
+  ensureSuccess(response.data, '提现规则保存失败')
+}
+
 function normalizeSysConfig(value: SysConfig | null): SysConfig {
   const row = value || {} as SysConfig
   return {
@@ -96,6 +114,27 @@ function normalizeProfitRates(value: ProfitRatesConfig | null): ProfitRatesConfi
     bonusPoolRate: Number.isFinite(Number(row.bonusPoolRate)) ? Number(row.bonusPoolRate) : DEFAULT_DIVIDEND_RATE,
     remark: String(row.remark ?? ''),
   }
+}
+
+function normalizeWithdrawRules(value: Partial<WithdrawRulesConfig> | null): WithdrawRulesConfig {
+  const row = value || {}
+  return {
+    minAmount: toFiniteNumber(row.minAmount),
+    dailyAmountLimit: toFiniteNumber(row.dailyAmountLimit),
+    dailyCountLimit: toFiniteNumber(row.dailyCountLimit),
+    feeRate: toFiniteNumber(row.feeRate),
+    testUserMinAmount: toFiniteNumber(row.testUserMinAmount),
+    testUserId: row.testUserId == null ? null : toFiniteNumber(row.testUserId),
+    testSkipLock: row.testSkipLock === true,
+    maxConcurrent: toFiniteNumber(row.maxConcurrent),
+    frozenLimit: toFiniteNumber(row.frozenLimit),
+    remark: String(row.remark ?? ''),
+  }
+}
+
+function toFiniteNumber(value: unknown): number {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : 0
 }
 
 function ensureSuccess<T>(result: ApiResponse<T>, fallbackMessage: string): void {

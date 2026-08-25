@@ -3,10 +3,11 @@ import { computed, onMounted, ref } from 'vue'
 import { onLoad, onShareAppMessage, onShow } from '@dcloudio/uni-app'
 import { getPromotionRecords, getPromotionSummary, type PromotionRecord, type PromotionSummary } from '@/api/promotion'
 import { convertWallet, getUserProfile, getWalletInfo, type UserProfile, type WalletInfo } from '@/api/user'
-import { isRegisteredUser } from '@/utils/auth'
+import { isLoggedIn, isRegisteredUser } from '@/utils/auth'
 import { bindStoredPromotionIfLoggedIn, buildPromotionSharePath, capturePromotionContext } from '@/utils/promotion'
 import { formatPromotionQueryDate, getFrozenPromotionAmount, isFrozenPromotion, PROMOTION_FREEZE_MS } from '@/utils/promotion-freeze'
 import { createThrottle } from '@/utils/interaction'
+import LoginGuide from '@/components/LoginGuide.vue'
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
@@ -24,6 +25,7 @@ const loading = ref(false)
 const converting = ref(false)
 const accessChecking = ref(false)
 const accessDenied = ref(false)
+const loginGuideVisible = ref(false)
 const navigationThrottle = createThrottle(500)
 let pageLoadPromise: Promise<void> | null = null
 const registeredUser = computed(() => isRegisteredUser(user.value?.identity))
@@ -228,6 +230,10 @@ function denyGuestAccess(): void {
 /** 刷新用户身份，只有注册用户才加载推广中心数据。 */
 async function ensureRegisteredAccess(): Promise<boolean> {
   if (accessDenied.value || accessChecking.value) return false
+  if (!isLoggedIn()) {
+    loginGuideVisible.value = true
+    return false
+  }
   accessChecking.value = true
   try {
     user.value = await getUserProfile()
@@ -277,7 +283,7 @@ function goBack(): void {
 /** 配置微信转发卡片，转发后仍回到推广收益页。 */
 onShareAppMessage(() => {
   const path = buildPromotionSharePath('/pages/index/index')
-  return { title: '分享赚钱，即刻兑现', path, imageUrl: '/static/logo.png' }
+  return { title: '今华有肽，年轻常在', path, imageUrl: '/static/logo.png' }
 })
 
 /** 捕获推广收益页的原生分享参数，兼容已登录用户扫码后直接补绑定。 */
@@ -316,7 +322,7 @@ onShow(() => {
         </view>
 
         <view class="balance-card">
-          <image class="promotion-background" src="/static/Promotion/推广背景_slices/推广背景.png" mode="scaleToFill" />
+          <image class="promotion-background" src="/static/Promotion/推广背景_slices/推广背景@2x.png" mode="scaleToFill" />
           <text class="balance-value" @click="showPromotionIncomeInfo">{{ formatMoney(displayedPromotionAmount) }}</text>
           <view class="card-actions">
             <view class="wallet-button" :class="{ disabled: converting }" @click="handleConvertPromotion">转余额</view>
@@ -374,6 +380,13 @@ onShow(() => {
       </view>
     </scroll-view>
 
+    <view v-if="!registeredUser && !loginGuideVisible" class="access-empty">
+      <text class="access-empty-title">登录后即可体验完整功能</text>
+      <text class="access-empty-text">登录后即可查看推广收益和推广数据</text>
+    </view>
+
+    <LoginGuide v-model="loginGuideVisible" />
+
   </view>
 </template>
 
@@ -384,6 +397,9 @@ onShow(() => {
 .back-button { width: 40rpx; height: 40rpx; }
 .page-scroll { position: absolute; inset: 0; width: 100%; height: 100%; box-sizing: border-box; }
 .page-content { padding: 0 0 100rpx; box-sizing: border-box; }
+.access-empty { position: absolute; top: 50%; right: 0; left: 0; display: flex; align-items: center; flex-direction: column; transform: translateY(-50%); }
+.access-empty-title { color: #222; font-size: 30rpx; font-weight: 700; }
+.access-empty-text { margin-top: 16rpx; color: #959595; font-size: 24rpx; }
 .share-heading { display: flex; align-items: baseline; height: 40rpx; }
 .share-heading { margin-left: 40rpx; }
 .share-title { color: #000; font-size: 26.72rpx; line-height: 26.72rpx; }

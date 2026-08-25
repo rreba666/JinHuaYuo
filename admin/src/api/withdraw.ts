@@ -9,7 +9,25 @@ function unwrap<T>(response: { data: WithdrawResponse<T> }, fallback: string): T
 
 function normalizeWithdrawal(value: unknown): Withdrawal {
   const row = (value || {}) as Partial<Withdrawal>
-  return { ...row, id: String(row.id ?? ''), withdrawNo: String(row.withdrawNo ?? ''), userId: String(row.userId ?? ''), amount: Number(row.amount ?? 0), status: String(row.status ?? ''), createdAt: String(row.createdAt ?? '') }
+  const withdrawMethod = String(row.withdrawMethod ?? '')
+  return {
+    ...row,
+    id: String(row.id ?? ''),
+    withdrawNo: String(row.withdrawNo ?? ''),
+    userId: String(row.userId ?? ''),
+    type: String(row.type ?? ''),
+    withdrawMethod,
+    typeDesc: String(row.typeDesc ?? ''),
+    withdrawMethodDesc: String(row.withdrawMethodDesc ?? (withdrawMethod === 'BANK_CARD' ? '银行卡' : withdrawMethod === 'WECHAT_BALANCE' ? '微信零钱' : '')),
+    amount: Number(row.amount ?? 0),
+    feeAmount: Number(row.feeAmount ?? 0),
+    netAmount: Number(row.netAmount ?? 0),
+    status: String(row.status ?? ''),
+    statusDesc: String(row.statusDesc ?? ''),
+    createdAt: String(row.createdAt ?? ''),
+    finishedAt: String(row.finishedAt ?? ''),
+    failReason: String(row.failReason ?? ''),
+  }
 }
 
 function normalizePage(value: unknown, page: number, pageSize: number): WithdrawPage {

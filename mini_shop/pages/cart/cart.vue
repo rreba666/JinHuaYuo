@@ -5,6 +5,8 @@ import { getCartList, toggleChecked, updateQuantity, checkAll, removeCartItem, r
 import { DIVIDEND_PURCHASE_LIMIT, PURCHASE_LIMIT_MESSAGE, getDividendQuantity } from '@/utils/dividend-limit'
 import { createThrottle } from '@/utils/interaction'
 import RequestState from '@/components/RequestState.vue'
+import LoginGuide from '@/components/LoginGuide.vue'
+import { isLoggedIn } from '@/utils/auth'
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
@@ -17,6 +19,7 @@ const loading = ref(true)
 const loadError = ref('')
 const editMode = ref(false)
 const busy = ref(false)
+const loginGuideVisible = ref(false)
 const navigationThrottle = createThrottle(500)
 let listLoadPromise: Promise<void> | null = null
 const checkedCount = computed(() => items.value.filter((i) => i.checked).length)
@@ -29,6 +32,12 @@ const isAllChecked = computed(() => items.value.length > 0 && items.value.every(
 
 async function loadList(): Promise<void> {
   loadError.value = ''
+  if (!isLoggedIn()) {
+    items.value = []
+    loading.value = false
+    loginGuideVisible.value = true
+    return
+  }
   try {
     items.value = await getCartList({ resolveDividendEligibility: true })
   } catch (e) {
@@ -179,6 +188,8 @@ onShow(() => { loading.value = true; void refreshList() })
         </template>
       </view>
     </view>
+
+    <LoginGuide v-model="loginGuideVisible" />
 
   </view>
 </template>

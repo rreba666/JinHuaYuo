@@ -3,13 +3,16 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getCartList, type CartItem } from '@/api/cart'
 import { cancelOrder, createOrder, getOrderDetail, type OrderDetail } from '@/api/order'
-import { createPrepay, requestPayment, payByBalance } from '@/api/payment'
+import { createPrepay, requestPayment, payByBalance, switchToBalance } from '@/api/payment'
 import { getEnabledShops, type EnabledShop } from '@/api/shop'
 import { submitInvoice } from '@/api/invoice'
 import { getWalletInfo } from '@/api/user'
 import { getProductDetail } from '@/api/product'
 import { DIVIDEND_PURCHASE_LIMIT, PURCHASE_LIMIT_MESSAGE, getDividendQuantity, isDividendEligible } from '@/utils/dividend-limit'
-import { cleanDigits, cleanText, validateEmail, validateMobile, validateTaxNumber, validateText } from '@/utils/input-validation'
+import { cleanDigits, cleanText, normalizeEditableMobile, validateEmail, validateMobile, validateTaxNumber, validateText } from '@/utils/input-validation'
+import { isApiRequestError } from '@/utils/request'
+import { isLoggedIn } from '@/utils/auth'
+import LoginGuide from '@/components/LoginGuide.vue'
 
 type PickupType = 0 | 1
 type InvoiceType = 'personal' | 'company'
@@ -38,6 +41,7 @@ const directProductId = ref<number | null>(null)
 const directQuantity = ref(1)
 const loading = ref(true)
 const loadError = ref(false)
+const loginGuideVisible = ref(false)
 
 const pickupType = ref<PickupType>(0)
 const selectedAddress = ref<Address | null>(null)
@@ -48,6 +52,12 @@ const shops = ref<EnabledShop[]>([])
 const orderId = ref<string | null>(null)
 const existingOrder = ref<OrderDetail | null>(null)
 const paying = ref(false)
+const switchingToBalancePayment = ref(false)
+const paymentSucceeded = ref(false)
+/** 微信 prepay 成功后已占用微信支付渠道，余额支付必须走安全切换接口。 */
+const wechatPaymentStarted = ref(false)
+/** 仅在明确收到微信收银台取消结果后展示安全切换入口。 */
+const canSwitchToBalance = ref(false)
 /** 支付方式：wechat=微信支付，balance=余额支付（二选一，不可混用）。 */
 type PayMethod = 'wechat' | 'balance'
 const payMethod = ref<PayMethod>('wechat')
@@ -95,10 +105,14 @@ function loadFormCache(): void {
     const cached = uni.getStorageSync(PAYMENT_FORM_CACHE_KEY) as Partial<PaymentFormCache> | undefined
     if (!cached) return
     if (cached.address) {
-      selectedAddress.value = {
-        name: cleanText(cached.address.name),
-        phone: cleanDigits(cached.address.phone),
-        detail: cleanText(cached.address.detail),
+      const phone = normalizeEditableMobile(cached.address.phone)
+      // 脱敏手机号无法还原，不能回填成可提交值，要求用户重新输入完整号码。
+      if (phone) {
+        selectedAddress.value = {
+          name: cleanText(cached.address.name),
+          phone,
+          detail: cleanText(cached.address.detail),
+        }
       }
     }
     if (typeof cached.contactName === 'string') contactName.value = cleanText(cached.contactName)
@@ -122,8 +136,9 @@ function loadFormCache(): void {
 /** 保存结算表单到本地缓存。 */
 function saveFormCache(): void {
   try {
+    const addressPhone = normalizeEditableMobile(selectedAddress.value?.phone)
     const cache: PaymentFormCache = {
-      address: selectedAddress.value,
+      address: selectedAddress.value && addressPhone ? { ...selectedAddress.value, phone: addressPhone } : null,
       contactName: contactName.value,
       contactPhone: contactPhone.value,
       invoiceEnabled: invoiceEnabled.value,
@@ -357,6 +372,11 @@ onLoad(async (options?: Record<string, string | undefined>) => {
     directProductId.value = productId
     directQuantity.value = Number(options?.quantity || 1) || 1
   }
+  if (!isLoggedIn()) {
+    loading.value = false
+    loginGuideVisible.value = true
+    return
+  }
   // 非历史订单：自动填入上次填写的表单内容（地址、联系方式、发票、备注）
   if (!orderId.value) loadFormCache()
   if (orderId.value) {
@@ -425,7 +445,7 @@ function openAddressEditor(): void {
 /** 校验并保存本地地址。 */
 function saveAddress(): void {
   const name = validateText(addressForm.name, { label: '收货人姓名', maxLength: PAYMENT_CONTACT_NAME_MAX_LENGTH })
-  const phone = validateMobile(addressForm.phone)
+  const phone = validateMobile(normalizeEditableMobile(addressForm.phone))
   const detail = validateText(addressForm.detail, { label: '详细地址', maxLength: PAYMENT_ADDRESS_MAX_LENGTH })
   if (!name.ok) {
     uni.showToast({ title: name.message, icon: 'none' })
@@ -537,7 +557,7 @@ function validateCheckoutInputs(isExistingOrder: boolean): boolean {
 
   if (!isExistingOrder && pickupType.value === 0 && selectedAddress.value) {
     const name = validateText(selectedAddress.value.name, { label: '收货人姓名', maxLength: PAYMENT_CONTACT_NAME_MAX_LENGTH })
-    const phone = validateMobile(selectedAddress.value.phone)
+    const phone = validateMobile(normalizeEditableMobile(selectedAddress.value.phone))
     const detail = validateText(selectedAddress.value.detail, { label: '详细地址', maxLength: PAYMENT_ADDRESS_MAX_LENGTH })
     if (!name.ok) {
       uni.showToast({ title: name.message, icon: 'none' })
@@ -580,6 +600,99 @@ function getPaymentErrorMessage(error: unknown): string {
     return '一个账号一个补贴周期内最多同时存在三件商品哦'
   }
   return message || '支付未完成'
+}
+
+/** 仅将微信收银台明确返回的取消视为可切换，网络/系统错误不能直接切余额。 */
+function isWechatPaymentCancelled(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : ''
+  return /(cancel|user_cancel|取消|关闭|返回)/i.test(message)
+}
+
+/** 余额支付切换的业务码；同时兼容旧后端仅返回提示文案的版本。 */
+function isBalanceInsufficientError(error: unknown): boolean {
+  return (isApiRequestError(error) && error.code === 7000)
+    || (error instanceof Error && error.message.includes('余额不足'))
+}
+
+/** 订单进入已支付及后续履约状态后，不再允许重复支付。 */
+function isOrderPaid(status: unknown): boolean {
+  return [1, 2, 3, 4, 8].includes(Number(status))
+}
+
+/** 统一提交支付成功后的发票，并按支付来源决定留在当前页还是跳转订单详情。 */
+async function completePayment(currentOrderId: string, stayOnPage: boolean): Promise<void> {
+  let invoiceError: unknown = null
+  if (invoiceEnabled.value) {
+    try {
+      const detail = existingOrder.value?.orderNo ? existingOrder.value : await getOrderDetail(currentOrderId)
+      if (!detail.orderNo) throw new Error('订单号获取失败')
+      await submitInvoice({
+        type: invoiceType.value === 'company' ? 2 : 1,
+        ...(invoiceType.value === 'company'
+          ? { companyName: invoiceForm.companyName.trim(), taxNo: invoiceForm.taxNumber.trim() }
+          : { personalName: invoiceForm.name.trim() }),
+        email: invoiceForm.email.trim(),
+        orderIds: detail.orderNo,
+      })
+    } catch (error) { invoiceError = error }
+  }
+
+  canSwitchToBalance.value = false
+  wechatPaymentStarted.value = false
+  paymentSucceeded.value = stayOnPage
+  uni.showToast({ title: invoiceError ? '支付成功，发票申请失败' : '支付成功', icon: invoiceError ? 'none' : 'success' })
+  if (!stayOnPage) {
+    setTimeout(() => { uni.redirectTo({ url: `/subpkg-order/orders/detail?orderId=${currentOrderId}` }) }, 500)
+    return
+  }
+
+  try { existingOrder.value = await getOrderDetail(currentOrderId) } catch { /* 支付已成功，订单刷新失败不阻断结果展示 */ }
+}
+
+/** 微信支付结果异常时查询订单，避免把未知状态误判为未支付。 */
+async function refreshPaymentStatus(currentOrderId: string, fallbackMessage: string): Promise<void> {
+  try {
+    const detail = await getOrderDetail(currentOrderId)
+    existingOrder.value = detail
+    if (isOrderPaid(detail.status)) {
+      await completePayment(currentOrderId, true)
+      return
+    }
+  } catch { /* 订单查询失败时保留兜底提示 */ }
+  uni.showToast({ title: fallbackMessage, icon: 'none' })
+}
+
+/** 用户确认切换后调用后端安全接口，不直接调用旧余额支付接口。 */
+async function switchToBalancePayment(): Promise<void> {
+  const currentOrderId = orderId.value
+  if (!currentOrderId || switchingToBalancePayment.value || paymentSucceeded.value) return
+  if (!balanceEnough.value) {
+    canSwitchToBalance.value = false
+    payMethod.value = 'wechat'
+    uni.showToast({ title: '余额不足，请重新选择微信支付', icon: 'none' })
+    return
+  }
+
+  switchingToBalancePayment.value = true
+  try {
+    await switchToBalance(currentOrderId)
+    await completePayment(currentOrderId, true)
+  } catch (error) {
+    canSwitchToBalance.value = false
+    if (isApiRequestError(error) && error.code === 4001) {
+      await refreshPaymentStatus(currentOrderId, '微信支付已成功，请刷新订单状态')
+    } else if (isApiRequestError(error) && error.code === 5000) {
+      uni.showToast({ title: '微信支付状态确认中，请稍后查询', icon: 'none' })
+    } else if (isBalanceInsufficientError(error)) {
+      wechatPaymentStarted.value = false
+      payMethod.value = 'wechat'
+      uni.showToast({ title: '余额不足，请重新选择微信支付', icon: 'none' })
+    } else {
+      uni.showToast({ title: getPaymentErrorMessage(error), icon: 'none' })
+    }
+  } finally {
+    switchingToBalancePayment.value = false
+  }
 }
 
 /** 校验结算信息，创建订单后获取支付签名并调起微信支付。 */
@@ -641,31 +754,34 @@ async function submitPayment(): Promise<void> {
       orderId.value = currentOrderId
     }
     if (payMethod.value === 'balance') {
-      // 余额支付：全额抵扣，同步完成，无需微信收银台
+      if (wechatPaymentStarted.value) {
+        if (canSwitchToBalance.value) {
+          await switchToBalancePayment()
+        } else {
+          uni.showToast({ title: '微信支付状态确认中，请稍后查询', icon: 'none' })
+        }
+        return
+      }
+      // 尚未拉起微信支付时，余额支付可直接走原有同步接口
       await payByBalance(currentOrderId)
     } else {
       // 微信支付：获取签名并调起微信收银台
       const prepay = await createPrepay(currentOrderId)
+      wechatPaymentStarted.value = true
       await requestPayment(prepay)
     }
-    let invoiceError: unknown = null
-    if (invoiceEnabled.value) {
-      try {
-        const detail = existingOrder.value?.orderNo ? existingOrder.value : await getOrderDetail(currentOrderId)
-        if (!detail.orderNo) throw new Error('订单号获取失败')
-        await submitInvoice({
-          type: invoiceType.value === 'company' ? 2 : 1,
-          ...(invoiceType.value === 'company'
-            ? { companyName: invoiceForm.companyName.trim(), taxNo: invoiceForm.taxNumber.trim() }
-            : { personalName: invoiceForm.name.trim() }),
-          email: invoiceForm.email.trim(),
-          orderIds: detail.orderNo,
-        })
-      } catch (error) { invoiceError = error }
-    }
-    uni.showToast({ title: invoiceError ? '支付成功，发票申请失败' : '支付成功', icon: invoiceError ? 'none' : 'success' })
-    setTimeout(() => { uni.redirectTo({ url: `/subpkg-order/orders/detail?orderId=${currentOrderId}` }) }, 500)
+    await completePayment(currentOrderId, false)
   } catch (error) {
+    if (wechatPaymentStarted.value && orderId.value) {
+      if (isWechatPaymentCancelled(error)) {
+        canSwitchToBalance.value = true
+        payMethod.value = 'wechat'
+        uni.showToast({ title: '微信支付已取消，可改用余额支付', icon: 'none' })
+      } else {
+        await refreshPaymentStatus(orderId.value, '支付结果未知，请稍后查询订单状态')
+      }
+      return
+    }
     uni.showToast({ title: getPaymentErrorMessage(error), icon: 'none' })
   } finally { paying.value = false }
 }
@@ -705,7 +821,14 @@ function backToCart(): void {
         <text class="nav-title">确认订单</text>
       </view>
 
+    <view v-if="paymentSucceeded" class="payment-success-state">
+      <view class="success-icon">✓</view>
+      <text class="success-title">支付成功</text>
+      <text class="success-description">订单已完成支付，当前页面不会自动退出</text>
+    </view>
+
     <scroll-view
+      v-else
       v-show="canRenderCheckout"
       class="content"
       scroll-y
@@ -801,6 +924,16 @@ function backToCart(): void {
         </view>
       </view>
 
+      <view v-if="canSwitchToBalance" class="switch-balance-card">
+        <view class="switch-balance-copy">
+          <text class="switch-balance-title">微信支付已取消</text>
+          <text class="switch-balance-description">可安全切换为余额支付，不会重复扣款</text>
+        </view>
+        <button class="switch-balance-button" :disabled="switchingToBalancePayment" @click="switchToBalancePayment">
+          {{ switchingToBalancePayment ? '处理中...' : '改用余额支付' }}
+        </button>
+      </view>
+
       <view class="section invoice-section">
         <view class="section-row compact-row" @click="toggleInvoice">
           <text class="section-title">发票信息</text>
@@ -845,12 +978,12 @@ function backToCart(): void {
       <text class="state-action" @click="backToCart">返回购物车</text>
     </view>
 
-    <view v-show="canRenderCheckout" class="paybar">
+    <view v-show="canRenderCheckout && !paymentSucceeded" class="paybar">
       <view v-if="showCancelOrder" class="cancel-order" @click="cancelExistingOrder"><view class="cancel-icon" /><text>取消</text></view>
       <view class="total-block"><text class="currency">¥</text><text class="total-price">{{ formatMoney(total) }}</text><text v-if="!showCancelOrder" class="count-label">共{{ itemCount }}件</text></view>
-      <view class="pay-now" :class="{ disabled: !items.length || paying }" @click="submitPayment">
+      <view class="pay-now" :class="{ disabled: !items.length || paying || switchingToBalancePayment }" @click="submitPayment">
         <text v-if="showCancelOrder && countdownText" class="countdown">{{ countdownText }}</text>
-        <text>{{ paying ? '处理中...' : '立即支付' }}</text>
+        <text>{{ paying || switchingToBalancePayment ? '处理中...' : '立即支付' }}</text>
       </view>
     </view>
 
@@ -893,6 +1026,8 @@ function backToCart(): void {
         <view class="sheet-submit" @click="completeInvoice">完成</view>
       </view>
     </view>
+
+    <LoginGuide v-model="loginGuideVisible" />
   </view>
 </template>
 
@@ -950,6 +1085,17 @@ function backToCart(): void {
 .invoice-options { margin: 0 0 28rpx; }
 .remark-input { width: 100%; min-height: 130rpx; margin-bottom: 26rpx; padding: 22rpx; background: #f7f7f7; box-sizing: border-box; color: #333; font-size: 24rpx; }
 .content-bottom-space { height: 180rpx; }
+.switch-balance-card { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin: 20rpx 0 0; padding: 24rpx 22rpx; border: 1rpx solid #e7e7e7; border-radius: 14rpx; background: #fafafa; box-sizing: border-box; }
+.switch-balance-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.switch-balance-title { color: #222; font-size: 26rpx; font-weight: 600; }
+.switch-balance-description { margin-top: 8rpx; color: #888; font-size: 22rpx; line-height: 1.45; }
+.switch-balance-button { flex-shrink: 0; height: 64rpx; margin: 0; padding: 0 24rpx; border: 0; border-radius: 32rpx; color: #fff; background: #222; font-size: 24rpx; line-height: 64rpx; }
+.switch-balance-button::after { border: 0; }
+.switch-balance-button[disabled] { opacity: .56; }
+.payment-success-state { position: absolute; top: 50%; right: 40rpx; left: 40rpx; display: flex; flex-direction: column; align-items: center; transform: translateY(-50%); }
+.success-icon { display: flex; align-items: center; justify-content: center; width: 108rpx; height: 108rpx; border-radius: 50%; color: #fff; background: #222; font-size: 64rpx; font-weight: 300; }
+.success-title { margin-top: 28rpx; color: #222; font-size: 36rpx; font-weight: 700; }
+.success-description { margin-top: 14rpx; color: #999; font-size: 24rpx; text-align: center; }
 .state-view { position: absolute; top: 45%; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; color: #999; font-size: 26rpx; }
 .state-action { margin-top: 26rpx; color: #222; text-decoration: underline; }
 .paybar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; padding: 18rpx 24rpx calc(18rpx + env(safe-area-inset-bottom)); background: #fff; box-shadow: 0 -4rpx 18rpx rgba(0, 0, 0, .08); box-sizing: border-box; }

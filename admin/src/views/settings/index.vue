@@ -3,13 +3,14 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import { useSettingStore } from '@/stores/setting'
-import type { DividendCapSaveDTO, ProfitRatesSaveDTO, SysConfigSaveDTO } from '@/types/setting'
+import type { DividendCapSaveDTO, ProfitRatesSaveDTO, SysConfigSaveDTO, WithdrawRulesConfig } from '@/types/setting'
 import { fromDisplayFundRate, toDisplayFundRate } from '@/utils/fundRate'
 
 const store = useSettingStore()
 const customerServiceFormRef = ref<FormInstance>()
 const dividendCapFormRef = ref<FormInstance>()
 const profitRatesFormRef = ref<FormInstance>()
+const withdrawRulesFormRef = ref<FormInstance>()
 const customerServiceForm = reactive<SysConfigSaveDTO>({
   configKey: 'customer_service_phone',
   configValue: '',
@@ -17,6 +18,8 @@ const customerServiceForm = reactive<SysConfigSaveDTO>({
 })
 const dividendCapForm = reactive<DividendCapSaveDTO>({ multiplier: 1.5, remark: '' })
 const profitRatesForm = reactive<ProfitRatesSaveDTO>({ promotionRate: 20, bonusPoolRate: 26, remark: '' })
+type WithdrawRulesForm = Omit<WithdrawRulesConfig, 'feeRate'> & { feeRate: number }
+const withdrawRulesForm = reactive<WithdrawRulesForm>({ minAmount: 0, dailyAmountLimit: 0, dailyCountLimit: 0, feeRate: 0, testUserMinAmount: 0, testUserId: null, testSkipLock: false, maxConcurrent: 0, frozenLimit: 0, remark: '' })
 
 const customerServiceRules: FormRules = {
   configValue: [{ required: true, message: '请输入客服电话', trigger: 'blur' }],
@@ -36,6 +39,15 @@ const profitRatesRules: FormRules = {
     { required: true, message: '请输入比例', trigger: 'blur' },
     { type: 'number', min: 0, max: 100, message: '比例范围为 0~100', trigger: 'change' },
   ],
+}
+const withdrawRulesRules: FormRules = {
+  minAmount: [{ required: true, message: '请输入普通用户最低提现金额', trigger: 'blur' }, { type: 'number', min: 0, message: '金额不能小于 0', trigger: 'change' }],
+  dailyAmountLimit: [{ required: true, message: '请输入每日累计上限', trigger: 'blur' }, { type: 'number', min: 0, message: '金额不能小于 0', trigger: 'change' }],
+  dailyCountLimit: [{ required: true, message: '请输入每日提现次数上限', trigger: 'blur' }, { type: 'number', min: 1, message: '次数必须大于 0', trigger: 'change' }],
+  feeRate: [{ required: true, message: '请输入手续费率', trigger: 'blur' }, { type: 'number', min: 0, max: 100, message: '手续费率范围为 0%~100%', trigger: 'change' }],
+  testUserMinAmount: [{ required: true, message: '请输入测试用户最低金额', trigger: 'blur' }, { type: 'number', min: 0, message: '金额不能小于 0', trigger: 'change' }],
+  maxConcurrent: [{ required: true, message: '请输入最大并行提现笔数', trigger: 'blur' }, { type: 'number', min: 1, message: '并行笔数必须大于 0', trigger: 'change' }],
+  frozenLimit: [{ required: true, message: '请输入冻结提现总额上限', trigger: 'blur' }, { type: 'number', min: 0, message: '金额不能小于 0', trigger: 'change' }],
 }
 
 function showError(error: unknown, fallback: string): void {
@@ -70,6 +82,15 @@ async function loadProfitRates(): Promise<void> {
     profitRatesForm.remark = store.profitRates.remark
   } catch (error) {
     showError(error, '商品资金比例加载失败')
+  }
+}
+
+async function loadWithdrawRules(): Promise<void> {
+  try {
+    await store.loadWithdrawRules()
+    Object.assign(withdrawRulesForm, store.withdrawRules, { feeRate: store.withdrawRules.feeRate * 100 })
+  } catch (error) {
+    showError(error, '提现规则加载失败')
   }
 }
 
@@ -110,10 +131,22 @@ async function saveProfitRates(): Promise<void> {
   }
 }
 
+async function saveWithdrawRules(): Promise<void> {
+  if (!(await withdrawRulesFormRef.value?.validate().catch(() => false))) return
+  try {
+    await ElMessageBox.confirm('保存后会影响后续新提交的提现申请，确认继续吗？', '保存提现规则', { type: 'warning' })
+    await store.saveWithdrawRulesConfig({ ...withdrawRulesForm, feeRate: withdrawRulesForm.feeRate / 100 })
+    ElMessage.success('提现规则已保存')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') showError(error, '提现规则保存失败')
+  }
+}
+
 function reload(): void {
   void loadCustomerService()
   void loadDividendCap()
   void loadProfitRates()
+  void loadWithdrawRules()
 }
 
 onMounted(reload)
@@ -123,7 +156,7 @@ onMounted(reload)
   <section class="page-container page-enter">
     <div class="page-heading">
       <div><h1>系统设置</h1><p>管理客服电话和分红业务参数。</p></div>
-      <el-button :icon="Refresh" :loading="store.customerServiceLoading || store.dividendCapLoading || store.profitRatesLoading" @click="reload">刷新</el-button>
+      <el-button :icon="Refresh" :loading="store.customerServiceLoading || store.dividendCapLoading || store.profitRatesLoading || store.withdrawRulesLoading" @click="reload">刷新</el-button>
     </div>
 
     <div class="settings-grid">
@@ -170,6 +203,24 @@ onMounted(reload)
           </el-form-item>
         </el-form>
       </section>
+
+      <section class="content-card setting-section withdraw-rules-section">
+        <div class="setting-heading"><div><h2>提现规则</h2><p>控制后续提现申请的金额、次数、并行和手续费规则。</p></div></div>
+        <el-alert title="规则只影响后续新提交的提现申请；提现审核通过不代表用户已经到账。" type="warning" :closable="false" show-icon />
+        <el-form ref="withdrawRulesFormRef" class="withdraw-rules-form" :model="withdrawRulesForm" :rules="withdrawRulesRules" label-width="150px" @submit.prevent="saveWithdrawRules">
+          <el-form-item label="普通用户最低提现" prop="minAmount"><el-input-number v-model="withdrawRulesForm.minAmount" :min="0" :precision="2" controls-position="right" class="rule-number" /></el-form-item>
+          <el-form-item label="测试用户最低提现" prop="testUserMinAmount"><el-input-number v-model="withdrawRulesForm.testUserMinAmount" :min="0" :precision="2" controls-position="right" class="rule-number" /></el-form-item>
+          <el-form-item label="每日累计上限" prop="dailyAmountLimit"><el-input-number v-model="withdrawRulesForm.dailyAmountLimit" :min="0" :precision="2" controls-position="right" class="rule-number" /></el-form-item>
+          <el-form-item label="每日次数上限" prop="dailyCountLimit"><el-input-number v-model="withdrawRulesForm.dailyCountLimit" :min="1" :precision="0" controls-position="right" class="rule-number" /></el-form-item>
+          <el-form-item label="最大并行笔数" prop="maxConcurrent"><el-input-number v-model="withdrawRulesForm.maxConcurrent" :min="1" :precision="0" controls-position="right" class="rule-number" /></el-form-item>
+          <el-form-item label="冻结总额上限" prop="frozenLimit"><el-input-number v-model="withdrawRulesForm.frozenLimit" :min="0" :precision="2" controls-position="right" class="rule-number" /></el-form-item>
+          <el-form-item label="手续费率" prop="feeRate"><div class="rate-control"><el-input-number v-model="withdrawRulesForm.feeRate" :min="0" :max="100" :precision="2" :step="0.1" controls-position="right" class="rule-number" /><span class="rate-suffix">%</span></div></el-form-item>
+          <el-form-item label="测试用户 ID"><el-input-number v-model="withdrawRulesForm.testUserId" :min="1" :precision="0" controls-position="right" class="rule-number" placeholder="可选" /></el-form-item>
+          <el-form-item label="测试用户跳过提现锁"><el-switch v-model="withdrawRulesForm.testSkipLock" active-text="开启" inactive-text="关闭" /></el-form-item>
+          <el-form-item label="备注" class="rule-remark-item"><el-input v-model="withdrawRulesForm.remark" placeholder="可选" clearable maxlength="100" show-word-limit /></el-form-item>
+          <el-form-item class="form-item-full"><el-button type="primary" :loading="store.withdrawRulesSaving" @click="saveWithdrawRules">保存提现规则</el-button></el-form-item>
+        </el-form>
+      </section>
     </div>
   </section>
 </template>
@@ -182,6 +233,7 @@ onMounted(reload)
 .setting-heading p { margin: 0; color: var(--vben-muted); font-size: 13px; }
 .setting-section :deep(.el-alert) { margin-bottom: 20px; }
 .fund-rate-section { grid-column: 1 / -1; }
+.withdraw-rules-section { grid-column: 1 / -1; }
 .profit-rates-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -201,12 +253,25 @@ onMounted(reload)
 .remark-item { grid-column: 1 / -1; }
 .form-item-full { grid-column: 1 / -1; }
 .rate-suffix { color: var(--vben-muted); min-width: 18px; }
+.withdraw-rules-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 20px;
+  align-items: start;
+}
+.withdraw-rules-form :deep(.el-form-item) { min-width: 0; }
+.withdraw-rules-form :deep(.el-form-item__content) { min-width: 0; }
+.rule-number { width: 180px; }
+.rule-remark-item { grid-column: 1 / -1; }
 @media (max-width: 760px) {
   .settings-grid,
-  .profit-rates-form { grid-template-columns: 1fr; }
+  .profit-rates-form,
+  .withdraw-rules-form { grid-template-columns: 1fr; }
   .remark-item,
+  .rule-remark-item,
   .form-item-full { grid-column: auto; }
   .rate-input,
-  .rate-remark-input { width: 100%; max-width: none; }
+  .rate-remark-input,
+  .rule-number { width: 100%; max-width: none; }
 }
 </style>

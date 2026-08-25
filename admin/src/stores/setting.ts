@@ -1,19 +1,22 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { getCustomerServiceConfig, getDividendCap, getProfitRatesConfig, saveCustomerServiceConfig, saveDividendCap, saveProfitRatesConfig as postProfitRatesConfig } from '@/api/setting'
+import { getCustomerServiceConfig, getDividendCap, getProfitRatesConfig, getWithdrawRules, saveCustomerServiceConfig, saveDividendCap, saveProfitRatesConfig as postProfitRatesConfig, saveWithdrawRules } from '@/api/setting'
 import { setFundRates } from '@/utils/productPricing'
-import type { DividendCap, DividendCapSaveDTO, ProfitRatesConfig, ProfitRatesSaveDTO, SysConfig, SysConfigSaveDTO } from '@/types/setting'
+import type { DividendCap, DividendCapSaveDTO, ProfitRatesConfig, ProfitRatesSaveDTO, SysConfig, SysConfigSaveDTO, WithdrawRulesConfig, WithdrawRulesSaveDTO } from '@/types/setting'
 
 export const useSettingStore = defineStore('setting', () => {
   const customerService = ref<SysConfig | null>(null)
   const dividendCap = ref<DividendCap>({ multiplier: 1.5, remark: '' })
   const profitRates = ref<ProfitRatesConfig>({ promotionRate: 0.2, bonusPoolRate: 0.26, remark: '' })
+  const withdrawRules = ref<WithdrawRulesConfig>({ minAmount: 0, dailyAmountLimit: 0, dailyCountLimit: 0, feeRate: 0, testUserMinAmount: 0, testUserId: null, testSkipLock: false, maxConcurrent: 0, frozenLimit: 0, remark: '' })
   const customerServiceLoading = ref(false)
   const dividendCapLoading = ref(false)
   const profitRatesLoading = ref(false)
+  const withdrawRulesLoading = ref(false)
   const customerServiceSaving = ref(false)
   const dividendCapSaving = ref(false)
   const profitRatesSaving = ref(false)
+  const withdrawRulesSaving = ref(false)
 
   /** 独立读取客服电话，避免倍率请求阻塞客服电话区域。 */
   async function loadCustomerService(): Promise<void> {
@@ -43,6 +46,15 @@ export const useSettingStore = defineStore('setting', () => {
       setFundRates({ promotionRate: profitRates.value.promotionRate, dividendRate: profitRates.value.bonusPoolRate })
     } finally {
       profitRatesLoading.value = false
+    }
+  }
+
+  async function loadWithdrawRules(): Promise<void> {
+    withdrawRulesLoading.value = true
+    try {
+      withdrawRules.value = await getWithdrawRules()
+    } finally {
+      withdrawRulesLoading.value = false
     }
   }
 
@@ -78,21 +90,36 @@ export const useSettingStore = defineStore('setting', () => {
     }
   }
 
+  async function saveWithdrawRulesConfig(payload: WithdrawRulesSaveDTO): Promise<void> {
+    withdrawRulesSaving.value = true
+    try {
+      await saveWithdrawRules(payload)
+      await loadWithdrawRules()
+    } finally {
+      withdrawRulesSaving.value = false
+    }
+  }
+
   return {
     customerService,
     dividendCap,
     profitRates,
+    withdrawRules,
     customerServiceLoading,
     dividendCapLoading,
     profitRatesLoading,
+    withdrawRulesLoading,
     customerServiceSaving,
     dividendCapSaving,
     profitRatesSaving,
+    withdrawRulesSaving,
     loadCustomerService,
     loadDividendCap,
     loadProfitRates,
+    loadWithdrawRules,
     saveCustomerService,
     saveDividendCapConfig,
     saveProfitRatesConfig,
+    saveWithdrawRulesConfig,
   }
 })

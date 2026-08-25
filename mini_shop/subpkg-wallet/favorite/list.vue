@@ -2,6 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getFavoriteList, unfavoriteProduct, type ProductFavorite } from '@/api/favorite'
+import { isLoggedIn } from '@/utils/auth'
+import LoginGuide from '@/components/LoginGuide.vue'
 
 /** 收藏列表数据。 */
 const list = ref<ProductFavorite[]>([])
@@ -11,6 +13,7 @@ const loading = ref(false)
 const loadingMore = ref(false)
 const loaded = ref(false)
 const empty = computed(() => loaded.value && !loading.value && !list.value.length)
+const loginGuideVisible = ref(false)
 /** 请求竞态 token，快速操作时丢弃过期响应。 */
 let requestToken = 0
 
@@ -27,6 +30,12 @@ function formatAmount(value: number): string {
 
 /** 加载收藏列表。 */
 async function load(reset = true): Promise<void> {
+  if (!isLoggedIn()) {
+    list.value = []
+    loaded.value = true
+    loginGuideVisible.value = true
+    return
+  }
   const token = ++requestToken
   const nextPage = reset ? 1 : page.value + 1
   if (!reset && list.value.length >= total.value) return
@@ -104,6 +113,8 @@ onShow(() => { if (loaded.value) void load(true) })
       <view v-show="empty" class="state">暂无收藏</view>
       <view v-show="loadingMore" class="more">加载中...</view>
     </scroll-view>
+
+    <LoginGuide v-model="loginGuideVisible" />
   </view>
 </template>
 

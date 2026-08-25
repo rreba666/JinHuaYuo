@@ -2,8 +2,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { convertWallet, getDividendRecords, getWalletInfo, getUserProfile, type DividendRecord, type UserProfile, type WalletInfo } from '@/api/user'
-import { isRegisteredUser } from '@/utils/auth'
+import { isLoggedIn, isRegisteredUser } from '@/utils/auth'
 import RequestState from '@/components/RequestState.vue'
+import LoginGuide from '@/components/LoginGuide.vue'
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
@@ -17,6 +18,7 @@ const loadingMore = ref(false)
 const converting = ref(false)
 const user = ref<UserProfile | null>(null)
 const registeredUser = computed(() => isRegisteredUser(user.value?.identity))
+const loginGuideVisible = ref(false)
 let pageLoadPromise: Promise<void> | null = null
 
 /** 自定义导航栏样式。 */
@@ -129,6 +131,11 @@ function goBack(): void {
 }
 
 async function ensureUser(): Promise<void> {
+  if (!isLoggedIn()) {
+    user.value = null
+    loginGuideVisible.value = true
+    return
+  }
   try { user.value = await getUserProfile() } catch { user.value = null }
 }
 
@@ -147,7 +154,7 @@ onShow(() => { void refreshData() })
   <view class="page">
     <view class="nav" :style="navStyle"><image class="back-button" src="/static/left_arrow.png" mode="aspectFit" @click="goBack" /></view>
 
-    <scroll-view class="page-scroll" scroll-y :style="{ paddingTop: bodyTop + 'px' }" @scrolltolower="loadMoreRecords">
+    <scroll-view v-if="registeredUser" class="page-scroll" scroll-y :style="{ paddingTop: bodyTop + 'px' }" @scrolltolower="loadMoreRecords">
       <view class="page-content">
         <view class="heading">
           <text class="heading-title">平台红包</text>
@@ -182,6 +189,13 @@ onShow(() => { void refreshData() })
         </view>
       </view>
     </scroll-view>
+
+    <view v-if="!registeredUser && !loginGuideVisible" class="access-empty">
+      <text class="access-empty-title">登录后即可体验完整功能</text>
+      <text class="access-empty-text">登录后即可查看平台红包和红包记录</text>
+    </view>
+
+    <LoginGuide v-model="loginGuideVisible" />
   </view>
 </template>
 
@@ -191,6 +205,9 @@ onShow(() => { void refreshData() })
 .back-button { width: 40rpx; height: 40rpx; }
 .page-scroll { height: 100vh; box-sizing: border-box; }
 .page-content { padding: 0 0 100rpx; box-sizing: border-box; }
+.access-empty { position: absolute; top: 50%; right: 0; left: 0; display: flex; align-items: center; flex-direction: column; transform: translateY(-50%); }
+.access-empty-title { color: #000; font-size: 30rpx; font-weight: 700; }
+.access-empty-text { margin-top: 16rpx; color: #959595; font-size: 24rpx; }
 .heading { display: flex; align-items: baseline; margin-left: 40rpx; }
 .heading-title { color: #000; font-size: 28rpx; }
 .packet-card { position: relative; width: 720rpx; max-width: calc(100% - 32rpx); height: 340rpx; margin: 24rpx auto 0; overflow: hidden; }
