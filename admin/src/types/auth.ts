@@ -13,8 +13,6 @@ export interface AdminLoginVO {
   adminUserId: number
   nickname: string
   role: AdminRole
-  /** 品牌范围：'ALL'（平台管理员）或品牌 key 数组（商户管理员）。 */
-  brandScope?: 'ALL' | string[]
   expireAt: number
 }
 

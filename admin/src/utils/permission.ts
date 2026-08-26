@@ -114,21 +114,3 @@ export function homeForRole(role: AdminRole): string {
 export function isSuperAdmin(role: AdminRole): boolean {
   return role === 'SUPER_ADMIN'
 }
-
-// ============================================================================
-// 品牌范围（多品牌新增）：管理员 = 功能角色 × 品牌范围
-// ============================================================================
-
-/** 品牌范围类型：'ALL'（平台管理员）或品牌 key 数组（商户管理员）。 */
-export type BrandScope = 'ALL' | string[]
-
-/** 是否为平台管理员（品牌范围 ALL，可全局/切品牌）。 */
-export function isPlatformScope(scope: BrandScope | undefined): boolean {
-  return scope === 'ALL' || scope === undefined || scope === null
-}
-
-/** 指定品牌 key 是否在当前管理员的品牌范围内。 */
-export function canAccessBrand(scope: BrandScope | undefined, appKey: string): boolean {
-  if (isPlatformScope(scope)) return true
-  return Array.isArray(scope) && scope.includes(appKey)
-}

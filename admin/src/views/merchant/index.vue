@@ -1,21 +1,15 @@
 <script setup lang="ts">
 /**
  * 商户业务台（商户管理员登录后的默认落地页）
- * 展示本品牌核心业务指标 + 常用功能快捷入口。
+ * 展示本商户核心业务指标 + 常用功能快捷入口。
  * 说明：指标数据待后端接口就绪后接入；当前为布局骨架（静态示例值）。
  */
-import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
-const authStore = useAuthStore()
 
-/** 当前品牌名（商户身份固定品牌；平台/全局显示默认）。 */
-const brandName = computed(() => {
-  if (!authStore.isPlatform) return '今华有'
-  return authStore.currentAppKey || '今华有'
-})
+/** 当前商户名（单商户系统固定；可从后端品牌配置读取）。 */
+const brandName = '今华有'
 
 /** 核心指标卡（示例：后端接口就绪后替换为真实数据）。 */
 const metrics = [
