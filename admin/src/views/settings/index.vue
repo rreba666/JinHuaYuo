@@ -155,7 +155,7 @@ onMounted(reload)
 <template>
   <section class="page-container page-enter">
     <div class="page-heading">
-      <div><h1>系统设置</h1><p>管理客服电话和分红业务参数。</p></div>
+      <div><h1>业务设置</h1><p>管理本品牌的客服电话、推广/分红比例、提现规则。各商户独立配置，仅影响本品牌。</p></div>
       <el-button :icon="Refresh" :loading="store.customerServiceLoading || store.dividendCapLoading || store.profitRatesLoading || store.withdrawRulesLoading" @click="reload">刷新</el-button>
     </div>
 

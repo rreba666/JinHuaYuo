@@ -182,9 +182,9 @@ onMounted(() => {
           <el-menu-item index="/brands"><el-icon><Shop /></el-icon><template #title>品牌管理</template></el-menu-item>
           <el-menu-item index="/modules"><el-icon><Box /></el-icon><template #title>模块管理</template></el-menu-item>
         </el-sub-menu>
-        <el-menu-item v-if="isSuper && isPlatform" index="/settings">
+        <el-menu-item v-if="isSuper" index="/settings">
           <el-icon><Setting /></el-icon>
-          <template #title>系统设置</template>
+          <template #title>业务设置</template>
         </el-menu-item>
       </el-menu>
     </el-aside>

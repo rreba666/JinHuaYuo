@@ -163,7 +163,7 @@ const router = createRouter({
           path: 'settings',
           name: 'Settings',
           component: () => import('@/views/settings/index.vue'),
-          meta: { title: '系统设置', roles: SUPER_ADMIN, scope: 'platform', requiresAuth: true },
+          meta: { title: '业务设置', roles: SUPER_ADMIN, requiresAuth: true },
         },
         {
           path: 'brands',
