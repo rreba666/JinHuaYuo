@@ -1,40 +1,57 @@
 :root {
   font-family: Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   color: var(--vben-text, #1f2937);
-  background: var(--vben-bg, #f5f7fa);
+  background: var(--vben-bg, #f6f7f9);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  --vben-bg: #f5f7fa;
+  --vben-bg: #f6f7f9;
   --vben-surface: #ffffff;
   --vben-text: #1f2937;
   --vben-muted: #86909c;
-  --vben-border: #e5e6eb;
-  --vben-primary: #1677ff;
-  --vben-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  --vben-border: #e7e8ec;
+  --vben-primary: #d4a843;
+  --vben-primary-hover: #e0b95c;
+  --vben-primary-active: #b8912f;
+  --vben-primary-soft: rgba(212, 168, 67, 0.12);
+  --vben-primary-deep: #a07c1f;
+  --vben-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  --vben-shadow-hover: 0 10px 26px rgba(212, 168, 67, 0.14);
   --vben-sidebar-bg: #ffffff;
   --vben-sidebar-text: #52606d;
   --vben-sidebar-muted: #8a94a6;
-  --vben-sidebar-hover: #f3f6fb;
-  --vben-sidebar-active: #eaf2ff;
-  --vben-sidebar-active-text: #1668dc;
+  --vben-sidebar-hover: #faf6ec;
+  --vben-sidebar-active: #f7eed9;
+  --vben-sidebar-active-text: #a98420;
   --vben-sidebar-border: #eef0f5;
+  --vben-card-radius: 14px;
+  --vben-glass-bg: rgba(255, 255, 255, 0.72);
+  --vben-glass-blur: 14px;
 }
 
 :root[data-theme='dark'] {
-  --vben-bg: #141414;
-  --vben-surface: #1f1f1f;
-  --vben-text: #e5e6eb;
-  --vben-muted: #8f9aaa;
-  --vben-border: #303030;
-  --vben-shadow: 0 1px 4px rgba(0, 0, 0, 0.24);
-  --vben-sidebar-bg: #151c2e;
-  --vben-sidebar-text: #aab5c9;
-  --vben-sidebar-muted: #74819a;
-  --vben-sidebar-hover: #1d2940;
-  --vben-sidebar-active: #243b67;
-  --vben-sidebar-active-text: #ffffff;
-  --vben-sidebar-border: #253049;
+  --vben-bg: #10131a;
+  --vben-surface: #1a1f28;
+  --vben-text: #e7e9ee;
+  --vben-muted: #9aa3b5;
+  --vben-border: #2a303c;
+  --vben-primary: #d4a843;
+  --vben-primary-hover: #e0b95c;
+  --vben-primary-active: #b8912f;
+  --vben-primary-soft: rgba(212, 168, 67, 0.16);
+  --vben-primary-deep: #a07c1f;
+  --vben-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --vben-shadow-hover: 0 12px 30px rgba(212, 168, 67, 0.18);
+  --vben-sidebar-bg: linear-gradient(180deg, #1a1f2b, #222836);
+  --vben-sidebar-text: #b6c0d0;
+  --vben-sidebar-muted: #8b95a8;
+  --vben-sidebar-hover: rgba(212, 168, 67, 0.10);
+  --vben-sidebar-active: rgba(212, 168, 67, 0.18);
+  --vben-sidebar-active-text: #f0c96a;
+  --vben-sidebar-border: #263040;
+  --vben-card-radius: 14px;
+  --vben-glass-bg: rgba(26, 31, 40, 0.68);
+  --vben-glass-blur: 16px;
 }
 
 * { box-sizing: border-box; }
