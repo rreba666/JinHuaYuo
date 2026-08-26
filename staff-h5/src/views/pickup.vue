@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { staffLogin, staffVerify } from '@/api/staff'
 import { clearSession, getSession, setSession, type StaffSession } from '@/utils/auth'
+import { getModules, isModuleEnabled, type ModuleConfig } from '@/utils/config'
 import type { StaffVerifyVO } from '@/types/staff'
 
 /** 当前登录态（null 表示未登录）。 */
@@ -20,6 +21,10 @@ const verifying = ref(false)
 const result = ref<StaffVerifyVO | null>(null)
 /** 页面内错误提示。 */
 const error = ref('')
+/** 当前品牌模块开关（空 = 未配置/失败，按全部启用兜底）。 */
+const moduleConfig = ref<ModuleConfig[] | null>(null)
+/** pickup 模块是否启用；未启用则拦截核销入口。 */
+const pickupEnabled = ref(true)
 
 onMounted(() => {
   session.value = getSession()
@@ -29,6 +34,11 @@ onMounted(() => {
     code.value = urlCode.trim()
     fromScan.value = true
   }
+  // 拉取模块配置；失败保底全部启用。
+  void getModules().then((modules) => {
+    moduleConfig.value = modules
+    pickupEnabled.value = isModuleEnabled(modules, 'pickup')
+  })
 })
 
 /** 店员登录：工号+密码换 token。 */
@@ -98,8 +108,14 @@ function nextOrder(): void {
     </header>
 
     <main class="main">
+      <!-- pickup 模块停用：拦截核销入口 -->
+      <section class="card" v-if="!pickupEnabled">
+        <h2 class="card-title">自提核销暂停</h2>
+        <p class="tip-text">当前品牌未开通「门店自提」功能，核销暂不可用。</p>
+      </section>
+
       <!-- 未登录：显示登录表单 -->
-      <section class="card" v-if="!session">
+      <section class="card" v-else-if="!session">
         <h2 class="card-title">店员登录</h2>
         <label class="field">
           <span class="field-label">工号</span>
@@ -156,6 +172,7 @@ function nextOrder(): void {
 .main { flex: 1; padding: 16px; max-width: 520px; width: 100%; margin: 0 auto; }
 .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04); }
 .card-title { margin: 0 0 16px; font-size: 16px; font-weight: 600; color: #1f2329; }
+.tip-text { margin: 0; font-size: 15px; color: #6b7280; line-height: 1.6; }
 
 .field { display: block; margin-bottom: 14px; }
 .field-label { display: block; margin-bottom: 6px; font-size: 13px; color: #6b7280; }
