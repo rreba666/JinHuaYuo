@@ -5,28 +5,28 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  /* 亮色主题：暖白基调（米白背景 + 暖灰边框），配雅金点缀 */
-  --vben-bg: #faf7f2;
-  --vben-surface: #fffdf9;
-  --vben-text: #3a352e;
-  --vben-muted: #8a8274;
-  --vben-border: #ece5da;
+  /* 亮色主题：暖白基调（奶油米白背景 + 暖米表面 + 金调侧栏），配雅金点缀 */
+  --vben-bg: #f7f0e4;
+  --vben-surface: #fdf8f0;
+  --vben-text: #40382c;
+  --vben-muted: #8d8170;
+  --vben-border: #e8ddcc;
   --vben-primary: #d4a843;
   --vben-primary-hover: #e0b95c;
   --vben-primary-active: #b8912f;
   --vben-primary-soft: rgba(212, 168, 67, 0.12);
   --vben-primary-deep: #a07c1f;
-  --vben-shadow: 0 1px 4px rgba(140, 120, 80, 0.08);
-  --vben-shadow-hover: 0 10px 26px rgba(212, 168, 67, 0.16);
-  --vben-sidebar-bg: #fffdf9;
-  --vben-sidebar-text: #57503f;
-  --vben-sidebar-muted: #9a917f;
-  --vben-sidebar-hover: #faf3e3;
-  --vben-sidebar-active: #f7ecd2;
-  --vben-sidebar-active-text: #a07c1f;
-  --vben-sidebar-border: #f0e9dc;
+  --vben-shadow: 0 1px 4px rgba(150, 120, 70, 0.10);
+  --vben-shadow-hover: 0 10px 26px rgba(212, 168, 67, 0.18);
+  --vben-sidebar-bg: #fdf6ea;
+  --vben-sidebar-text: #5c5240;
+  --vben-sidebar-muted: #a0937b;
+  --vben-sidebar-hover: #f6e8cf;
+  --vben-sidebar-active: #f0ddb4;
+  --vben-sidebar-active-text: #96701a;
+  --vben-sidebar-border: #f0e5d2;
   --vben-card-radius: 14px;
-  --vben-glass-bg: rgba(255, 253, 249, 0.72);
+  --vben-glass-bg: rgba(253, 248, 240, 0.72);
   --vben-glass-blur: 14px;
 }
 
