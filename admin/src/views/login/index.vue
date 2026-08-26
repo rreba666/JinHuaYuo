@@ -16,6 +16,22 @@ const rules: FormRules = {
   password: [{ required: true, message: '请输入登录密码', trigger: 'blur' }],
 }
 
+/**
+ * 模拟身份开关（仅用于后端 brandScope 接口未就绪时验证两种身份页面差异）。
+ * 登录成功后写入 localStorage，后端未返回 brandScope 时由 auth store 兜底读取。
+ * 后端接口就绪后移除本开关与 stores/auth.ts 中的 MOCK_BRAND_SCOPE_KEY 逻辑。
+ */
+const mockRole = ref<'platform' | 'merchant'>(
+  localStorage.getItem('admin_mock_brand_scope') === 'merchant' ? 'merchant' : 'platform',
+)
+
+/** 切换模拟身份并持久化（登录后生效）。 */
+function changeMockRole(value: 'platform' | 'merchant'): void {
+  mockRole.value = value
+  localStorage.setItem('admin_mock_brand_scope', value === 'merchant' ? 'merchant' : 'platform')
+  ElMessage.info(value === 'merchant' ? '已设为商户管理员（今华有），登录后仅见本品牌' : '已设为平台管理员，登录后可见全部品牌')
+}
+
 /** 判断重定向地址是否为当前站点内的安全路径。 */
 function getSafeRedirect(): string {
   const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
@@ -71,6 +87,14 @@ async function submitLogin(): Promise<void> {
           <el-form-item prop="password"><el-input v-model="form.password" type="password" placeholder="登录密码" show-password @keyup.enter="submitLogin" /></el-form-item>
           <el-button type="primary" native-type="submit" :loading="loading" class="login-button">登录</el-button>
         </el-form>
+        <!-- 模拟身份开关：后端 brandScope 接口就绪后移除 -->
+        <div class="mock-role">
+          <span class="mock-role-label">模拟身份</span>
+          <el-radio-group :model-value="mockRole" size="small" @change="changeMockRole">
+            <el-radio-button value="platform">平台管理员</el-radio-button>
+            <el-radio-button value="merchant">商户管理员</el-radio-button>
+          </el-radio-group>
+        </div>
       </div>
     </section>
   </main>
@@ -109,6 +133,13 @@ async function submitLogin(): Promise<void> {
 .login-heading h1 { margin: 0; color: #e7e9ee; font-size: 26px; }
 .login-heading p { margin: 8px 0 0; color: rgba(255,255,255,.6); font-size: 14px; }
 .login-button { width: 100%; margin-top: 8px; }
+
+/* 模拟身份开关（后端 brandScope 就绪后移除） */
+.mock-role { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 20px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.08); }
+.mock-role-label { color: rgba(255,255,255,.5); font-size: 13px; white-space: nowrap; }
+.mock-role :deep(.el-radio-group) { flex-shrink: 0; }
+.mock-role :deep(.el-radio-button__inner) { background: transparent; border-color: rgba(255,255,255,.18); color: rgba(255,255,255,.6); }
+.mock-role :deep(.el-radio-button.is-active .el-radio-button__inner) { background: #a07c1f; border-color: #a07c1f; color: #fff; }
 
 /* ===== 响应式：窄屏隐藏左栏，右栏全宽 ===== */
 @media (max-width: 900px) {
