@@ -172,6 +172,18 @@ const router = createRouter({
           meta: { title: '品牌管理', roles: SUPER_ADMIN, scope: 'platform', requiresAuth: true },
         },
         {
+          path: 'brands/auth',
+          name: 'BrandAuth',
+          component: () => import('@/views/brands/auth.vue'),
+          meta: { title: '授权管理', roles: SUPER_ADMIN, scope: 'platform', requiresAuth: true },
+        },
+        {
+          path: 'brands/tools',
+          name: 'BrandTools',
+          component: () => import('@/views/brands/tools.vue'),
+          meta: { title: '系统工具授权', roles: SUPER_ADMIN, scope: 'platform', requiresAuth: true },
+        },
+        {
           path: 'modules',
           name: 'Modules',
           component: () => import('@/views/modules/index.vue'),
