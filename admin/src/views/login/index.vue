@@ -64,11 +64,11 @@ async function submitLogin(): Promise<void> {
 .login-card { width: 420px; padding: 42px 40px 38px; border-radius: 18px; background: var(--vben-glass-bg); backdrop-filter: blur(var(--vben-glass-blur)); -webkit-backdrop-filter: blur(var(--vben-glass-blur)); border: 1px solid rgba(212,168,67,.25); box-shadow: 0 18px 50px rgba(0,0,0,.35); }
 .login-card-enter { animation: login-card-in .6s cubic-bezier(.22,.8,.28,1) both; }
 @keyframes login-card-in { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
-.login-brand { display: flex; align-items: center; gap: 12px; color: var(--vben-text); }
+.login-brand { display: flex; align-items: center; gap: 12px; color: #e7e9ee; }
 .login-mark { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; background: linear-gradient(135deg, #d4a843, #f0c96a); color: #fff; font-size: 24px; font-weight: 700; box-shadow: 0 4px 12px rgba(212,168,67,.30); }
 .login-brand strong { font-size: 19px; }
-.login-brand p, .login-heading p { margin: 4px 0 0; color: var(--vben-muted); font-size: 13px; }
+.login-brand p, .login-heading p { margin: 4px 0 0; color: rgba(255,255,255,.6); font-size: 13px; }
 .login-heading { margin: 38px 0 24px; }
-.login-heading h1 { margin: 0; color: var(--vben-text); font-size: 26px; }
+.login-heading h1 { margin: 0; color: #e7e9ee; font-size: 26px; }
 .login-button { width: 100%; margin-top: 8px; }
 </style>
