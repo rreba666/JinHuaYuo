@@ -80,7 +80,8 @@ button, input { font-family: inherit; }
 .admin-menu > .el-menu-item > .el-icon,
 .admin-menu > .el-sub-menu > .el-sub-menu__title > .el-icon { width: 20px; height: 20px; flex-shrink: 0; margin-right: 10px; font-size: 17px; }
 .admin-menu > .el-menu-item.is-active,
-.admin-menu > .el-sub-menu > .el-sub-menu__title { background: var(--vben-sidebar-active); color: var(--vben-sidebar-active-text); box-shadow: inset 2px 0 var(--vben-primary); font-weight: 600; }
+.admin-menu > .el-sub-menu.is-active > .el-sub-menu__title,
+.admin-menu > .el-sub-menu.is-opened > .el-sub-menu__title { background: var(--vben-sidebar-active); color: var(--vben-sidebar-active-text); box-shadow: inset 2px 0 var(--vben-primary); font-weight: 600; }
 
 .admin-header { display: flex; align-items: center; justify-content: space-between; height: 64px; padding: 0 24px; background: var(--vben-surface); border-bottom: 1px solid var(--vben-border); transition: background-color .25s ease, border-color .25s ease; }
 .header-left, .header-actions, .profile-trigger { display: flex; align-items: center; gap: 16px; }
