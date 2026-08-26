@@ -32,10 +32,11 @@ function changeMockRole(value: 'platform' | 'merchant'): void {
   ElMessage.info(value === 'merchant' ? '已设为商户管理员（今华有），登录后仅见本品牌' : '已设为平台管理员，登录后可见全部品牌')
 }
 
-/** 判断重定向地址是否为当前站点内的安全路径。 */
+/** 判断重定向地址是否为当前站点内的安全路径；无 redirect 时按身份回落（平台→仪表盘，商户→业务台）。 */
 function getSafeRedirect(): string {
   const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
-  return redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/users'
+  if (redirect.startsWith('/') && !redirect.startsWith('//')) return redirect
+  return authStore.isPlatform ? '/dashboard' : '/merchant'
 }
 
 /** 校验登录表单、调用接口并跳转到原目标页面。 */

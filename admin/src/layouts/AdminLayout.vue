@@ -44,6 +44,10 @@ const adminAvatar = computed(() => adminName.value.slice(0, 1).toUpperCase())
 
 /** 角色是否为超级管理员（超管独享管理员管理、分类、店员、主页管理）。 */
 const isSuper = computed(() => authStore.role === 'SUPER_ADMIN')
+/** 是否为平台管理员（brandScope=ALL，可切品牌、见平台管理菜单）。 */
+const isPlatform = computed(() => authStore.isPlatform)
+/** 当前操作品牌（顶部品牌切换器显示）。 */
+const currentAppKey = computed(() => authStore.currentAppKey)
 /** 角色是否为客服（客服可见用户/商品/门店/订单/核销日志）。 */
 const isService = computed(() => authStore.role === 'CUSTOMER_SERVICE' || authStore.role === 'SUPER_ADMIN')
 /** 角色是否为财务（财务可见发票/推广资金/提现/操作追溯）。 */
@@ -74,6 +78,19 @@ function logout(): void {
   router.replace('/login')
 }
 
+/** 平台管理员可见的品牌下拉选项（占位：后端品牌接口 P3 接入后替换为动态列表）。 */
+const brandOptions = [
+  { label: '今华有', value: 'jinhua' },
+  { label: '隆平', value: 'longping' },
+]
+
+/** 平台管理员切换当前品牌：更新 store + 提示（请求层自动带新 X-App-Key）。 */
+function handleBrandChange(value: string): void {
+  authStore.switchAppKey(value)
+  const brand = brandOptions.find((item) => item.value === value)
+  ElMessage.success(`已切换到：${brand?.label || value}`)
+}
+
 onMounted(() => {
   void refreshCurrentAdmin()
   void refreshFundRates()
@@ -89,7 +106,12 @@ onMounted(() => {
         <span v-if="!collapsed">E-Admin Pro</span>
       </div>
       <el-menu :default-active="route.path" :default-openeds="['/homepage', '/orders']" :collapse="collapsed" router class="admin-menu">
-        <el-menu-item index="/dashboard">
+        <!-- 商户登录进业务台，平台/全局进仪表盘 -->
+        <el-menu-item v-if="!isPlatform" index="/merchant">
+          <el-icon><DataBoard /></el-icon>
+          <template #title>商户业务台</template>
+        </el-menu-item>
+        <el-menu-item v-else index="/dashboard">
           <el-icon><DataBoard /></el-icon>
           <template #title>仪表盘</template>
         </el-menu-item>
@@ -119,7 +141,7 @@ onMounted(() => {
           <el-icon><UserFilled /></el-icon>
           <template #title>店员管理</template>
         </el-menu-item>
-        <el-menu-item v-if="isSuper" index="/admins">
+        <el-menu-item v-if="isSuper && isPlatform" index="/admins">
           <el-icon><UserFilled /></el-icon>
           <template #title>管理员管理</template>
         </el-menu-item>
@@ -155,7 +177,12 @@ onMounted(() => {
           <el-menu-item index="/logs/verify"><el-icon><Tickets /></el-icon><template #title>核销日志</template></el-menu-item>
           <el-menu-item index="/logs/audit"><el-icon><List /></el-icon><template #title>操作追溯</template></el-menu-item>
         </el-sub-menu>
-        <el-menu-item v-if="isSuper" index="/settings">
+        <el-sub-menu v-if="isSuper && isPlatform" index="/platform">
+          <template #title><el-icon><Setting /></el-icon><span>平台管理</span></template>
+          <el-menu-item index="/brands"><el-icon><Shop /></el-icon><template #title>品牌管理</template></el-menu-item>
+          <el-menu-item index="/modules"><el-icon><Box /></el-icon><template #title>模块管理</template></el-menu-item>
+        </el-sub-menu>
+        <el-menu-item v-if="isSuper && isPlatform" index="/settings">
           <el-icon><Setting /></el-icon>
           <template #title>系统设置</template>
         </el-menu-item>
@@ -172,6 +199,16 @@ onMounted(() => {
             <el-breadcrumb-item>E-Admin Pro</el-breadcrumb-item>
             <el-breadcrumb-item>{{ pageTitle }}</el-breadcrumb-item>
           </el-breadcrumb>
+          <!-- 平台管理员品牌切换器：切换后全局请求带对应 X-App-Key -->
+          <el-select
+            v-if="isPlatform"
+            :model-value="currentAppKey || brandOptions[0]?.value"
+            class="brand-switcher"
+            size="small"
+            @change="handleBrandChange"
+          >
+            <el-option v-for="brand in brandOptions" :key="brand.value" :label="brand.label" :value="brand.value" />
+          </el-select>
         </div>
         <div class="header-actions">
           <el-input v-model="keyword" placeholder="全局搜索（暂未接入）" clearable class="global-search">
@@ -194,3 +231,11 @@ onMounted(() => {
     </el-container>
   </el-container>
 </template>
+
+<style scoped>
+/* 平台管理员品牌切换器：位于顶部面包屑右侧 */
+.brand-switcher {
+  width: 140px;
+  margin-left: 16px;
+}
+</style>

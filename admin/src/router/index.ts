@@ -32,6 +32,12 @@ const router = createRouter({
           meta: { title: '仪表盘', permission: ['dashboard:read'], roles: ALL, requiresAuth: true },
         },
         {
+          path: 'merchant',
+          name: 'MerchantHome',
+          component: () => import('@/views/merchant/index.vue'),
+          meta: { title: '商户业务台', permission: ['dashboard:read'], roles: ALL, requiresAuth: true },
+        },
+        {
           path: 'homepage',
           name: 'Homepage',
           component: () => import('@/views/homepage/index.vue'),
@@ -79,7 +85,7 @@ const router = createRouter({
           path: 'admins',
           name: 'Admins',
           component: () => import('@/views/admin/index.vue'),
-          meta: { title: '管理员管理', permission: ['admin:read'], roles: SUPER_ADMIN, requiresAuth: true },
+          meta: { title: '管理员管理', permission: ['admin:read'], roles: SUPER_ADMIN, scope: 'platform', requiresAuth: true },
         },
         {
           path: 'orders',
@@ -157,7 +163,19 @@ const router = createRouter({
           path: 'settings',
           name: 'Settings',
           component: () => import('@/views/settings/index.vue'),
-          meta: { title: '系统设置', roles: SUPER_ADMIN, requiresAuth: true },
+          meta: { title: '系统设置', roles: SUPER_ADMIN, scope: 'platform', requiresAuth: true },
+        },
+        {
+          path: 'brands',
+          name: 'Brands',
+          component: () => import('@/views/brands/index.vue'),
+          meta: { title: '品牌管理', roles: SUPER_ADMIN, scope: 'platform', requiresAuth: true },
+        },
+        {
+          path: 'modules',
+          name: 'Modules',
+          component: () => import('@/views/modules/index.vue'),
+          meta: { title: '模块管理', roles: SUPER_ADMIN, scope: 'platform', requiresAuth: true },
         },
       ],
     },
@@ -169,6 +187,11 @@ function getSafeRedirect(path: unknown): string {
   return typeof path === 'string' && path.startsWith('/') && !path.startsWith('//') ? path : '/dashboard'
 }
 
+/** 按登录身份返回默认落地页：平台/全局管理员→仪表盘，商户管理员→商户业务台。 */
+function homeForScope(authStore: ReturnType<typeof useAuthStore>): string {
+  return authStore.isPlatform ? '/dashboard' : '/merchant'
+}
+
 /** 设置页面标题、拦截未登录访问，并按角色校验路由访问权限。 */
 router.beforeEach((to) => {
   document.title = `${String(to.meta.title || '电商后台')} - E-Admin Pro`
@@ -177,16 +200,21 @@ router.beforeEach((to) => {
   const requiresAuth = to.matched.some((record) => record.meta.requiresAuth)
 
   if (to.name === 'Login' && authStore.isAuthenticated) {
-    return getSafeRedirect(to.query.redirect)
+    return getSafeRedirect(to.query.redirect || homeForScope(authStore))
   }
   if (requiresAuth && !authStore.isAuthenticated) {
     return { name: 'Login', query: { redirect: to.fullPath } }
   }
-  // 角色守卫：已登录但角色不在路由允许列表中时，跳回默认落地页。
+  // 角色守卫：已登录但角色不在路由允许列表中时，跳回按身份对应的默认落地页。
   if (requiresAuth && authStore.isAuthenticated) {
     const roles = to.matched.flatMap((record) => (record.meta.roles as AdminRole[] | undefined) || [])
     if (roles.length && !roles.includes(authStore.role as AdminRole)) {
-      return { path: '/dashboard' }
+      return { path: homeForScope(authStore) }
+    }
+    // 品牌范围守卫：平台专属路由（品牌/模块/系统设置/管理员管理）仅 brandScope=ALL 可访问。
+    const scopeRequired = to.matched.some((record) => record.meta.scope === 'platform')
+    if (scopeRequired && !authStore.isPlatform) {
+      return { path: homeForScope(authStore) }
     }
   }
   return true
