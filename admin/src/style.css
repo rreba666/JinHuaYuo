@@ -63,7 +63,7 @@ button, input { font-family: inherit; }
 .admin-aside { position: relative; overflow: hidden; background: var(--vben-sidebar-bg); border-right: 1px solid var(--vben-sidebar-border); color: var(--vben-sidebar-text); transition: width .2s ease, background-color .25s ease, border-color .25s ease; }
 .brand { display: flex; align-items: center; gap: 12px; height: 64px; padding: 0 20px; border-bottom: 1px solid var(--vben-sidebar-border); color: var(--vben-text); font-size: 17px; font-weight: 700; white-space: nowrap; }
 .brand--collapsed { justify-content: center; padding: 0; }
-.brand-mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--vben-primary); color: #fff; font-size: 20px; font-weight: 700; box-shadow: 0 4px 10px rgba(22, 119, 255, .22); }
+.brand-mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, #d4a843, #f0c96a); color: #fff; font-size: 20px; font-weight: 700; box-shadow: 0 4px 12px rgba(212, 168, 67, .30); }
 .admin-menu { height: calc(100vh - 65px); padding: 12px 10px; overflow-y: auto; scrollbar-gutter: stable; border-right: 0; background: transparent; }
 .admin-menu .el-sub-menu__title, .admin-menu .el-menu-item { height: 42px; margin: 4px 0; border-radius: 8px; color: var(--vben-sidebar-text); font-size: 14px; transition: color .2s ease, background-color .2s ease, box-shadow .2s ease; }
 .admin-menu .el-sub-menu__title { font-weight: 600; }
@@ -79,7 +79,8 @@ button, input { font-family: inherit; }
 .admin-menu > .el-sub-menu > .el-sub-menu__title { padding-left: 14px !important; }
 .admin-menu > .el-menu-item > .el-icon,
 .admin-menu > .el-sub-menu > .el-sub-menu__title > .el-icon { width: 20px; height: 20px; flex-shrink: 0; margin-right: 10px; font-size: 17px; }
-.admin-menu > .el-menu-item.is-active { background: var(--vben-sidebar-active); color: var(--vben-sidebar-active-text); box-shadow: inset 2px 0 var(--vben-primary); font-weight: 600; }
+.admin-menu > .el-menu-item.is-active,
+.admin-menu > .el-sub-menu > .el-sub-menu__title { background: var(--vben-sidebar-active); color: var(--vben-sidebar-active-text); box-shadow: inset 2px 0 var(--vben-primary); font-weight: 600; }
 
 .admin-header { display: flex; align-items: center; justify-content: space-between; height: 64px; padding: 0 24px; background: var(--vben-surface); border-bottom: 1px solid var(--vben-border); transition: background-color .25s ease, border-color .25s ease; }
 .header-left, .header-actions, .profile-trigger { display: flex; align-items: center; gap: 16px; }
@@ -93,7 +94,10 @@ button, input { font-family: inherit; }
 
 html.dark .admin-aside .el-menu { --el-menu-bg-color: transparent; --el-menu-text-color: var(--vben-sidebar-text); --el-menu-hover-bg-color: transparent; --el-menu-active-color: var(--vben-sidebar-active-text); }
 html.dark .el-menu--popup { --el-menu-bg-color: var(--vben-surface); --el-menu-text-color: var(--vben-text); --el-menu-hover-bg-color: var(--vben-sidebar-hover); --el-menu-active-color: var(--vben-primary); }
-html.dark .admin-header .el-breadcrumb__inner, html.dark .admin-header .el-breadcrumb__separator { color: var(--vben-muted); }
+/* 暗色顶栏毛玻璃 + 金色底部点缀 */
+html.dark .admin-header { background: var(--vben-glass-bg); backdrop-filter: blur(var(--vben-glass-blur)); -webkit-backdrop-filter: blur(var(--vben-glass-blur)); border-bottom-color: rgba(212,168,67,.18); }
+html.dark .admin-header .el-breadcrumb__inner { color: var(--vben-text); }
+html.dark .admin-header .el-breadcrumb__separator { color: var(--vben-muted); }
 
 .admin-main { min-width: 0; padding: 24px; background: var(--vben-bg); transition: background-color .25s ease; }
 .page-container { max-width: 1600px; margin: 0 auto; animation: page-fade-in .22s ease both; }
@@ -101,7 +105,8 @@ html.dark .admin-header .el-breadcrumb__inner, html.dark .admin-header .el-bread
 .page-heading h1 { margin: 0 0 6px; color: var(--vben-text); font-size: 22px; font-weight: 600; line-height: 1.35; }
 .page-heading p { margin: 0; color: var(--vben-muted); font-size: 14px; line-height: 1.5; }
 
-.filter-card, .content-card { margin-bottom: 16px; border: 1px solid var(--vben-border); border-radius: 8px; background: var(--vben-surface); box-shadow: var(--vben-shadow); transition: background-color .25s ease, border-color .25s ease, box-shadow .25s ease; }
+.filter-card, .content-card { margin-bottom: 16px; border: 1px solid var(--vben-border); border-radius: var(--vben-card-radius); background: var(--vben-surface); box-shadow: var(--vben-shadow); transition: transform .25s ease, box-shadow .25s ease, background-color .25s ease, border-color .25s ease; }
+.filter-card:hover, .content-card:hover { transform: translateY(-3px); box-shadow: var(--vben-shadow-hover); }
 .filter-card .el-card__body, .content-card .el-card__body { padding: 20px; }
 .filter-card .el-form-item { margin-bottom: 0; }
 .filter-card .el-select { width: 220px; min-width: 220px; }
@@ -120,14 +125,19 @@ html.dark .admin-header .el-breadcrumb__inner, html.dark .admin-header .el-bread
 .table-pagination { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 16px; }
 .table-total { color: var(--vben-muted); font-size: 13px; white-space: nowrap; }
 
-.el-dialog { max-width: calc(100vw - 32px); border-radius: 10px; overflow: hidden; }
+.el-dialog { max-width: calc(100vw - 32px); border-radius: 14px; overflow: hidden; }
 .el-dialog__header { margin: 0; padding: 20px 24px 16px; border-bottom: 1px solid var(--vben-border); }
 .el-dialog__title { color: var(--vben-text); font-size: 16px; font-weight: 600; }
 .el-dialog__body { max-height: min(70vh, 760px); overflow-y: auto; padding: 24px; }
 .el-dialog__footer { padding: 14px 24px; border-top: 1px solid var(--vben-border); }
 .el-form-item { margin-bottom: 18px; }
-.el-table th.el-table__cell { background: color-mix(in srgb, var(--vben-bg) 72%, var(--vben-surface)); color: var(--vben-text); font-weight: 600; }
+/* 表单聚焦金色描边 */
+.el-input__wrapper.is-focus, .el-select__wrapper.is-focused { box-shadow: 0 0 0 1px var(--vben-primary) inset; }
+/* 主按钮深金底白字 */
+.el-button--primary { --el-button-bg-color: var(--vben-primary-deep); --el-button-border-color: var(--vben-primary-deep); --el-button-hover-bg-color: var(--vben-primary); --el-button-hover-border-color: var(--vben-primary); --el-button-active-bg-color: var(--vben-primary-active); --el-button-active-border-color: var(--vben-primary-active); color: #fff; }
 .el-table tr, .el-table td.el-table__cell, .el-table th.el-table__cell { background: var(--vben-surface); border-bottom-color: var(--vben-border); }
+/* 表头金色柔底（置于 surface 规则之后，确保覆盖其背景色生效） */
+.el-table th.el-table__cell { background: var(--vben-primary-soft); color: var(--vben-text); font-weight: 600; }
 .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell { background: color-mix(in srgb, var(--vben-bg) 45%, var(--vben-surface)); }
 
 .user-cell { display: flex; align-items: center; gap: 10px; }
