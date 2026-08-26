@@ -1,7 +1,8 @@
 import { request } from '@/utils/request'
 
 export type OrderStatus = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
-export type PickupType = 0 | 1
+/** 配送方式：0=物流 1=线下自提 2=同城配送（占位，本期不开放下单）。 */
+export type PickupType = 0 | 1 | 2
 /** 地址修改申请状态：0=待审核，1=已通过，2=已拒绝。 */
 export type AddressChangeRequestStatus = 0 | 1 | 2
 

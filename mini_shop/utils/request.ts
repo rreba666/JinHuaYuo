@@ -24,6 +24,9 @@ function readEnvValue(source: string, key: string): string {
 const envSource = import.meta.env.MODE === 'production' ? productionEnv : developmentEnv
 const API_BASE_URL = readEnvValue(envSource, 'VITE_API_BASE_URL').replace(/\/+$/, '')
 
+/** 品牌标识（X-App-Key）：读 VITE_APP_KEY，小写 trim；未配置时默认 jinhua（与后端默认品牌一致）。 */
+const APP_KEY = (readEnvValue(envSource, 'VITE_APP_KEY') || 'jinhua').trim().toLowerCase()
+
 interface ApiResponse<T> {
   code?: number
   message?: string
@@ -79,6 +82,8 @@ function requestInternal<T = unknown>(options: UniApp.RequestOptions, allowPubli
     if (options.method && options.method.toUpperCase() !== 'GET') {
       header['Content-Type'] = 'application/json'
     }
+    // 品牌标识：后端据此路由到对应品牌库（不传 = 默认品牌 jinhua）
+    header['X-App-Key'] = APP_KEY
     if (token) {
       header.Authorization = `Bearer ${token}`
     }
@@ -133,11 +138,13 @@ export function uploadFile(filePath: string, name = 'file'): Promise<string> {
       return
     }
     const token = uni.getStorageSync('mini_shop_token')
+    const uploadHeader: Record<string, string> = { 'X-App-Key': APP_KEY }
+    if (token) uploadHeader.Authorization = `Bearer ${token}`
     uni.uploadFile({
       url: `${API_BASE_URL}/api/common/upload`,
       filePath,
       name,
-      header: token ? { Authorization: `Bearer ${token}` } : {},
+      header: uploadHeader,
       success: (response) => {
         try {
           const body = JSON.parse(response.data) as ApiResponse<string>

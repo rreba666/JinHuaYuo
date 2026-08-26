@@ -12,9 +12,11 @@ import { DIVIDEND_PURCHASE_LIMIT, PURCHASE_LIMIT_MESSAGE, getDividendQuantity, i
 import { cleanDigits, cleanText, normalizeEditableMobile, validateEmail, validateMobile, validateTaxNumber, validateText } from '@/utils/input-validation'
 import { isApiRequestError } from '@/utils/request'
 import { isLoggedIn } from '@/utils/auth'
+import { getModules, isModuleEnabled, type ModuleConfig } from '@/utils/config'
 import LoginGuide from '@/components/LoginGuide.vue'
 
-type PickupType = 0 | 1
+/** 配送方式：0=物流(快速配送) 1=线下自提 2=同城配送（本期不开放下单，仅占位）。 */
+type PickupType = 0 | 1 | 2
 type InvoiceType = 'personal' | 'company'
 const PAYMENT_CONTACT_NAME_MAX_LENGTH = 32
 const PAYMENT_ADDRESS_MAX_LENGTH = 200
@@ -357,6 +359,29 @@ async function loadShops(): Promise<void> {
   catch (error) { shops.value = []; console.error('门店列表加载失败', error) }
 }
 
+/** 当前品牌模块开关（空 = 未配置/失败，按全部启用兜底）。 */
+const moduleConfig = ref<ModuleConfig[] | null>(null)
+
+/** 拉取当前品牌模块开关；失败/为空保持 null（按全部启用兜底，兼容线上）。 */
+async function loadModuleConfig(): Promise<void> {
+  try {
+    const modules = await getModules()
+    moduleConfig.value = modules && modules.length ? modules : null
+  } catch {
+    moduleConfig.value = null
+  }
+}
+
+/** 可用的配送方式选项（按模块开关过滤；同城配送本期不开放下单，即使开关开启也不渲染）。 */
+const deliveryOptions = computed(() => {
+  const modules = moduleConfig.value
+  const options: { type: PickupType; label: string }[] = []
+  if (isModuleEnabled(modules, 'delivery')) options.push({ type: 0, label: '快速配送' })
+  if (isModuleEnabled(modules, 'pickup')) options.push({ type: 1, label: '门店自提' })
+  // samecity 本期不开放下单：即使模块开启也不提供「同城配送」选项（docs/plan 口径）
+  return options
+})
+
 /** 读取微信页面参数并初始化页面布局。 */
 onLoad(async (options?: Record<string, string | undefined>) => {
   orderId.value = options?.orderId || null
@@ -380,14 +405,14 @@ onLoad(async (options?: Record<string, string | undefined>) => {
   // 非历史订单：自动填入上次填写的表单内容（地址、联系方式、发票、备注）
   if (!orderId.value) loadFormCache()
   if (orderId.value) {
-    await Promise.all([loadExistingOrder(), loadBalance()])
+    await Promise.all([loadExistingOrder(), loadBalance(), loadModuleConfig()])
     return
   }
   if (directSkuId.value && directProductId.value) {
-    await Promise.all([loadDirectItem(), loadShops(), loadBalance()])
+    await Promise.all([loadDirectItem(), loadShops(), loadBalance(), loadModuleConfig()])
     return
   }
-  await Promise.all([loadSelectedItems(), loadShops(), loadBalance()])
+  await Promise.all([loadSelectedItems(), loadShops(), loadBalance(), loadModuleConfig()])
 })
 
 /** 页面重新显示时关闭残留的发票抽屉，确保进入确认订单页不会被遮罩覆盖。 */
@@ -417,6 +442,14 @@ onUnmounted(() => {
 function changePickupType(type: PickupType): void {
   pickupType.value = type
 }
+
+/** 模块加载完成后，若当前配送方式已被停用，自动切到第一个可用方式（如只买自提则默认自提）。 */
+watch(moduleConfig, () => {
+  const available = deliveryOptions.value.map((option) => option.type)
+  if (!available.includes(pickupType.value) && available.length > 0) {
+    pickupType.value = available[0]
+  }
+})
 
 /** 读取钱包余额，供余额支付选项展示与可用性判断。 */
 async function loadBalance(): Promise<void> {
@@ -707,6 +740,10 @@ async function submitPayment(): Promise<void> {
     uni.showToast({ title: PURCHASE_LIMIT_MESSAGE, icon: 'none' })
     return
   }
+  if (!isExistingOrder && deliveryOptions.value.length === 0) {
+    uni.showToast({ title: '当前未开通配送方式，暂无法下单', icon: 'none' })
+    return
+  }
   if (!isExistingOrder && pickupType.value === 0 && !selectedAddress.value) {
     uni.showToast({ title: '请先添加配送地址', icon: 'none' })
     openAddressEditor()
@@ -837,13 +874,15 @@ function backToCart(): void {
       <view class="section delivery-section">
         <text class="section-title">配送方式</text>
         <view class="pickup-options">
-          <view class="pickup-option" :class="{ active: pickupType === 0 }" @click="changePickupType(0)">
-            <view class="radio" :class="{ active: pickupType === 0 }"><view class="radio-dot" /></view>
-            <text>快速配送</text>
-          </view>
-          <view class="pickup-option" :class="{ active: pickupType === 1 }" @click="changePickupType(1)">
-            <view class="radio" :class="{ active: pickupType === 1 }"><view class="radio-dot" /></view>
-            <text>门店自提</text>
+          <view
+            v-for="option in deliveryOptions"
+            :key="option.type"
+            class="pickup-option"
+            :class="{ active: pickupType === option.type }"
+            @click="changePickupType(option.type)"
+          >
+            <view class="radio" :class="{ active: pickupType === option.type }"><view class="radio-dot" /></view>
+            <text>{{ option.label }}</text>
           </view>
         </view>
       </view>

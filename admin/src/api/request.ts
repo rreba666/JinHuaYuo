@@ -25,10 +25,13 @@ export const request = axios.create({
   paramsSerializer: { indexes: null },
 })
 
-// 请求拦截器统一注入管理员 Token。
+// 请求拦截器统一注入管理员 Token 与品牌标识（X-App-Key）。
 request.interceptors.request.use((config) => {
   const token = localStorage.getItem('admin_token')
   if (token && !config.headers.Authorization) config.headers.Authorization = `Bearer ${token}`
+  // 品牌标识：商户管理员固定自己的品牌；平台管理员用当前切换的品牌（可为空=默认品牌）。
+  const appKey = localStorage.getItem('admin_current_app_key')
+  if (appKey && !config.headers['X-App-Key']) config.headers['X-App-Key'] = appKey
   return config
 })
 

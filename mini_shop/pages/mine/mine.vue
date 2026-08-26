@@ -11,10 +11,14 @@ import { createThrottle } from '@/utils/interaction'
 import { validateText } from '@/utils/input-validation'
 import PromotionCodePoster from '@/components/PromotionCodePoster.vue'
 import LoginGuide from '@/components/LoginGuide.vue'
+import { getModules, isModuleEnabled, type ModuleConfig } from '@/utils/config'
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
 const bodyTop = computed(() => menuTop.value + menuHeight.value + 12)
+
+/** 当前品牌模块开关（空 = 未配置/拉取失败，按全部启用兜底，兼容线上）。 */
+const moduleConfig = ref<ModuleConfig[] | null>(null)
 
 const user = ref<UserProfile | null>(null)
 const wallet = ref<WalletInfo | null>(null)
@@ -44,6 +48,19 @@ const orderEntries = [
   { key: 'completed', label: '退款/售后', icon: '/static/my/售后_slices/售后.png' },
 ]
 
+/** 订单入口可见性按模块开关过滤：待发货/待收货→delivery，待自提→pickup，退款/售后→aftersale，待付款→basic 恒开。 */
+const visibleOrderEntries = computed(() => {
+  const modules = moduleConfig.value
+  const moduleOf: Record<string, string> = {
+    pending: 'basic',
+    shipped: 'delivery',
+    received: 'delivery',
+    pickup: 'pickup',
+    completed: 'aftersale',
+  }
+  return orderEntries.filter((entry) => isModuleEnabled(modules, moduleOf[entry.key] || 'basic'))
+})
+
 const menuItems = [
   { key: 'invoice', label: '发票记录', icon: '/static/my/发票.png' },
   { key: 'service', label: '客服', icon: '/static/my/客服_slices/客服.png' },
@@ -55,11 +72,24 @@ const menuItems = [
   { key: 'privacy', label: '隐私保护指引', icon: '/static/my/隐私_slices/隐私.png' },
 ]
 
-const incomeEntries = computed(() => [
-  { label: '我的余额', value: wallet.value?.balance },
-  { label: '推广收益', value: promotionDisplayAmount.value },
-  { label: '平台红包', value: wallet.value?.pendingBonus },
-])
+/** 功能菜单可见性按模块开关过滤：发票记录→invoice，其余条目不受模块控制（basic/通用）。 */
+const visibleMenuItems = computed(() => {
+  const modules = moduleConfig.value
+  const moduleOf: Record<string, string> = { invoice: 'invoice' }
+  return menuItems.filter((item) => isModuleEnabled(modules, moduleOf[item.key] || 'basic'))
+})
+
+/** 收益卡可见性按模块开关过滤：推广收益/平台红包→promotion，我的余额→basic（停用 wallet 后余额仍展示）。 */
+const incomeEntries = computed(() => {
+  const modules = moduleConfig.value
+  const all = [
+    { label: '我的余额', value: wallet.value?.balance },
+    { label: '推广收益', value: promotionDisplayAmount.value },
+    { label: '平台红包', value: wallet.value?.pendingBonus },
+  ]
+  const moduleOf: Record<number, string> = { 0: 'basic', 1: 'promotion', 2: 'promotion' }
+  return all.filter((_, index) => isModuleEnabled(modules, moduleOf[index] || 'basic'))
+})
 
 /** 待领取分红积分（红包金额）。 */
 const pendingBonus = computed(() => Number(wallet.value?.pendingBonus || 0))
@@ -133,10 +163,20 @@ async function loadAnnouncements(): Promise<void> {
   try { announcements.value = await getAnnouncementList() } catch { announcements.value = [] }
 }
 
+/** 拉取当前品牌模块开关；失败/为空保持 null（按全部启用兜底，兼容线上）。 */
+async function loadModuleConfig(): Promise<void> {
+  try {
+    const modules = await getModules()
+    moduleConfig.value = modules && modules.length ? modules : null
+  } catch {
+    moduleConfig.value = null
+  }
+}
+
 /** 合并首次挂载与页面重新显示时的并发刷新，避免重复请求。 */
 function refreshData(): Promise<void> {
   if (dataLoadPromise) return dataLoadPromise
-  const pending = loadData()
+  const pending = Promise.all([loadData(), loadModuleConfig()]).then(() => undefined)
   dataLoadPromise = pending
   pending.then(
     () => { if (dataLoadPromise === pending) dataLoadPromise = null },
@@ -201,15 +241,16 @@ function goMenu(key: string): void {
 function goIncome(index: number): void {
   if (!navigationThrottle()) return
   if (!registeredUser.value) return
-  if (index === 0) {
+  const label = incomeEntries.value[index]?.label
+  if (label === '我的余额') {
     goWallet()
     return
   }
-  if (index === 1) {
+  if (label === '推广收益') {
     goPromotionCenter()
     return
   }
-  if (index === 2) {
+  if (label === '平台红包') {
     // 有新分红红包（红点）时弹红包窗；无红点时直接进入红包页
     if (hasUnseenBonus.value) {
       openRedPacket()
@@ -464,7 +505,7 @@ onShow(() => { void refreshData() })
             <image v-if="registeredUser" class="vip-avatar-badge" src="/static/my/vip 头像_slices/vip 头像.png" mode="aspectFit" />
             <text v-if="user" class="u-id">ID: {{ user.id }}</text>
           </view>
-          <image class="qr-mark" src="/static/my/QRcode.png" mode="aspectFit" @click="openPromotionCode" />
+          <image v-if="isModuleEnabled(moduleConfig, 'promotion')" class="qr-mark" src="/static/my/QRcode.png" mode="aspectFit" @click="openPromotionCode" />
         </view>
 
         <view class="member-card" :class="{ 'member-card-guest': !registeredUser }">
@@ -489,7 +530,7 @@ onShow(() => { void refreshData() })
           <view class="order-all" @click="goAllOrders"><text>全部</text><image class="all-arrow" src="/static/my/右_slices/右.png" mode="aspectFit" /></view>
         </view>
         <view class="order-grid">
-          <view v-for="entry in orderEntries" :key="entry.key" class="order-item" @click="goOrder(entry.key)">
+          <view v-for="entry in visibleOrderEntries" :key="entry.key" class="order-item" @click="goOrder(entry.key)">
             <image v-if="entry.icon" class="order-icon order-icon-image" :src="entry.icon" mode="aspectFit" />
             <view v-else class="order-icon" />
             <text class="order-label">{{ entry.label }}</text>
@@ -511,7 +552,7 @@ onShow(() => { void refreshData() })
 
       <view class="menu-section">
         <view class="menu-list">
-          <view v-for="item in menuItems" :key="item.key" class="menu-item" @click="goMenu(item.key)">
+          <view v-for="item in visibleMenuItems" :key="item.key" class="menu-item" @click="goMenu(item.key)">
             <image v-if="item.icon" class="menu-icon menu-icon-image" :src="item.icon" mode="aspectFit" />
             <view v-else class="menu-icon" />
             <text class="menu-label">{{ item.label }}</text>
