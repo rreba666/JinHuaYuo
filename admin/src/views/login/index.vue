@@ -44,7 +44,7 @@ async function submitLogin(): Promise<void> {
 
 <template>
   <main class="login-page">
-    <section class="login-card">
+    <section class="login-card login-card-enter">
       <div class="login-brand"><span class="login-mark">E</span><div><strong>E-Admin Pro</strong><p>电商后台管理系统</p></div></div>
       <div class="login-heading"><h1>管理员登录</h1><p>请输入管理员账号和密码</p></div>
       <el-form ref="formRef" :model="form" :rules="rules" size="large" @submit.prevent="submitLogin">
@@ -57,13 +57,18 @@ async function submitLogin(): Promise<void> {
 </template>
 
 <style scoped>
-.login-page { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(135deg, #edf3ff, #f8fafc); }
-.login-card { width: 420px; padding: 42px 40px 38px; border-radius: 16px; background: #fff; box-shadow: 0 18px 50px rgba(57, 77, 110, .12); }
-.login-brand { display: flex; align-items: center; gap: 12px; color: #172033; }
-.login-mark { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; background: #4f7cff; color: #fff; font-size: 24px; font-weight: 700; }
+.login-page { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(160deg, #10131a 0%, #1a1f2b 45%, #222836 100%); position: relative; overflow: hidden; }
+.login-page::before, .login-page::after { content: ''; position: absolute; border-radius: 50%; filter: blur(90px); pointer-events: none; }
+.login-page::before { width: 420px; height: 420px; top: -120px; left: -100px; background: radial-gradient(circle, rgba(212,168,67,.28), transparent 65%); }
+.login-page::after { width: 380px; height: 380px; right: -90px; bottom: -120px; background: radial-gradient(circle, rgba(212,168,67,.18), transparent 65%); }
+.login-card { width: 420px; padding: 42px 40px 38px; border-radius: 18px; background: var(--vben-glass-bg); backdrop-filter: blur(var(--vben-glass-blur)); -webkit-backdrop-filter: blur(var(--vben-glass-blur)); border: 1px solid rgba(212,168,67,.25); box-shadow: 0 18px 50px rgba(0,0,0,.35); }
+.login-card-enter { animation: login-card-in .6s cubic-bezier(.22,.8,.28,1) both; }
+@keyframes login-card-in { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+.login-brand { display: flex; align-items: center; gap: 12px; color: var(--vben-text); }
+.login-mark { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; background: linear-gradient(135deg, #d4a843, #f0c96a); color: #fff; font-size: 24px; font-weight: 700; box-shadow: 0 4px 12px rgba(212,168,67,.30); }
 .login-brand strong { font-size: 19px; }
-.login-brand p, .login-heading p { margin: 4px 0 0; color: #8a96a8; font-size: 13px; }
+.login-brand p, .login-heading p { margin: 4px 0 0; color: var(--vben-muted); font-size: 13px; }
 .login-heading { margin: 38px 0 24px; }
-.login-heading h1 { margin: 0; color: #172033; font-size: 26px; }
+.login-heading h1 { margin: 0; color: var(--vben-text); font-size: 26px; }
 .login-button { width: 100%; margin-top: 8px; }
 </style>
