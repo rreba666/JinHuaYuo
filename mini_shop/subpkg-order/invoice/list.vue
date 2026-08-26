@@ -4,6 +4,10 @@ import { computed, onMounted, ref } from 'vue'
 import { getInvoiceDetail, getInvoiceList, type InvoiceRequest } from '@/api/invoice'
 import { isLoggedIn } from '@/utils/auth'
 import LoginGuide from '@/components/LoginGuide.vue'
+import { useModuleGuard } from '@/utils/config'
+
+/** invoice 模块守卫：停用则拦截发票（深链防护）。 */
+const { moduleEnabled: invoiceEnabled, loadModuleConfig: loadInvoiceModule } = useModuleGuard('invoice')
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
@@ -63,13 +67,19 @@ onMounted(() => {
       menuHeight.value = rect.height
     }
   } catch { /* 非微信环境没有胶囊按钮 */ }
+  void loadInvoiceModule()
 })
 </script>
 
 <template>
   <view class="page">
     <view class="nav" :style="navStyle"><image class="back" src="/static/left_arrow.png" mode="aspectFit" @click="uni.navigateBack()" /><text class="title">发票记录</text></view>
-    <scroll-view class="list" :style="listStyle" scroll-y @scrolltolower="load(false)">
+    <!-- invoice 模块停用：拦截发票（深链防护） -->
+    <view v-if="!invoiceEnabled" class="module-blocked">
+      <text class="module-blocked-title">发票功能未开通</text>
+      <text class="module-blocked-desc">当前商户未开通发票模块，发票申请暂不可用。</text>
+    </view>
+    <scroll-view v-if="invoiceEnabled" class="list" :style="listStyle" scroll-y @scrolltolower="load(false)">
       <view v-show="loading && !list.length" class="state">加载中...</view>
       <view v-for="item in list" :key="String(item.id)" class="invoice-card" @click="showDetail(item)">
         <view class="card-head"><text>{{ invoiceTitle(item) }}</text><text :class="['status', statusClass(item.status)]">{{ item.statusDesc }}</text></view>
@@ -115,4 +125,9 @@ onMounted(() => {
 .sheet { width: 100%; padding: 30rpx 28rpx calc(30rpx + env(safe-area-inset-bottom)); background: #fff; }
 .sheet-head { display: flex; justify-content: center; position: relative; font-size: 30rpx; font-weight: 700; }.close { position: absolute; right: 0; font-size: 42rpx; font-weight: 300; }
 .detail-row { align-items: flex-start; margin-top: 26rpx; color: #555; font-size: 25rpx; }.detail-row > text:first-child { flex-shrink: 0; color: #999; }.wrap { flex: 1; text-align: right; word-break: break-all; }
+
+/* 模块停用拦截提示 */
+.module-blocked { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; padding: 40rpx; text-align: center; }
+.module-blocked-title { color: #1f2937; font-size: 32rpx; font-weight: 600; }
+.module-blocked-desc { margin-top: 16rpx; color: #98a2b3; font-size: 26rpx; line-height: 1.6; }
 </style>

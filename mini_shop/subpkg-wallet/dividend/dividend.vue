@@ -8,6 +8,10 @@ import { bindStoredPromotionIfLoggedIn, buildPromotionSharePath, capturePromotio
 import { formatPromotionQueryDate, getFrozenPromotionAmount, isFrozenPromotion, PROMOTION_FREEZE_MS } from '@/utils/promotion-freeze'
 import { createThrottle } from '@/utils/interaction'
 import LoginGuide from '@/components/LoginGuide.vue'
+import { useModuleGuard } from '@/utils/config'
+
+/** promotion 模块守卫：停用则拦截推广/分红（深链防护）。 */
+const { moduleEnabled: promotionEnabled, loadModuleConfig: loadPromotionModule } = useModuleGuard('promotion')
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
@@ -301,6 +305,7 @@ onMounted(() => {
     }
   } catch { /* 非微信环境没有胶囊按钮 */ }
   void refreshPage()
+  void loadPromotionModule()
 })
 
 onShow(() => {
@@ -314,7 +319,13 @@ onShow(() => {
       <image class="back-button" src="/static/left_arrow.png" mode="aspectFit" @click="goBack" />
     </view>
 
-    <scroll-view v-if="registeredUser" class="page-scroll" scroll-y :style="bodyStyle" @scrolltolower="loadMorePromotionRecords">
+    <!-- promotion 模块停用：拦截推广/分红（深链防护） -->
+    <view v-if="!promotionEnabled" class="module-blocked">
+      <text class="module-blocked-title">推广功能未开通</text>
+      <text class="module-blocked-desc">当前商户未开通分销推广模块，推广与分红暂不可用。</text>
+    </view>
+
+    <scroll-view v-if="registeredUser && promotionEnabled" class="page-scroll" scroll-y :style="bodyStyle" @scrolltolower="loadMorePromotionRecords">
       <view class="page-content">
         <view class="share-heading">
           <text class="share-title">分享赚钱</text>
@@ -440,4 +451,9 @@ onShow(() => {
 .sheet-head { position: relative; display: flex; align-items: center; justify-content: center; min-height: 54rpx; }
 .sheet-title { color: #222; font-size: 30rpx; font-weight: 600; }
 .sheet-close { position: absolute; right: 0; color: #888; font-size: 42rpx; line-height: 42rpx; }
+
+/* 模块停用拦截提示 */
+.module-blocked { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; padding: 40rpx; text-align: center; }
+.module-blocked-title { color: #1f2937; font-size: 32rpx; font-weight: 600; }
+.module-blocked-desc { margin-top: 16rpx; color: #98a2b3; font-size: 26rpx; line-height: 1.6; }
 </style>

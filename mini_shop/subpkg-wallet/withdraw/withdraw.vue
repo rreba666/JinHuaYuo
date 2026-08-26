@@ -10,6 +10,10 @@ import { isApiRequestError } from '@/utils/request'
 import { MERCHANT_TRANSFER_APP_ID, MERCHANT_TRANSFER_MCH_ID, TRANSFER_MIN_AMOUNT, WITHDRAW_MIN_AMOUNT } from '@/utils/wallet-config'
 import { validateAmount, validatePositiveInteger } from '@/utils/input-validation'
 import LoginGuide from '@/components/LoginGuide.vue'
+import { useModuleGuard } from '@/utils/config'
+
+/** wallet 模块守卫：停用则拦截提现/转账（深链防护）。 */
+const { moduleEnabled: walletEnabled, loadModuleConfig: loadWalletModule } = useModuleGuard('wallet')
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
@@ -596,6 +600,7 @@ onMounted(() => {
       menuHeight.value = rect.height
     }
   } catch { /* 非微信环境没有胶囊按钮 */ }
+  void loadWalletModule()
 })
 
 onShow(() => { void loadPage() })
@@ -613,7 +618,13 @@ onUnload(() => {
       <view class="nav-spacer" />
     </view>
 
-    <scroll-view v-if="registeredUser" class="page-scroll" scroll-y :style="bodyStyle">
+    <!-- wallet 模块停用：拦截提现/转账（深链防护） -->
+    <view v-if="!walletEnabled" class="module-blocked">
+      <text class="module-blocked-title">钱包功能未开通</text>
+      <text class="module-blocked-desc">当前商户未开通钱包模块，提现与转账暂不可用。</text>
+    </view>
+
+    <scroll-view v-if="registeredUser && walletEnabled" class="page-scroll" scroll-y :style="bodyStyle">
       <view class="page-content">
         <view class="hero-card">
           <image class="hero-card-bg" src="/static/bg/钱包页背景.png" mode="aspectFill" />
@@ -806,4 +817,9 @@ onUnload(() => {
 .record-reason { display: block; margin-top: 8rpx; color: #dc2626; font-size: 22rpx; line-height: 1.5; }
 .records-empty { padding: 30rpx 0; text-align: center; color: #98a2b3; font-size: 24rpx; }
 .records-more { margin-top: 18rpx; padding: 16rpx 0; text-align: center; color: #ff5a1f; font-size: 24rpx; font-weight: 600; }
+
+/* 模块停用拦截提示 */
+.module-blocked { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; padding: 40rpx; text-align: center; }
+.module-blocked-title { color: #1f2937; font-size: 32rpx; font-weight: 600; }
+.module-blocked-desc { margin-top: 16rpx; color: #98a2b3; font-size: 26rpx; line-height: 1.6; }
 </style>

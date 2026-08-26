@@ -5,6 +5,10 @@ import { convertWallet, getDividendRecords, getWalletInfo, getUserProfile, type 
 import { isLoggedIn, isRegisteredUser } from '@/utils/auth'
 import RequestState from '@/components/RequestState.vue'
 import LoginGuide from '@/components/LoginGuide.vue'
+import { useModuleGuard } from '@/utils/config'
+
+/** promotion 模块守卫：停用则拦截平台红包（深链防护）。 */
+const { moduleEnabled: promotionEnabled, loadModuleConfig: loadPromotionModule } = useModuleGuard('promotion')
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
@@ -145,6 +149,7 @@ onMounted(() => {
     if (rect) { menuTop.value = rect.top; menuHeight.value = rect.height }
   } catch { /* 非微信环境忽略 */ }
   void refreshData()
+  void loadPromotionModule()
 })
 
 onShow(() => { void refreshData() })
@@ -154,7 +159,13 @@ onShow(() => { void refreshData() })
   <view class="page">
     <view class="nav" :style="navStyle"><image class="back-button" src="/static/left_arrow.png" mode="aspectFit" @click="goBack" /></view>
 
-    <scroll-view v-if="registeredUser" class="page-scroll" scroll-y :style="{ paddingTop: bodyTop + 'px' }" @scrolltolower="loadMoreRecords">
+    <!-- promotion 模块停用：拦截平台红包（深链防护） -->
+    <view v-if="!promotionEnabled" class="module-blocked">
+      <text class="module-blocked-title">平台红包未开通</text>
+      <text class="module-blocked-desc">当前商户未开通分销推广模块，平台红包暂不可用。</text>
+    </view>
+
+    <scroll-view v-if="registeredUser && promotionEnabled" class="page-scroll" scroll-y :style="{ paddingTop: bodyTop + 'px' }" @scrolltolower="loadMoreRecords">
       <view class="page-content">
         <view class="heading">
           <text class="heading-title">平台红包</text>
@@ -228,4 +239,9 @@ onShow(() => { void refreshData() })
 .source-cell.time { text-align: center; }
 .source-cell.amount { color: #010101; text-align: right; }
 .source-more { padding: 20rpx 0; color: #959595; font-size: 20rpx; text-align: center; }
+
+/* 模块停用拦截提示 */
+.module-blocked { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; padding: 40rpx; text-align: center; }
+.module-blocked-title { color: #1f2937; font-size: 32rpx; font-weight: 600; }
+.module-blocked-desc { margin-top: 16rpx; color: #98a2b3; font-size: 26rpx; line-height: 1.6; }
 </style>
