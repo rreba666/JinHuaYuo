@@ -89,9 +89,9 @@ onMounted(() => {
 .operator-actions :deep(.el-icon) { margin-right: 4px; }
 .category-status { display: inline-flex; align-items: center; gap: 8px; min-height: 28px; }
 .category-status-button { width: 28px; height: 28px; padding: 0; }
-.category-status-button.is-enabled { --el-button-bg-color: #1677ff; --el-button-border-color: #1677ff; --el-button-hover-bg-color: #409eff; --el-button-hover-border-color: #409eff; --el-button-active-bg-color: #0958d9; --el-button-active-border-color: #0958d9; color: #fff; }
+.category-status-button.is-enabled { --el-button-bg-color: #d4a843; --el-button-border-color: #d4a843; --el-button-hover-bg-color: #e0b95c; --el-button-hover-border-color: #e0b95c; --el-button-active-bg-color: #b8912f; --el-button-active-border-color: #b8912f; color: #fff; }
 .category-status-button.is-disabled { --el-button-bg-color: #606266; --el-button-border-color: #606266; --el-button-hover-bg-color: #73767a; --el-button-hover-border-color: #73767a; --el-button-active-bg-color: #4b4d50; --el-button-active-border-color: #4b4d50; color: #fff; }
 .category-status-label { font-size: 13px; line-height: 28px; }
-.category-status-label.is-enabled { color: #1677ff; }
+.category-status-label.is-enabled { color: #d4a843; }
 .category-status-label.is-disabled { color: var(--vben-muted); }
 </style>
