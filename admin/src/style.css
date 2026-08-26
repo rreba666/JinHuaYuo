@@ -1,31 +1,32 @@
 :root {
   font-family: Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  color: var(--vben-text, #1f2937);
-  background: var(--vben-bg, #f6f7f9);
+  color: var(--vben-text, #3a352e);
+  background: var(--vben-bg, #faf7f2);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  --vben-bg: #f6f7f9;
-  --vben-surface: #ffffff;
-  --vben-text: #1f2937;
-  --vben-muted: #86909c;
-  --vben-border: #e7e8ec;
+  /* 亮色主题：暖白基调（米白背景 + 暖灰边框），配雅金点缀 */
+  --vben-bg: #faf7f2;
+  --vben-surface: #fffdf9;
+  --vben-text: #3a352e;
+  --vben-muted: #8a8274;
+  --vben-border: #ece5da;
   --vben-primary: #d4a843;
   --vben-primary-hover: #e0b95c;
   --vben-primary-active: #b8912f;
   --vben-primary-soft: rgba(212, 168, 67, 0.12);
   --vben-primary-deep: #a07c1f;
-  --vben-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
-  --vben-shadow-hover: 0 10px 26px rgba(212, 168, 67, 0.14);
-  --vben-sidebar-bg: #ffffff;
-  --vben-sidebar-text: #52606d;
-  --vben-sidebar-muted: #8a94a6;
-  --vben-sidebar-hover: #faf6ec;
-  --vben-sidebar-active: #f7eed9;
-  --vben-sidebar-active-text: #a98420;
-  --vben-sidebar-border: #eef0f5;
+  --vben-shadow: 0 1px 4px rgba(140, 120, 80, 0.08);
+  --vben-shadow-hover: 0 10px 26px rgba(212, 168, 67, 0.16);
+  --vben-sidebar-bg: #fffdf9;
+  --vben-sidebar-text: #57503f;
+  --vben-sidebar-muted: #9a917f;
+  --vben-sidebar-hover: #faf3e3;
+  --vben-sidebar-active: #f7ecd2;
+  --vben-sidebar-active-text: #a07c1f;
+  --vben-sidebar-border: #f0e9dc;
   --vben-card-radius: 14px;
-  --vben-glass-bg: rgba(255, 255, 255, 0.72);
+  --vben-glass-bg: rgba(255, 253, 249, 0.72);
   --vben-glass-blur: 14px;
 }
 
