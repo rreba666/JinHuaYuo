@@ -61,7 +61,8 @@ async function submitLogin(): Promise<void> {
 .login-page::before, .login-page::after { content: ''; position: absolute; border-radius: 50%; filter: blur(90px); pointer-events: none; }
 .login-page::before { width: 420px; height: 420px; top: -120px; left: -100px; background: radial-gradient(circle, rgba(212,168,67,.28), transparent 65%); }
 .login-page::after { width: 380px; height: 380px; right: -90px; bottom: -120px; background: radial-gradient(circle, rgba(212,168,67,.18), transparent 65%); }
-.login-card { width: 420px; padding: 42px 40px 38px; border-radius: 18px; background: var(--vben-glass-bg); backdrop-filter: blur(var(--vben-glass-blur)); -webkit-backdrop-filter: blur(var(--vben-glass-blur)); border: 1px solid rgba(212,168,67,.25); box-shadow: 0 18px 50px rgba(0,0,0,.35); }
+/* 登录卡片固定深色毛玻璃背景，不随主题切换，确保浅色文字始终可读 */
+.login-card { width: 420px; padding: 42px 40px 38px; border-radius: 18px; background: rgba(26, 31, 40, 0.68); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(212,168,67,.25); box-shadow: 0 18px 50px rgba(0,0,0,.35); }
 .login-card-enter { animation: login-card-in .6s cubic-bezier(.22,.8,.28,1) both; }
 @keyframes login-card-in { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
 .login-brand { display: flex; align-items: center; gap: 12px; color: #e7e9ee; }

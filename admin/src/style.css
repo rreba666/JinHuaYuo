@@ -134,8 +134,8 @@ html.dark .admin-header .el-breadcrumb__separator { color: var(--vben-muted); }
 .el-form-item { margin-bottom: 18px; }
 /* 表单聚焦金色描边 */
 .el-input__wrapper.is-focus, .el-select__wrapper.is-focused { box-shadow: 0 0 0 1px var(--vben-primary) inset; }
-/* 主按钮深金底白字 */
-.el-button--primary { --el-button-bg-color: var(--vben-primary-deep); --el-button-border-color: var(--vben-primary-deep); --el-button-hover-bg-color: var(--vben-primary); --el-button-hover-border-color: var(--vben-primary); --el-button-active-bg-color: var(--vben-primary-active); --el-button-active-border-color: var(--vben-primary-active); color: #fff; }
+/* 主按钮深金底白字：hover/active 均用深金色阶，禁止浅金底配白字 */
+.el-button--primary { --el-button-bg-color: var(--vben-primary-deep); --el-button-border-color: var(--vben-primary-deep); --el-button-hover-bg-color: #b8912f; --el-button-hover-border-color: #b8912f; --el-button-active-bg-color: #8f6a18; --el-button-active-border-color: #8f6a18; color: #fff; }
 .el-table tr, .el-table td.el-table__cell, .el-table th.el-table__cell { background: var(--vben-surface); border-bottom-color: var(--vben-border); }
 /* 表头金色柔底（置于 surface 规则之后，确保覆盖其背景色生效） */
 .el-table th.el-table__cell { background: var(--vben-primary-soft); color: var(--vben-text); font-weight: 600; }

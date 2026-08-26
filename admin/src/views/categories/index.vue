@@ -89,7 +89,8 @@ onMounted(() => {
 .operator-actions :deep(.el-icon) { margin-right: 4px; }
 .category-status { display: inline-flex; align-items: center; gap: 8px; min-height: 28px; }
 .category-status-button { width: 28px; height: 28px; padding: 0; }
-.category-status-button.is-enabled { --el-button-bg-color: #d4a843; --el-button-border-color: #d4a843; --el-button-hover-bg-color: #e0b95c; --el-button-hover-border-color: #e0b95c; --el-button-active-bg-color: #b8912f; --el-button-active-border-color: #b8912f; color: #fff; }
+/* 启用状态按钮：深金底配白字，任何状态均不使用浅金底，保证对比度达标 */
+.category-status-button.is-enabled { --el-button-bg-color: #a07c1f; --el-button-border-color: #a07c1f; --el-button-hover-bg-color: #b8912f; --el-button-hover-border-color: #b8912f; --el-button-active-bg-color: #8f6a18; --el-button-active-border-color: #8f6a18; color: #fff; }
 .category-status-button.is-disabled { --el-button-bg-color: #606266; --el-button-border-color: #606266; --el-button-hover-bg-color: #73767a; --el-button-hover-border-color: #73767a; --el-button-active-bg-color: #4b4d50; --el-button-active-border-color: #4b4d50; color: #fff; }
 .category-status-label { font-size: 13px; line-height: 28px; }
 .category-status-label.is-enabled { color: #d4a843; }
