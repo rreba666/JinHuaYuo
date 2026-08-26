@@ -85,7 +85,7 @@ const router = createRouter({
           path: 'admins',
           name: 'Admins',
           component: () => import('@/views/admin/index.vue'),
-          meta: { title: '管理员管理', permission: ['admin:read'], roles: SUPER_ADMIN, scope: 'platform', requiresAuth: true },
+          meta: { title: '管理员管理', permission: ['admin:read'], roles: SUPER_ADMIN, requiresAuth: true },
         },
         {
           path: 'orders',

@@ -141,7 +141,7 @@ onMounted(() => {
           <el-icon><UserFilled /></el-icon>
           <template #title>店员管理</template>
         </el-menu-item>
-        <el-menu-item v-if="isSuper && isPlatform" index="/admins">
+        <el-menu-item v-if="isSuper" index="/admins">
           <el-icon><UserFilled /></el-icon>
           <template #title>管理员管理</template>
         </el-menu-item>
@@ -181,6 +181,8 @@ onMounted(() => {
           <template #title><el-icon><Setting /></el-icon><span>平台管理</span></template>
           <el-menu-item index="/brands"><el-icon><Shop /></el-icon><template #title>品牌管理</template></el-menu-item>
           <el-menu-item index="/modules"><el-icon><Box /></el-icon><template #title>模块管理</template></el-menu-item>
+          <el-menu-item index="/brands/auth"><el-icon><User /></el-icon><template #title>授权管理</template></el-menu-item>
+          <el-menu-item index="/brands/tools"><el-icon><Tickets /></el-icon><template #title>系统工具授权</template></el-menu-item>
         </el-sub-menu>
         <el-menu-item v-if="isSuper" index="/settings">
           <el-icon><Setting /></el-icon>
