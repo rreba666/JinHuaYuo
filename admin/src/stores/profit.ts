@@ -28,7 +28,7 @@ export const useProfitStore = defineStore('profit', () => {
   const loading = ref(false)
   const actionLoading = ref(false)
 
-  /** 加载推广金、奖池和用户额度数据。 */
+  /** 加载推广金、红包和用户额度数据。 */
   async function fetchAll(): Promise<void> {
     loading.value = true
     try {

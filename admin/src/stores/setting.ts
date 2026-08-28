@@ -28,7 +28,7 @@ export const useSettingStore = defineStore('setting', () => {
     }
   }
 
-  /** 独立读取分红倍率，未配置时由 API 提供默认值。 */
+  /** 独立读取红包倍率，未配置时由 API 提供默认值。 */
   async function loadDividendCap(): Promise<void> {
     dividendCapLoading.value = true
     try {
@@ -69,7 +69,7 @@ export const useSettingStore = defineStore('setting', () => {
     }
   }
 
-  /** 保存后只刷新分红倍率配置本身。 */
+  /** 保存后只刷新红包倍率配置本身。 */
   async function saveDividendCapConfig(payload: DividendCapSaveDTO): Promise<void> {
     dividendCapSaving.value = true
     try {

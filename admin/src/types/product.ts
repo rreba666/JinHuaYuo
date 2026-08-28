@@ -12,7 +12,7 @@ export interface ProductListItem {
   /** 推广资金（元）。列表接口可能不返回，此时为 undefined，需详情查看。 */
   promotionFund?: number
   promotionEnabled: ProductFundStatusValue
-  /** 平台红包（分红资金，元）。列表接口可能不返回，此时为 undefined。 */
+  /** 平台红包（红包资金，元）。列表接口可能不返回，此时为 undefined。 */
   dividendFund?: number
   dividendEnabled: ProductFundStatusValue
   soldCount: number
@@ -44,6 +44,8 @@ export interface ProductDetail extends ProductListItem {
   descriptionTitle: string
   maxPrice: number
   detailImages: string[]
+  /** 商品详情海报（B端编辑/回显，C端详情页海报）。 */
+  detailPosterUrl?: string
   skuList: ProductSku[]
 }
 
@@ -58,6 +60,7 @@ export interface AdminProductSaveDTO {
   descriptionTitle: string
   originPlace: string
   detailImages: string[]
+  detailPosterUrl?: string
   promotionFund: number
   promotionEnabled: ProductStatus
   dividendFund: number

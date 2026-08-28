@@ -67,6 +67,7 @@ function normalizeProductDetail(detail: ProductDetail): ProductDetail {
     dividendEnabled: normalizeProductBinaryOrNull(detail.dividendEnabled),
     recommendTextEnabled: normalizeProductBinary(detail.recommendTextEnabled),
     mainImage: resolveMediaUrl(detail.mainImage),
+    detailPosterUrl: resolveMediaUrl(detail.detailPosterUrl),
     images: resolveMediaArray(normalizeStringArray(detail.images)),
     videoUrl: detail.videoUrl || '',
     detailImages: resolveMediaArray(normalizeStringArray(detail.detailImages)),

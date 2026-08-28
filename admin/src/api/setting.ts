@@ -24,11 +24,11 @@ export async function saveCustomerServiceConfig(payload: SysConfigSaveDTO): Prom
   ensureSuccess(response.data, '客服电话配置保存失败')
 }
 
-/** 读取分红倍率；后端未配置或返回非有限值时使用约定默认值。 */
+/** 读取红包倍率；后端未配置或返回非有限值时使用约定默认值。 */
 export async function getDividendCap(): Promise<DividendCap> {
   const response = await request.get<ApiResponse<DividendCap | null>>('/api/admin/setting/dividend-cap')
   const result = response.data
-  ensureSuccess(result, '分红上限倍率查询失败')
+  ensureSuccess(result, '红包上限倍率查询失败')
   const data: Partial<DividendCap> = result.data || {}
   const multiplier = Number(data.multiplier)
   return {
@@ -37,17 +37,17 @@ export async function getDividendCap(): Promise<DividendCap> {
   }
 }
 
-/** 保存分红倍率，避免无效值绕过页面控件提交。 */
+/** 保存红包倍率，避免无效值绕过页面控件提交。 */
 export async function saveDividendCap(payload: DividendCapSaveDTO): Promise<void> {
   const multiplier = Number(payload.multiplier)
   if (!Number.isFinite(multiplier) || multiplier < 0.01 || multiplier > 100) {
-    throw new Error('分红上限倍率必须在 0.01 到 100 之间')
+    throw new Error('红包上限倍率必须在 0.01 到 100 之间')
   }
   const response = await request.post<ApiResponse<null>>('/api/admin/setting/dividend-cap', {
     ...payload,
     multiplier,
   })
-  ensureSuccess(response.data, '分红上限倍率保存失败')
+  ensureSuccess(response.data, '红包上限倍率保存失败')
 }
 
 /** 读取商品资金比例。 */
@@ -66,7 +66,7 @@ export async function saveProfitRatesConfig(payload: ProfitRatesSaveDTO): Promis
     throw new Error('推广资金比例必须在 0 到 100 之间')
   }
   if (!Number.isFinite(bonusPoolRate) || bonusPoolRate < 0 || bonusPoolRate > 100) {
-    throw new Error('分红奖池比例必须在 0 到 100 之间')
+    throw new Error('红包池比例必须在 0 到 100 之间')
   }
   const response = await request.post<ApiResponse<null>>(PROFIT_RATES_PATH, {
     ...payload,

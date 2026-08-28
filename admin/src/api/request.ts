@@ -17,9 +17,9 @@ function redirectToLogin(): void {
   window.location.assign(`/login?redirect=${encodeURIComponent(redirect)}`)
 }
 
-// 统一请求实例，使用 Vite 环境变量区分不同部署环境的后端地址。
+// 统一请求实例，使用 Vite 环境变量区分不同部署环境的后端地址；缺失时兜底到今华有正式后端。
 export const request = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL, 
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://api.jinhuayou365.com', 
   timeout: 10000,
   // Spring 接口将数组绑定为重复查询参数，例如 statuses=6&statuses=7。
   paramsSerializer: { indexes: null },

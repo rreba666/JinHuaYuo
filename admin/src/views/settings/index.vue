@@ -26,7 +26,7 @@ const customerServiceRules: FormRules = {
 }
 const dividendCapRules: FormRules = {
   multiplier: [
-    { required: true, message: '请输入分红上限倍率', trigger: 'blur' },
+    { required: true, message: '请输入红包上限倍率', trigger: 'blur' },
     { type: 'number', min: 0.01, max: 100, message: '倍率范围为 0.01~100', trigger: 'change' },
   ],
 }
@@ -70,7 +70,7 @@ async function loadDividendCap(): Promise<void> {
     dividendCapForm.multiplier = store.dividendCap.multiplier
     dividendCapForm.remark = store.dividendCap.remark
   } catch (error) {
-    showError(error, '分红上限倍率加载失败')
+    showError(error, '红包上限倍率加载失败')
   }
 }
 
@@ -108,11 +108,11 @@ async function saveCustomerService(): Promise<void> {
 async function saveDividendCap(): Promise<void> {
   if (!(await dividendCapFormRef.value?.validate().catch(() => false))) return
   try {
-    await ElMessageBox.confirm('保存分红上限倍率后，仅影响之后新开的槽位，确认继续吗？', '保存确认', { type: 'warning' })
+    await ElMessageBox.confirm('保存红包上限倍率后，仅影响之后新开的槽位，确认继续吗？', '保存确认', { type: 'warning' })
     await store.saveDividendCapConfig({ ...dividendCapForm })
-    ElMessage.success('分红上限倍率已保存')
+    ElMessage.success('红包上限倍率已保存')
   } catch (error) {
-    if (error !== 'cancel' && error !== 'close') showError(error, '分红上限倍率保存失败')
+    if (error !== 'cancel' && error !== 'close') showError(error, '红包上限倍率保存失败')
   }
 }
 
@@ -155,7 +155,7 @@ onMounted(reload)
 <template>
   <section class="page-container page-enter">
     <div class="page-heading">
-      <div><h1>系统设置</h1><p>管理客服电话和分红业务参数。</p></div>
+      <div><h1>系统设置</h1><p>管理客服电话和红包业务参数。</p></div>
       <el-button :icon="Refresh" :loading="store.customerServiceLoading || store.dividendCapLoading || store.profitRatesLoading || store.withdrawRulesLoading" @click="reload">刷新</el-button>
     </div>
 
@@ -170,7 +170,7 @@ onMounted(reload)
       </section>
 
       <section class="content-card setting-section">
-        <div class="setting-heading"><div><h2>分红上限倍率</h2><p>设置新槽位使用的分红额度倍率。</p></div></div>
+        <div class="setting-heading"><div><h2>红包上限倍率</h2><p>设置新槽位使用的红包额度倍率。</p></div></div>
         <el-alert title="仅影响之后新开的槽位" type="warning" :closable="false" show-icon />
         <el-form ref="dividendCapFormRef" :model="dividendCapForm" :rules="dividendCapRules" label-width="90px" @submit.prevent="saveDividendCap">
           <el-form-item label="倍率" prop="multiplier"><el-input-number v-model="dividendCapForm.multiplier" :min="0.01" :max="100" :precision="2" :step="0.01" controls-position="right" /></el-form-item>
@@ -189,7 +189,7 @@ onMounted(reload)
               <span class="rate-suffix">%</span>
             </div>
           </el-form-item>
-          <el-form-item label="分红奖池比例" prop="bonusPoolRate">
+          <el-form-item label="红包池比例" prop="bonusPoolRate">
             <div class="rate-control">
               <el-input-number v-model="profitRatesForm.bonusPoolRate" :min="0" :max="100" :precision="2" :step="0.1" controls-position="right" class="rate-input" />
               <span class="rate-suffix">%</span>

@@ -32,7 +32,7 @@ const mediaUploading = computed(() => store.uploading || detailUploadCount.value
 
 /** 创建新增商品的默认表单。 */
 function createEmptyForm(): AdminProductSaveDTO {
-  return { id: undefined, name: '', categoryId: '', mainImage: '', images: [], videoUrl: '', description: '', descriptionTitle: '', originPlace: '', detailImages: [], promotionFund: 0, promotionEnabled: 1, dividendFund: 0, dividendEnabled: 1, status: 1, isRecommended: 0, recommendTextEnabled: 0, sortOrder: 0, skuList: [] }
+  return { id: undefined, name: '', categoryId: '', mainImage: '', images: [], videoUrl: '', description: '', descriptionTitle: '', originPlace: '', detailImages: [], detailPosterUrl: '', promotionFund: 0, promotionEnabled: 1, dividendFund: 0, dividendEnabled: 1, status: 1, isRecommended: 0, recommendTextEnabled: 0, sortOrder: 0, skuList: [] }
 }
 
 function getMinSkuPrice(skuList: AdminProductSaveDTO['skuList'] = form.skuList): number {
@@ -69,7 +69,7 @@ function flattenCategories(nodes: CategoryNode[], parent = ''): Array<{ id: stri
 /** 复制详情数据到编辑表单，避免弹窗修改列表原数据。 */
 function fillForm(detail?: ProductDetail): void {
   const status = normalizeBinary(detail?.status ?? 1)
-  Object.assign(form, detail ? { id: detail.id, name: detail.name, categoryId: detail.categoryId, mainImage: detail.mainImage, images: [...(detail.images || [])], videoUrl: detail.videoUrl || '', description: detail.description || '', descriptionTitle: detail.descriptionTitle || '', originPlace: detail.originPlace || '', detailImages: [...(detail.detailImages || [])], promotionFund: detail.promotionFund ?? 0, promotionEnabled: normalizeBinary(detail.promotionEnabled), dividendFund: detail.dividendFund ?? 0, dividendEnabled: normalizeBinary(detail.dividendEnabled), status, isRecommended: status === 1 ? normalizeBinary(detail.isRecommended) : 0, recommendTextEnabled: status === 1 && normalizeBinary(detail.isRecommended) === 1 ? normalizeBinary(detail.recommendTextEnabled) : 0, sortOrder: detail.sortOrder || 0, skuList: (detail.skuList || []).map((sku) => ({ ...sku, id: sku.id == null ? undefined : String(sku.id), enabled: normalizeBinary(sku.enabled) })) } : createEmptyForm())
+  Object.assign(form, detail ? { id: detail.id, name: detail.name, categoryId: detail.categoryId, mainImage: detail.mainImage, images: [...(detail.images || [])], videoUrl: detail.videoUrl || '', description: detail.description || '', descriptionTitle: detail.descriptionTitle || '', originPlace: detail.originPlace || '', detailImages: [...(detail.detailImages || [])], detailPosterUrl: detail.detailPosterUrl || '', promotionFund: detail.promotionFund ?? 0, promotionEnabled: normalizeBinary(detail.promotionEnabled), dividendFund: detail.dividendFund ?? 0, dividendEnabled: normalizeBinary(detail.dividendEnabled), status, isRecommended: status === 1 ? normalizeBinary(detail.isRecommended) : 0, recommendTextEnabled: status === 1 && normalizeBinary(detail.isRecommended) === 1 ? normalizeBinary(detail.recommendTextEnabled) : 0, sortOrder: detail.sortOrder || 0, skuList: (detail.skuList || []).map((sku) => ({ ...sku, id: sku.id == null ? undefined : String(sku.id), enabled: normalizeBinary(sku.enabled) })) } : createEmptyForm())
   // 新增商品默认使用比例；编辑商品根据已保存金额恢复模式（后端暂无独立模式字段）。
   promotionUseDefault.value = detail ? isDefaultFundAmount(detail.promotionFund, detail.minPrice, getDefaultPromotionFund) : true
   dividendUseDefault.value = detail ? isDefaultFundAmount(detail.dividendFund, detail.minPrice, getDefaultDividendFund) : true
@@ -197,7 +197,7 @@ function addSku(): void { form.skuList.push({ skuName: '', specs: '', skuImage: 
 function removeSku(index: number): void { form.skuList.splice(index, 1) }
 
 /** 上传媒体文件并追加到指定数组或写入视频字段。 */
-async function uploadFile(options: UploadRequestOptions, field: 'mainImage' | 'images' | 'videoUrl' | 'detailImages'): Promise<void> {
+async function uploadFile(options: UploadRequestOptions, field: 'mainImage' | 'images' | 'videoUrl' | 'detailImages' | 'detailPosterUrl'): Promise<void> {
   const file = options.file as File
   const isVideo = field === 'videoUrl'
   const isDetailImage = field === 'detailImages'
@@ -208,7 +208,7 @@ async function uploadFile(options: UploadRequestOptions, field: 'mainImage' | 'i
   if (isDetailImage) detailUploadCount.value += 1
   try {
     const url = await store.uploadFile(file)
-    if (field === 'mainImage' || field === 'videoUrl') form[field] = url
+    if (field === 'mainImage' || field === 'videoUrl' || field === 'detailPosterUrl') form[field] = url
     else form[field].push(url)
     ElMessage.success('文件上传成功')
   } catch (error) { ElMessage.error(error instanceof Error ? error.message : '文件上传失败') }
@@ -221,11 +221,12 @@ function search(): void { store.page = 1; loadList() }
 function reset(): void { store.resetFilters(); loadList() }
 function onPageChange(value: number): void { store.page = value; loadList() }
 function onSizeChange(value: number): void { store.pageSize = value; store.page = 1; loadList() }
-function onUpload(options: UploadRequestOptions, field: 'mainImage' | 'images' | 'videoUrl' | 'detailImages'): void { void uploadFile(options, field) }
+function onUpload(options: UploadRequestOptions, field: 'mainImage' | 'images' | 'videoUrl' | 'detailImages' | 'detailPosterUrl'): void { void uploadFile(options, field) }
 function onMainImageUpload(options: UploadRequestOptions): void { onUpload(options, 'mainImage') }
 function onImagesUpload(options: UploadRequestOptions): void { onUpload(options, 'images') }
 function onVideoUpload(options: UploadRequestOptions): void { onUpload(options, 'videoUrl') }
 function onDetailImagesUpload(options: UploadRequestOptions): void { onUpload(options, 'detailImages') }
+function onDetailPosterUpload(options: UploadRequestOptions): void { onUpload(options, 'detailPosterUrl') }
 /** 首次进入页面时同时加载商品列表和启用分类树。 */
 onMounted(() => {
   void loadList()
@@ -259,6 +260,10 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="详情图" class="form-item-full">
           <ImageGridUpload v-model="form.detailImages" :max="15" :multiple="true" :display-limit="3" thumbnail-mode="long" :uploading="mediaUploading" @upload="onDetailImagesUpload" @remove="form.detailImages.splice($event, 1)" />
+        </el-form-item>
+        <el-form-item label="商品海报" class="form-item-full media-form-item">
+          <ImageGridUpload :model-value="form.detailPosterUrl ? [form.detailPosterUrl] : []" :max="1" :uploading="mediaUploading" @upload="onDetailPosterUpload" @remove="form.detailPosterUrl = ''" />
+          <p class="upload-hint">商品素材页海报底图，建议上传长图</p>
         </el-form-item>
         <el-form-item label="产地"><el-input v-model="form.originPlace" /></el-form-item>
         <el-form-item label="排序权重"><el-input-number v-model="form.sortOrder" :min="0" /></el-form-item>

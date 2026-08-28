@@ -16,13 +16,13 @@ export interface SysConfigSaveDTO {
   remark?: string
 }
 
-/** 分红上限倍率配置。 */
+/** 红包上限倍率配置。 */
 export interface DividendCap {
   multiplier: number
   remark: string
 }
 
-/** 分红上限倍率保存参数。 */
+/** 红包上限倍率保存参数。 */
 export interface DividendCapSaveDTO {
   multiplier: number
   remark?: string
