@@ -147,13 +147,13 @@ const router = createRouter({
           path: 'logs/verify',
           name: 'VerifyLogs',
           component: () => import('@/views/logs/verify.vue'),
-          meta: { title: '核销日志', permission: ['verify:read'], roles: SUPER_ADMIN, requiresAuth: true },
+          meta: { title: '核销日志', permission: ['verify:read'], roles: ALL, requiresAuth: true },
         },
         {
           path: 'logs/audit',
           name: 'AuditLogs',
           component: () => import('@/views/logs/audit.vue'),
-          meta: { title: '操作追溯', permission: ['audit:read'], roles: SUPER_ADMIN, requiresAuth: true },
+          meta: { title: '操作追溯', permission: ['audit:read'], roles: SUPER_AND_ADMIN, requiresAuth: true },
         },
         {
           path: 'settings',

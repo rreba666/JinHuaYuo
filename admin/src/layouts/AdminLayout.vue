@@ -54,6 +54,12 @@ const isService = computed(() => authStore.role === 'CUSTOMER_SERVICE' || isPlat
 const isFinance = computed(() => authStore.role === 'FINANCE' || isPlatformOrAdmin.value)
 /** 推广资金：仅财务 + 超管可见（商户管理员不可见）。 */
 const isProfit = computed(() => authStore.role === 'FINANCE' || authStore.role === 'SUPER_ADMIN')
+/** 核销日志：超管 + 客服 + 财务 + 商户管理员 均可见。 */
+const isVerifyLog = computed(() => authStore.role === 'CUSTOMER_SERVICE' || authStore.role === 'FINANCE' || isPlatformOrAdmin.value)
+/** 操作追溯：仅超管 + 商户管理员 可见。 */
+const isAuditLog = computed(() => isSuper.value || isAdmin.value)
+/** 日志管理：任一日志可见时展示该模块。 */
+const isLogModule = computed(() => isVerifyLog.value || isAuditLog.value)
 
 /** 本人接口暂时失败时保留登录响应中的本地身份。 */
 async function refreshCurrentAdmin(): Promise<void> {
@@ -157,10 +163,10 @@ onMounted(() => {
           <el-icon><Tickets /></el-icon>
           <template #title>提现审核</template>
         </el-menu-item>
-        <el-sub-menu v-if="isSuper" index="/logs">
+        <el-sub-menu v-if="isLogModule" index="/logs">
           <template #title><el-icon><Document /></el-icon><span>日志管理</span></template>
-          <el-menu-item index="/logs/verify"><el-icon><Tickets /></el-icon><template #title>核销日志</template></el-menu-item>
-          <el-menu-item index="/logs/audit"><el-icon><List /></el-icon><template #title>操作追溯</template></el-menu-item>
+          <el-menu-item v-if="isVerifyLog" index="/logs/verify"><el-icon><Tickets /></el-icon><template #title>核销日志</template></el-menu-item>
+          <el-menu-item v-if="isAuditLog" index="/logs/audit"><el-icon><List /></el-icon><template #title>操作追溯</template></el-menu-item>
         </el-sub-menu>
         <el-menu-item v-if="isSuper" index="/settings">
           <el-icon><Setting /></el-icon>

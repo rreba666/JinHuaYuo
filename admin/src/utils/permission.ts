@@ -33,7 +33,7 @@ const ROLE_ROUTES: Record<AdminRole, string[]> = {
     '/logs/verify',
     '/logs/audit',
   ],
-  /** ADMIN（商户管理员）：业务模块可见，仅隐藏 系统设置/日志(核销/追溯)/推广资金。 */
+  /** ADMIN（商户管理员）：业务模块可见；可看 核销日志 + 操作追溯；仅隐藏 系统设置/推广资金。 */
   ADMIN: [
     '/dashboard',
     '/homepage',
@@ -53,6 +53,8 @@ const ROLE_ROUTES: Record<AdminRole, string[]> = {
     '/wallets',
     '/transfers',
     '/withdraw',
+    '/logs/verify',
+    '/logs/audit',
   ],
   CUSTOMER_SERVICE: [
     '/dashboard',
@@ -73,7 +75,7 @@ const ROLE_ROUTES: Record<AdminRole, string[]> = {
     '/wallets',
     '/transfers',
     '/withdraw',
-    '/logs/audit',
+    '/logs/verify',
   ],
 }
 
