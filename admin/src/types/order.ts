@@ -18,6 +18,8 @@ export interface OrderItem {
 export interface Order {
   id: string
   orderNo: string
+  /** 下单用户 ID（B 端排查/对应到下单用户）。 */
+  userId: string | number
   status: OrderStatus
   statusDesc: string
   payAmount: number

@@ -115,13 +115,13 @@ onMounted(() => { void load() })
     <el-card shadow="never" class="filter-card">
       <div class="filter-row">
         <span class="filter-label">状态</span>
-        <el-radio-group :model-value="statusFilter" @change="handleStatusChange">
+        <el-radio-group :model-value="store.statusFilter" @change="handleStatusChange">
           <el-radio-button v-for="opt in statusOptions" :key="String(opt.value)" :value="opt.value">{{ opt.label }}</el-radio-button>
         </el-radio-group>
       </div>
       <div class="filter-row">
         <span class="filter-label">类型</span>
-        <el-radio-group :model-value="typeFilter" @change="handleTypeChange">
+        <el-radio-group :model-value="store.typeFilter" @change="handleTypeChange">
           <el-radio-button v-for="opt in typeOptions" :key="String(opt.value)" :value="opt.value">{{ opt.label }}</el-radio-button>
         </el-radio-group>
       </div>

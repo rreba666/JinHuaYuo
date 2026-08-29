@@ -387,6 +387,7 @@ onMounted(() => { void loadList() })
          </div>
          <DataTable :data="store.list" :loading="store.loading" :total="store.total" :page="store.page" :page-size="store.pageSize" @selection-change="selected = $event" @page-change="store.page = $event; void loadList()" @size-change="store.pageSize = $event; store.page = 1; void loadList()">
           <el-table-column prop="orderNo" label="订单号" min-width="200" />
+          <el-table-column prop="userId" label="用户ID" min-width="120"><template #default="{ row }">{{ row.userId ?? '—' }}</template></el-table-column>
           <el-table-column label="商品" min-width="220"><template #default="{ row }"><div class="order-product"><el-image v-if="row.firstProductImage" :src="row.firstProductImage" class="order-image" fit="cover" /><span>{{ row.totalQuantity }} 件商品</span></div></template></el-table-column>
           <el-table-column label="订单金额" width="120"><template #default="{ row }">¥ {{ Number(row.payAmount || 0).toFixed(2) }}</template></el-table-column>
           <el-table-column prop="createTime" label="下单时间" min-width="180" />
@@ -420,6 +421,7 @@ onMounted(() => { void loadList() })
         @size-change="store.pageSize = $event; store.page = 1; void loadList()"
       >
         <el-table-column prop="orderNo" label="订单号" min-width="190" />
+        <el-table-column prop="userId" label="用户ID" min-width="120"><template #default="{ row }">{{ row.userId ?? '—' }}</template></el-table-column>
         <el-table-column label="商品" min-width="220">
           <template #default="{ row }"><div class="order-product"><el-image v-if="row.firstProductImage" :src="row.firstProductImage" class="order-image" fit="cover" /><span>{{ row.totalQuantity }} 件商品</span></div></template>
         </el-table-column>
@@ -438,7 +440,7 @@ onMounted(() => { void loadList() })
         <el-divider />
         <el-descriptions :column="2" border><el-descriptions-item label="订单号">{{ store.detail.orderNo }}</el-descriptions-item><el-descriptions-item label="订单状态"><span class="order-status"><el-tag :type="statusType(store.detail.status)">{{ store.detail.statusDesc }}</el-tag><el-tag v-if="isDeleted(store.detail)" type="danger" effect="plain">已删除</el-tag></span></el-descriptions-item><el-descriptions-item label="配送方式">{{ store.detail.pickupType === 1 ? '线下自提' : '物流配送' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 1" label="核销状态">{{ isVerifiedStatus(store.detail.status) ? '已核销' : '待核销' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 1" label="自提门店">{{ store.detail.shopName || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 1" label="自提码">{{ store.detail.pickupCode || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 1" label="物流轨迹"><el-empty :image-size="48" description="暂无物流轨迹" /></el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="收货人">{{ store.detail.receiverName || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="联系电话">{{ store.detail.receiverPhone || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="收货地址" :span="2"><div class="address-detail-row"><span>{{ store.detail.receiverAddress || '暂无数据' }}</span><el-button v-if="store.detail.status === 1 && !isDeleted(store.detail)" link type="primary" @click="openAddressEditor">修改地址</el-button></div></el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="快递公司">{{ store.detail.expressCompany || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="物流单号">{{ store.detail.expressNo || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="物流轨迹"><el-button v-if="isTraceable(store.detail)" link type="primary" :disabled="!isTraceable(store.detail) || store.traceLoading" :loading="store.traceLoading" @click="openTrace">物流轨迹</el-button><el-empty v-else :image-size="48" description="暂无物流轨迹" /></el-descriptions-item><el-descriptions-item label="商品总额">¥ {{ Number(store.detail.totalAmount || 0).toFixed(2) }}</el-descriptions-item><el-descriptions-item label="实付金额">¥ {{ Number(store.detail.payAmount || 0).toFixed(2) }}</el-descriptions-item></el-descriptions>
         <el-divider>商品明细</el-divider>
-        <el-table :data="store.detail.items" border><el-table-column prop="productName" label="商品名称" min-width="220" /><el-table-column prop="skuName" label="规格" min-width="150" /><el-table-column prop="price" label="单价" width="110" /><el-table-column prop="quantity" label="数量" width="90" /><el-table-column prop="subtotal" label="小计" width="110" /></el-table>
+        <el-table :data="store.detail.items" border><el-table-column label="商品图" width="90"><template #default="{ row }"><el-image v-if="row.productImage" :src="row.productImage" class="detail-item-image" fit="cover" /><span v-else class="detail-item-image-placeholder">—</span></template></el-table-column><el-table-column prop="productName" label="商品名称" min-width="220" /><el-table-column prop="skuName" label="规格" min-width="150" /><el-table-column prop="price" label="单价" width="110" /><el-table-column prop="quantity" label="数量" width="90" /><el-table-column prop="subtotal" label="小计" width="110" /></el-table>
       </template>
        <el-empty v-else description="暂无订单详情" />
        <template #footer><el-button v-if="store.detail && isRefundable(store.detail)" type="warning" :loading="store.refunding" @click="openRefund(store.detail)">客服人工退款</el-button><el-button @click="detailVisible = false">关闭</el-button></template>
@@ -488,6 +490,8 @@ onMounted(() => { void loadList() })
 <style scoped>
 .order-product { display: flex; align-items: center; gap: 10px; }
 .order-image { width: 38px; height: 38px; border-radius: 4px; flex-shrink: 0; }
+.detail-item-image { width: 48px; height: 48px; border-radius: 4px; }
+.detail-item-image-placeholder { display: inline-block; width: 48px; height: 48px; border-radius: 4px; background: var(--el-fill-color-light); color: var(--el-text-color-placeholder); line-height: 48px; text-align: center; }
 .order-filter-form .el-form-item { margin-bottom: 0; }
 .order-filter-form .el-date-editor { width: 280px; }
 .order-status { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }

@@ -5,7 +5,7 @@ export interface AdminLoginDTO {
 }
 
 /** 后端管理员角色枚举。 */
-export type AdminRole = 'SUPER_ADMIN' | 'CUSTOMER_SERVICE' | 'FINANCE'
+export type AdminRole = 'SUPER_ADMIN' | 'ADMIN' | 'CUSTOMER_SERVICE' | 'FINANCE'
 
 /** 后端返回的管理员登录信息。 */
 export interface AdminLoginVO {

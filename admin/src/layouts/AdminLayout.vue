@@ -42,12 +42,18 @@ const adminName = computed(() => authStore.nickname || '管理员')
 const adminRole = computed(() => ROLE_LABELS[authStore.role as keyof typeof ROLE_LABELS] || authStore.role || '管理员')
 const adminAvatar = computed(() => adminName.value.slice(0, 1).toUpperCase())
 
-/** 角色是否为超级管理员（超管独享管理员管理、分类、店员、主页管理）。 */
+/** 角色是否为超级管理员（超管独享日志/系统设置/推广资金）。 */
 const isSuper = computed(() => authStore.role === 'SUPER_ADMIN')
+/** 角色是否为商户管理员（ADMIN，业务模块可见，仅隐藏系统/日志/推广资金）。 */
+const isAdmin = computed(() => authStore.role === 'ADMIN')
+/** 超管 + 商户管理员均可见：主页管理/分类/店员/管理员管理/公告。 */
+const isPlatformOrAdmin = computed(() => isSuper.value || isAdmin.value)
 /** 角色是否为客服（客服可见用户/商品/门店/订单/核销日志）。 */
-const isService = computed(() => authStore.role === 'CUSTOMER_SERVICE' || authStore.role === 'SUPER_ADMIN')
-/** 角色是否为财务（财务可见发票/推广资金/提现/操作追溯）。 */
-const isFinance = computed(() => authStore.role === 'FINANCE' || authStore.role === 'SUPER_ADMIN')
+const isService = computed(() => authStore.role === 'CUSTOMER_SERVICE' || isPlatformOrAdmin.value)
+/** 财务相关模块（钱包/转账/提现）：财务 + 超管 + 商户管理员可见。 */
+const isFinance = computed(() => authStore.role === 'FINANCE' || isPlatformOrAdmin.value)
+/** 推广资金：仅财务 + 超管可见（商户管理员不可见）。 */
+const isProfit = computed(() => authStore.role === 'FINANCE' || authStore.role === 'SUPER_ADMIN')
 
 /** 本人接口暂时失败时保留登录响应中的本地身份。 */
 async function refreshCurrentAdmin(): Promise<void> {
@@ -93,7 +99,7 @@ onMounted(() => {
           <el-icon><DataBoard /></el-icon>
           <template #title>仪表盘</template>
         </el-menu-item>
-        <el-sub-menu v-if="isSuper" index="/homepage">
+        <el-sub-menu v-if="isPlatformOrAdmin" index="/homepage">
           <template #title><el-icon><House /></el-icon><span>主页管理</span></template>
           <el-menu-item index="/homepage"><el-icon><DataBoard /></el-icon><template #title>首屏与品牌</template></el-menu-item>
           <el-menu-item index="/homepage/bottom-recommendation"><el-icon><Promotion /></el-icon><template #title>底部推荐</template></el-menu-item>
@@ -107,7 +113,7 @@ onMounted(() => {
           <el-icon><Box /></el-icon>
           <template #title>商品管理</template>
         </el-menu-item>
-        <el-menu-item v-if="isSuper" index="/categories">
+        <el-menu-item v-if="isPlatformOrAdmin" index="/categories">
           <el-icon><Collection /></el-icon>
           <template #title>分类管理</template>
         </el-menu-item>
@@ -115,11 +121,11 @@ onMounted(() => {
           <el-icon><Shop /></el-icon>
           <template #title>门店管理</template>
         </el-menu-item>
-        <el-menu-item v-if="isSuper" index="/staff">
+        <el-menu-item v-if="isPlatformOrAdmin" index="/staff">
           <el-icon><UserFilled /></el-icon>
           <template #title>店员管理</template>
         </el-menu-item>
-        <el-menu-item v-if="isSuper" index="/admins">
+        <el-menu-item v-if="isPlatformOrAdmin" index="/admins">
           <el-icon><UserFilled /></el-icon>
           <template #title>管理员管理</template>
         </el-menu-item>
@@ -134,7 +140,7 @@ onMounted(() => {
           <el-icon><Document /></el-icon>
           <template #title>发票管理</template>
         </el-menu-item>
-        <el-menu-item v-if="isFinance" index="/profit">
+        <el-menu-item v-if="isProfit" index="/profit">
           <el-icon><Promotion /></el-icon>
           <template #title>推广资金</template>
         </el-menu-item>

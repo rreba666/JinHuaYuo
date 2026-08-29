@@ -3,6 +3,7 @@ import type { AdminRole } from '@/types/auth'
 /** 角色中文名称。 */
 export const ROLE_LABELS: Record<AdminRole, string> = {
   SUPER_ADMIN: '超级管理员',
+  ADMIN: '商户管理员',
   CUSTOMER_SERVICE: '客服',
   FINANCE: '财务',
 }
@@ -31,6 +32,27 @@ const ROLE_ROUTES: Record<AdminRole, string[]> = {
     '/withdraw',
     '/logs/verify',
     '/logs/audit',
+  ],
+  /** ADMIN（商户管理员）：业务模块可见，仅隐藏 系统设置/日志(核销/追溯)/推广资金。 */
+  ADMIN: [
+    '/dashboard',
+    '/homepage',
+    '/homepage/bottom-recommendation',
+    '/announcement',
+    '/users',
+    '/products',
+    '/categories',
+    '/shops',
+    '/staff',
+    '/admins',
+    '/orders',
+    '/orders/pickup',
+    '/orders/address-audit',
+    '/after-sale',
+    '/invoices',
+    '/wallets',
+    '/transfers',
+    '/withdraw',
   ],
   CUSTOMER_SERVICE: [
     '/dashboard',
@@ -84,6 +106,7 @@ const ROUTE_LABELS: Record<string, string> = {
 /** 各角色可访问功能的权限中文名（由 ROLE_ROUTES 映射而来，供后台展示）。 */
 export const ROLE_PERMISSIONS: Record<AdminRole, string[]> = {
   SUPER_ADMIN: ROLE_ROUTES.SUPER_ADMIN.map((path) => ROUTE_LABELS[path] ?? path),
+  ADMIN: ROLE_ROUTES.ADMIN.map((path) => ROUTE_LABELS[path] ?? path),
   CUSTOMER_SERVICE: ROLE_ROUTES.CUSTOMER_SERVICE.map((path) => ROUTE_LABELS[path] ?? path),
   FINANCE: ROLE_ROUTES.FINANCE.map((path) => ROUTE_LABELS[path] ?? path),
 }
@@ -91,6 +114,7 @@ export const ROLE_PERMISSIONS: Record<AdminRole, string[]> = {
 /** 各角色登录后的默认落地页。 */
 const ROLE_HOME: Record<AdminRole, string> = {
   SUPER_ADMIN: '/dashboard',
+  ADMIN: '/dashboard',
   CUSTOMER_SERVICE: '/dashboard',
   FINANCE: '/dashboard',
 }
