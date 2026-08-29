@@ -15,12 +15,19 @@ export const useUserStore = defineStore('user', () => {
   const page = ref(1)
   const pageSize = ref(10)
   const filters = reactive<UserFilters>({ keyword: '', phone: '', banStatus: '' })
+  /** 用户状态页签筛选：''=全部，'normal'=正常，'deleted'=已删除，'banned'=封禁。 */
+  const statusFilter = ref<'' | 'normal' | 'deleted' | 'banned'>('normal')
 
-  /** 加载 B 端用户列表。 */
+  /** 加载 B 端用户列表。状态页签作为后端筛选条件，保证分页基于筛选后的总条数。 */
   async function fetchList(): Promise<void> {
     loading.value = true
     try {
-      const result = await getUsers(page.value, pageSize.value, filters.keyword)
+      const result = await getUsers({
+        page: page.value,
+        pageSize: pageSize.value,
+        keyword: filters.keyword,
+        ...(statusFilter.value === '' ? {} : statusFilter.value === 'deleted' ? { delFlag: 1 as const } : statusFilter.value === 'banned' ? { delFlag: 0 as const, banStatus: 1 as const } : { delFlag: 0 as const }),
+      })
       list.value = result.list
       total.value = result.total
     } finally {
@@ -105,5 +112,11 @@ export const useUserStore = defineStore('user', () => {
     page.value = 1
   }
 
-  return { list, total, loading, actionLoading, detail, detailLoading, walletLoading, page, pageSize, filters, fetchList, fetchDetail, updateWallet, updateBanStatus, updateBanStatuses, removeUser, removeUsers, restoreOne, resetFilters }
+  /** 切换状态页签时重置页码，供页面按新的状态条件重新请求。 */
+  function setStatusFilter(value: '' | 'normal' | 'deleted' | 'banned'): void {
+    statusFilter.value = value
+    page.value = 1
+  }
+
+  return { list, total, loading, actionLoading, detail, detailLoading, walletLoading, page, pageSize, filters, statusFilter, setStatusFilter, fetchList, fetchDetail, updateWallet, updateBanStatus, updateBanStatuses, removeUser, removeUsers, restoreOne, resetFilters }
 })

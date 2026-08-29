@@ -11,10 +11,9 @@ const store = useUserStore()
 const authStore = useAuthStore()
 const selected = ref<User[]>([])
 type UserStatusTab = 'normal' | 'deleted' | 'banned'
-const statusTab = ref<UserStatusTab>('normal')
+const statusTab = ref<UserStatusTab>(store.statusFilter as UserStatusTab)
 const hasSelection = computed(() => selected.value.length > 0)
 const activeSelected = computed(() => selected.value.filter((user) => user.delFlag !== 1))
-const visibleUsers = computed(() => store.list.filter((user) => getUserStatus(user) === statusTab.value))
 const detailVisible = ref(false)
 const detailUserId = ref('')
 type WalletForm = Pick<UserDetail, 'pendingPromotion' | 'pendingBonus' | 'balance'>
@@ -23,11 +22,6 @@ const walletOriginal = ref<WalletForm | null>(null)
 
 function normalizeBanStatus(value: UserBanStatusValue): 0 | 1 {
   return value === 1 || value === '1' ? 1 : 0
-}
-
-function getUserStatus(user: User): UserStatusTab {
-  if (user.delFlag === 1) return 'deleted'
-  return normalizeBanStatus(user.banStatus) === 1 ? 'banned' : 'normal'
 }
 
 /** 将详情中的当前余额复制到独立表单，避免直接修改响应数据。 */
@@ -90,9 +84,13 @@ async function saveWallet(): Promise<void> {
   }
 }
 
+/** 切换状态页签：作为后端筛选条件重新请求，并重置页码。 */
 function handleStatusTabChange(value: string | number): void {
-  statusTab.value = String(value) as UserStatusTab
+  const tab = String(value) as UserStatusTab
+  statusTab.value = tab
+  store.setStatusFilter(tab)
   selected.value = []
+  void loadList()
 }
 
 async function loadList(): Promise<void> {
@@ -215,9 +213,9 @@ onMounted(() => { void loadList() })
         </div>
       </div>
       <DataTable
-        :data="visibleUsers"
+        :data="store.list"
         :loading="store.loading"
-        :total="visibleUsers.length"
+        :total="store.total"
         :page="store.page"
         :page-size="store.pageSize"
         empty-text="暂无用户数据"

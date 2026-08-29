@@ -1,6 +1,6 @@
 import { request } from './request'
 import { resolveMediaUrl } from './media'
-import type { AdminWalletUpsertDTO, User, UserBanStatus, UserDetail, UserPageResult, UserResponse } from '@/types/user'
+import type { AdminWalletUpsertDTO, User, UserBanStatus, UserDetail, UserListQueryParams, UserPageResult, UserResponse } from '@/types/user'
 
 /** 校验用户管理接口响应。 */
 function unwrapResponse<T>(response: { data: UserResponse<T> }, fallbackMessage: string): T {
@@ -39,11 +39,13 @@ function normalizeUserDetail(data: UserDetail): UserDetail {
   }
 }
 
-/** 查询 B 端用户分页列表。keyword 纯数字按用户 ID 精确匹配，否则按昵称/手机号模糊匹配。 */
-export async function getUsers(page: number, pageSize: number, keyword?: string): Promise<UserPageResult> {
-  const params: Record<string, string | number> = { page, pageSize }
-  if (keyword && keyword.trim()) params.keyword = keyword.trim()
-  const response = await request.get<UserResponse<UserPageResult>>('/api/admin/user/list', { params })
+/** 查询 B 端用户分页列表。keyword 纯数字按用户 ID 精确匹配，否则按昵称/手机号模糊匹配；可选按状态筛选。 */
+export async function getUsers(params: UserListQueryParams): Promise<UserPageResult> {
+  const query: Record<string, string | number> = { page: params.page, pageSize: params.pageSize }
+  if (params.keyword && params.keyword.trim()) query.keyword = params.keyword.trim()
+  if (params.delFlag !== undefined) query.delFlag = params.delFlag
+  if (params.banStatus !== undefined) query.banStatus = params.banStatus
+  const response = await request.get<UserResponse<UserPageResult>>('/api/admin/user/list', { params: query })
   return normalizeUserPage(unwrapResponse(response, '用户列表查询失败'))
 }
 
