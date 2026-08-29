@@ -20,10 +20,10 @@ const rules: FormRules = {
   role: [{ required: true, message: '请选择角色', trigger: 'change' }],
 }
 
-/** 当前登录者是否为商户管理员（ADMIN 只能管理 ADMIN 级账号）。 */
+/** 当前登录者是否为商户管理员（ADMIN 只能管理 ADMIN 及下级，即 ADMIN/客服/财务，不含超管）。 */
 const isMerchantAdmin = computed(() => authStore.role === 'ADMIN')
 
-/** 角色下拉选项：超管可见全部角色；商户管理员仅可见 ADMIN。 */
+/** 角色下拉选项：超管可见全部角色；商户管理员可见 商户管理员 + 客服 + 财务（不含超管）。 */
 const roleOptions = computed<Array<{ label: string; value: AdminRole }>>(() => {
   const all = [
     { label: ROLE_LABELS.SUPER_ADMIN, value: 'SUPER_ADMIN' as AdminRole },
@@ -31,12 +31,12 @@ const roleOptions = computed<Array<{ label: string; value: AdminRole }>>(() => {
     { label: ROLE_LABELS.CUSTOMER_SERVICE, value: 'CUSTOMER_SERVICE' as AdminRole },
     { label: ROLE_LABELS.FINANCE, value: 'FINANCE' as AdminRole },
   ]
-  return isMerchantAdmin.value ? all.filter((r) => r.value === 'ADMIN') : all
+  return isMerchantAdmin.value ? all.filter((r) => r.value !== 'SUPER_ADMIN') : all
 })
 
-/** 角色权限说明行：只展示当前登录者可见的角色（商户管理员只见 ADMIN，且不出超管）。 */
+/** 角色权限说明行：只展示当前登录者可见的角色（商户管理员可见 商户管理员/客服/财务，不出超管）。 */
 const rolePermissionRows = computed(() => (Object.keys(ROLE_PERMISSIONS) as AdminRole[])
-  .filter((role) => !isMerchantAdmin.value || role === 'ADMIN')
+  .filter((role) => !isMerchantAdmin.value || role !== 'SUPER_ADMIN')
   .map((role) => ({
   role,
   label: ROLE_LABELS[role],
