@@ -36,12 +36,17 @@ request.interceptors.request.use((config) => {
 request.interceptors.response.use(
   (response) => response,
   (error) => {
-    if ((error.response?.status === 401 || error.response?.status === 403) && error.config?.skipAuthRedirect) {
-      return Promise.reject(new Error(error.response?.data?.message || '当前管理员信息查询失败'))
-    }
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    // 401=未登录/Token 无效（业务码 1003）：应跳回登录页。
+    if (error.response?.status === 401) {
+      if (error.config?.skipAuthRedirect) {
+        return Promise.reject(new Error(error.response?.data?.message || '当前管理员信息查询失败'))
+      }
       redirectToLogin()
       return Promise.reject(new Error('登录状态已失效，请重新登录'))
+    }
+    // 403=无权执行（业务码 1004）：仅抛业务错误，交由页面提示无权限，不强制登出跳转。
+    if (error.response?.status === 403) {
+      return Promise.reject(new Error(error.response?.data?.message || '当前账号无权执行此操作'))
     }
     if (error.response?.data?.message) {
       return Promise.reject(new Error(error.response.data.message))

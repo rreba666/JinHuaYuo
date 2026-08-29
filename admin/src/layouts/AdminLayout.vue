@@ -64,8 +64,9 @@ async function refreshCurrentAdmin(): Promise<void> {
   }
 }
 
-/** 预载商品资金比例，确保商品编辑页使用最新系统默认值。 */
+/** 预载商品资金比例，确保商品编辑页使用最新系统默认值。仅对能访问系统设置接口的角色(超管/财务)预载；商户管理员无权访问该接口，避免 403 触发登录跳转。 */
 async function refreshFundRates(): Promise<void> {
+  if (authStore.role !== 'SUPER_ADMIN' && authStore.role !== 'FINANCE') return
   try {
     await settingStore.loadProfitRates()
   } catch {

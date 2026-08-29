@@ -7,9 +7,9 @@ const CUSTOMER_SERVICE_KEY = 'customer_service_phone'
 const DEFAULT_DIVIDEND_MULTIPLIER = 1.5
 const PROFIT_RATES_PATH = '/api/admin/setting/profit-rates'
 
-/** 读取客服电话配置。未配置时返回空表单值，不创建后端历史配置。 */
+/** 读取客服电话配置。未配置时返回空表单值，不创建后端历史配置。ADMIN 无权限访问时按业务错误处理，不触发登录跳转。 */
 export async function getCustomerServiceConfig(): Promise<SysConfig> {
-  const response = await request.get<ApiResponse<SysConfig | null>>('/api/admin/setting/customer-service')
+  const response = await request.get<ApiResponse<SysConfig | null>>('/api/admin/setting/customer-service', { skipAuthRedirect: true })
   const result = response.data
   ensureSuccess(result, '客服电话配置查询失败')
   return normalizeSysConfig(result.data)
@@ -24,9 +24,9 @@ export async function saveCustomerServiceConfig(payload: SysConfigSaveDTO): Prom
   ensureSuccess(response.data, '客服电话配置保存失败')
 }
 
-/** 读取红包倍率；后端未配置或返回非有限值时使用约定默认值。 */
+/** 读取红包倍率；后端未配置或返回非有限值时使用约定默认值。ADMIN 无权限访问时按业务错误处理，不触发登录跳转。 */
 export async function getDividendCap(): Promise<DividendCap> {
-  const response = await request.get<ApiResponse<DividendCap | null>>('/api/admin/setting/dividend-cap')
+  const response = await request.get<ApiResponse<DividendCap | null>>('/api/admin/setting/dividend-cap', { skipAuthRedirect: true })
   const result = response.data
   ensureSuccess(result, '红包上限倍率查询失败')
   const data: Partial<DividendCap> = result.data || {}
@@ -50,9 +50,9 @@ export async function saveDividendCap(payload: DividendCapSaveDTO): Promise<void
   ensureSuccess(response.data, '红包上限倍率保存失败')
 }
 
-/** 读取商品资金比例。 */
+/** 读取商品资金比例。ADMIN 无权限访问时按业务错误处理，不触发登录跳转。 */
 export async function getProfitRatesConfig(): Promise<ProfitRatesConfig> {
-  const response = await request.get<ApiResponse<ProfitRatesConfig | null>>(PROFIT_RATES_PATH)
+  const response = await request.get<ApiResponse<ProfitRatesConfig | null>>(PROFIT_RATES_PATH, { skipAuthRedirect: true })
   const result = response.data
   ensureSuccess(result, '商品资金比例查询失败')
   return normalizeProfitRates(result.data)
@@ -77,7 +77,7 @@ export async function saveProfitRatesConfig(payload: ProfitRatesSaveDTO): Promis
 }
 
 export async function getWithdrawRules(): Promise<WithdrawRulesConfig> {
-  const response = await request.get<ApiResponse<WithdrawRulesConfig | null>>('/api/admin/setting/withdraw-rules')
+  const response = await request.get<ApiResponse<WithdrawRulesConfig | null>>('/api/admin/setting/withdraw-rules', { skipAuthRedirect: true })
   const result = response.data
   ensureSuccess(result, '提现规则查询失败')
   return normalizeWithdrawRules(result.data)
