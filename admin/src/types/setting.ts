@@ -28,6 +28,13 @@ export interface DividendCapSaveDTO {
   remark?: string
 }
 
+/** 每日随机分红配置（金额下限/上限，元）。 */
+export interface RandomDividendConfig {
+  minAmount: number
+  maxAmount: number
+  remark: string
+}
+
 /** 商品资金比例配置。 */
 export interface ProfitRatesConfig {
   promotionRate: number

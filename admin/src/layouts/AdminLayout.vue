@@ -147,6 +147,10 @@ onMounted(() => {
           <el-icon><Document /></el-icon>
           <template #title>发票管理</template>
         </el-menu-item>
+        <el-menu-item v-if="isFinance || isService" index="/health-survey">
+          <el-icon><Document /></el-icon>
+          <template #title>健康问卷</template>
+        </el-menu-item>
         <el-menu-item v-if="isProfit" index="/profit">
           <el-icon><Promotion /></el-icon>
           <template #title>推广资金</template>

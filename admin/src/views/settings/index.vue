@@ -17,6 +17,7 @@ const customerServiceForm = reactive<SysConfigSaveDTO>({
   remark: '',
 })
 const dividendCapForm = reactive<DividendCapSaveDTO>({ multiplier: 1.5, remark: '' })
+const randomDividendForm = reactive<{ minAmount: number; maxAmount: number; remark: string }>({ minAmount: 10, maxAmount: 50, remark: '' })
 const profitRatesForm = reactive<ProfitRatesSaveDTO>({ promotionRate: 20, bonusPoolRate: 26, remark: '' })
 type WithdrawRulesForm = Omit<WithdrawRulesConfig, 'feeRate'> & { feeRate: number }
 const withdrawRulesForm = reactive<WithdrawRulesForm>({ minAmount: 0, dailyAmountLimit: 0, dailyCountLimit: 0, feeRate: 0, testUserMinAmount: 0, testUserId: null, testSkipLock: false, maxConcurrent: 0, frozenLimit: 0, remark: '' })
@@ -74,6 +75,17 @@ async function loadDividendCap(): Promise<void> {
   }
 }
 
+async function loadRandomDividend(): Promise<void> {
+  try {
+    await store.loadRandomDividend()
+    randomDividendForm.minAmount = store.randomDividend.minAmount
+    randomDividendForm.maxAmount = store.randomDividend.maxAmount
+    randomDividendForm.remark = store.randomDividend.remark
+  } catch (error) {
+    showError(error, '随机分红配置加载失败')
+  }
+}
+
 async function loadProfitRates(): Promise<void> {
   try {
     await store.loadProfitRates()
@@ -116,6 +128,18 @@ async function saveDividendCap(): Promise<void> {
   }
 }
 
+async function saveRandomDividend(): Promise<void> {
+  try {
+    if (!Number.isFinite(randomDividendForm.minAmount) || randomDividendForm.minAmount < 0) { ElMessage.warning('随机分红下限必须为非负数字'); return }
+    if (!Number.isFinite(randomDividendForm.maxAmount) || randomDividendForm.maxAmount < randomDividendForm.minAmount) { ElMessage.warning('随机分红上限必须不小于下限'); return }
+    await ElMessageBox.confirm('保存每日随机分红配置吗？', '保存确认', { type: 'warning' })
+    await store.saveRandomDividend({ ...randomDividendForm })
+    ElMessage.success('随机分红配置已保存')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') showError(error, '随机分红配置保存失败')
+  }
+}
+
 async function saveProfitRates(): Promise<void> {
   if (!(await profitRatesFormRef.value?.validate().catch(() => false))) return
   try {
@@ -145,6 +169,7 @@ async function saveWithdrawRules(): Promise<void> {
 function reload(): void {
   void loadCustomerService()
   void loadDividendCap()
+  void loadRandomDividend()
   void loadProfitRates()
   void loadWithdrawRules()
 }
@@ -156,7 +181,7 @@ onMounted(reload)
   <section class="page-container page-enter">
     <div class="page-heading">
       <div><h1>系统设置</h1><p>管理客服电话和红包业务参数。</p></div>
-      <el-button :icon="Refresh" :loading="store.customerServiceLoading || store.dividendCapLoading || store.profitRatesLoading || store.withdrawRulesLoading" @click="reload">刷新</el-button>
+      <el-button :icon="Refresh" :loading="store.customerServiceLoading || store.dividendCapLoading || store.randomDividendLoading || store.profitRatesLoading || store.withdrawRulesLoading" @click="reload">刷新</el-button>
     </div>
 
     <div class="settings-grid">
@@ -176,6 +201,20 @@ onMounted(reload)
           <el-form-item label="倍率" prop="multiplier"><el-input-number v-model="dividendCapForm.multiplier" :min="0.01" :max="100" :precision="2" :step="0.01" controls-position="right" /></el-form-item>
           <el-form-item label="备注"><el-input v-model="dividendCapForm.remark" placeholder="可选" clearable /></el-form-item>
           <el-form-item><el-button type="primary" :loading="store.dividendCapSaving" @click="saveDividendCap">保存倍率</el-button></el-form-item>
+        </el-form>
+      </section>
+
+      <section class="content-card setting-section fund-rate-section">
+        <div class="setting-heading"><div><h2>每日随机分红</h2><p>设置每日随机分红金额的下限与上限（元），由当天参与用户全员随机分摊。</p></div></div>
+        <el-form :model="randomDividendForm" label-width="110px" @submit.prevent="saveRandomDividend">
+          <el-form-item label="每日上限">
+            <div class="rate-control"><el-input-number v-model="randomDividendForm.maxAmount" :min="0" :precision="2" :step="1" controls-position="right" /><span class="rate-suffix">元</span></div>
+          </el-form-item>
+          <el-form-item label="每日下限">
+            <div class="rate-control"><el-input-number v-model="randomDividendForm.minAmount" :min="0" :precision="2" :step="1" controls-position="right" /><span class="rate-suffix">元</span></div>
+          </el-form-item>
+          <el-form-item label="备注"><el-input v-model="randomDividendForm.remark" placeholder="可选" clearable maxlength="40" show-word-limit /></el-form-item>
+          <el-form-item class="form-item-full"><el-button type="primary" :loading="store.randomDividendSaving" @click="saveRandomDividend">保存随机分红配置</el-button></el-form-item>
         </el-form>
       </section>
 

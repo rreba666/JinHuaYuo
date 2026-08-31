@@ -120,6 +120,12 @@ const router = createRouter({
           meta: { title: '发票管理', permission: ['invoice:read'], roles: ALL, requiresAuth: true },
         },
         {
+          path: 'health-survey',
+          name: 'HealthSurvey',
+          component: () => import('@/views/health-survey/index.vue'),
+          meta: { title: '健康问卷', permission: ['health-survey:read'], roles: ALL, requiresAuth: true },
+        },
+        {
           path: 'profit',
           name: 'Profit',
           component: () => import('@/views/profit/index.vue'),
