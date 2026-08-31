@@ -50,20 +50,20 @@ export async function saveDividendCap(payload: DividendCapSaveDTO): Promise<void
   ensureSuccess(response.data, '红包上限倍率保存失败')
 }
 
-/** 每日随机分红下限/上限（元）。读取失败或未配置时返回默认值。 */
+/** 每日随机红包下限/上限（元）。读取失败或未配置时返回默认值。 */
 const RANDOM_DIVIDEND_MIN_KEY = 'dividend_random_min'
 const RANDOM_DIVIDEND_MAX_KEY = 'dividend_random_max'
 const DEFAULT_RANDOM_MIN = 10
 const DEFAULT_RANDOM_MAX = 50
 
-/** 读取每日随机分红配置（下限/上限，元）。 */
+/** 读取每日随机红包配置（下限/上限，元）。 */
 export async function getRandomDividendConfig(): Promise<RandomDividendConfig> {
   const [minRes, maxRes] = await Promise.all([
     request.get<ApiResponse<SysConfig | null>>('/api/admin/setting/dividend-random-min', { skipAuthRedirect: true }),
     request.get<ApiResponse<SysConfig | null>>('/api/admin/setting/dividend-random-max', { skipAuthRedirect: true }),
   ])
-  try { ensureSuccess(minRes.data, '随机分红下限查询失败') } catch { /* 未配置时用默认 */ }
-  try { ensureSuccess(maxRes.data, '随机分红上限查询失败') } catch { /* 未配置时用默认 */ }
+  try { ensureSuccess(minRes.data, '红包下限查询失败') } catch { /* 未配置时用默认 */ }
+  try { ensureSuccess(maxRes.data, '红包上限查询失败') } catch { /* 未配置时用默认 */ }
   const minValue = Number(minRes.data?.data?.configValue)
   const maxValue = Number(maxRes.data?.data?.configValue)
   return {
@@ -73,18 +73,18 @@ export async function getRandomDividendConfig(): Promise<RandomDividendConfig> {
   }
 }
 
-/** 保存每日随机分红配置（下限/上限，元）。 */
+/** 保存每日随机红包配置（下限/上限，元）。 */
 export async function saveRandomDividendConfig(payload: { minAmount: number; maxAmount: number; remark?: string }): Promise<void> {
   const minAmount = Number(payload.minAmount)
   const maxAmount = Number(payload.maxAmount)
-  if (!Number.isFinite(minAmount) || minAmount < 0) throw new Error('随机分红下限必须为非负数字')
-  if (!Number.isFinite(maxAmount) || maxAmount < minAmount) throw new Error('随机分红上限必须不小于下限')
+  if (!Number.isFinite(minAmount) || minAmount < 0) throw new Error('红包下限必须为非负数字')
+  if (!Number.isFinite(maxAmount) || maxAmount < minAmount) throw new Error('红包上限必须不小于下限')
   const results = await Promise.all([
     request.post<ApiResponse<null>>('/api/admin/setting/dividend-random-min', { configKey: RANDOM_DIVIDEND_MIN_KEY, configValue: String(minAmount), remark: payload.remark }),
     request.post<ApiResponse<null>>('/api/admin/setting/dividend-random-max', { configKey: RANDOM_DIVIDEND_MAX_KEY, configValue: String(maxAmount), remark: payload.remark }),
   ])
-  ensureSuccess(results[0].data, '随机分红下限保存失败')
-  ensureSuccess(results[1].data, '随机分红上限保存失败')
+  ensureSuccess(results[0].data, '红包下限保存失败')
+  ensureSuccess(results[1].data, '红包上限保存失败')
 }
 
 /** 读取商品资金比例。ADMIN 无权限访问时按业务错误处理，不触发登录跳转。 */

@@ -82,7 +82,7 @@ async function loadRandomDividend(): Promise<void> {
     randomDividendForm.maxAmount = store.randomDividend.maxAmount
     randomDividendForm.remark = store.randomDividend.remark
   } catch (error) {
-    showError(error, '随机分红配置加载失败')
+    showError(error, '随机红包配置加载失败')
   }
 }
 
@@ -130,13 +130,13 @@ async function saveDividendCap(): Promise<void> {
 
 async function saveRandomDividend(): Promise<void> {
   try {
-    if (!Number.isFinite(randomDividendForm.minAmount) || randomDividendForm.minAmount < 0) { ElMessage.warning('随机分红下限必须为非负数字'); return }
-    if (!Number.isFinite(randomDividendForm.maxAmount) || randomDividendForm.maxAmount < randomDividendForm.minAmount) { ElMessage.warning('随机分红上限必须不小于下限'); return }
-    await ElMessageBox.confirm('保存每日随机分红配置吗？', '保存确认', { type: 'warning' })
+    if (!Number.isFinite(randomDividendForm.minAmount) || randomDividendForm.minAmount < 0) { ElMessage.warning('红包下限必须为非负数字'); return }
+    if (!Number.isFinite(randomDividendForm.maxAmount) || randomDividendForm.maxAmount < randomDividendForm.minAmount) { ElMessage.warning('红包上限必须不小于下限'); return }
+    await ElMessageBox.confirm('保存每日随机红包配置吗？', '保存确认', { type: 'warning' })
     await store.saveRandomDividend({ ...randomDividendForm })
-    ElMessage.success('随机分红配置已保存')
+    ElMessage.success('随机红包配置已保存')
   } catch (error) {
-    if (error !== 'cancel' && error !== 'close') showError(error, '随机分红配置保存失败')
+    if (error !== 'cancel' && error !== 'close') showError(error, '随机红包配置保存失败')
   }
 }
 
@@ -205,7 +205,7 @@ onMounted(reload)
       </section>
 
       <section class="content-card setting-section fund-rate-section">
-        <div class="setting-heading"><div><h2>每日随机分红</h2><p>设置每日随机分红金额的下限与上限（元），由当天参与用户全员随机分摊。</p></div></div>
+        <div class="setting-heading"><div><h2>每日随机红包</h2><p>设置每日随机红包金额的下限与上限（元），由当天参与用户全员随机分摊。</p></div></div>
         <el-form :model="randomDividendForm" label-width="110px" @submit.prevent="saveRandomDividend">
           <el-form-item label="每日上限">
             <div class="rate-control"><el-input-number v-model="randomDividendForm.maxAmount" :min="0" :precision="2" :step="1" controls-position="right" /><span class="rate-suffix">元</span></div>
@@ -214,7 +214,7 @@ onMounted(reload)
             <div class="rate-control"><el-input-number v-model="randomDividendForm.minAmount" :min="0" :precision="2" :step="1" controls-position="right" /><span class="rate-suffix">元</span></div>
           </el-form-item>
           <el-form-item label="备注"><el-input v-model="randomDividendForm.remark" placeholder="可选" clearable maxlength="40" show-word-limit /></el-form-item>
-          <el-form-item class="form-item-full"><el-button type="primary" :loading="store.randomDividendSaving" @click="saveRandomDividend">保存随机分红配置</el-button></el-form-item>
+          <el-form-item class="form-item-full"><el-button type="primary" :loading="store.randomDividendSaving" @click="saveRandomDividend">保存随机红包配置</el-button></el-form-item>
         </el-form>
       </section>
 

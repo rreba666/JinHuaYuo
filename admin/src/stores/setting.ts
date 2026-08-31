@@ -41,7 +41,7 @@ export const useSettingStore = defineStore('setting', () => {
     }
   }
 
-  /** 读取每日随机分红配置（下限/上限，元）。 */
+  /** 读取每日随机红包配置（下限/上限，元）。 */
   async function loadRandomDividend(): Promise<void> {
     randomDividendLoading.value = true
     try {
@@ -51,7 +51,7 @@ export const useSettingStore = defineStore('setting', () => {
     }
   }
 
-  /** 保存每日随机分红配置。 */
+  /** 保存每日随机红包配置。 */
   async function saveRandomDividend(payload: { minAmount: number; maxAmount: number; remark?: string }): Promise<void> {
     randomDividendSaving.value = true
     try {

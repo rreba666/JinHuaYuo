@@ -7,10 +7,10 @@ function unwrap<T>(response: { data: EmergencyPoolResponse<T> }, fallback: strin
   return result.data as T
 }
 
-/** 查询应急缓存池总账（仅超管）。 */
+/** 查询应急红包池总账（仅超管）。 */
 export async function getEmergencyPool(): Promise<EmergencyPoolOverview> {
   const response = await request.get<EmergencyPoolResponse<EmergencyPoolOverview>>('/api/admin/profit/emergency-pool', { skipAuthRedirect: true })
-  const data = unwrap(response, '应急池查询失败') || {} as EmergencyPoolOverview
+  const data = unwrap(response, '应急红包池查询失败') || {} as EmergencyPoolOverview
   return {
     balance: Number(data.balance) || 0,
     totalDeduct: Number(data.totalDeduct) || 0,
@@ -19,16 +19,16 @@ export async function getEmergencyPool(): Promise<EmergencyPoolOverview> {
   }
 }
 
-/** 查询应急池流水分页。 */
+/** 查询应急红包池流水分页。 */
 export async function getEmergencyPoolLogs(page: number, pageSize: number): Promise<EmergencyPoolLogPageResult> {
   const response = await request.get<EmergencyPoolResponse<EmergencyPoolLogPageResult>>('/api/admin/profit/emergency-pool/logs', { params: { page, pageSize }, skipAuthRedirect: true })
-  const data = unwrap(response, '应急池流水查询失败') || {} as EmergencyPoolLogPageResult
+  const data = unwrap(response, '应急红包池流水查询失败') || {} as EmergencyPoolLogPageResult
   const list = ((data.list || []) as EmergencyPoolLog[]).map((item) => ({ ...item, id: String(item.id ?? '') }))
   return { total: Number(data.total) || 0, list, page: Number(data.page) || page, pageSize: Number(data.pageSize) || pageSize }
 }
 
-/** 注入应急池（下次结算加入父奖池，仅超管）。 */
+/** 注入应急红包池（下次结算加入父奖池，仅超管）。 */
 export async function injectEmergencyPool(amount: number): Promise<void> {
   const payload: EmergencyPoolInjectDTO = { amount }
-  unwrap(await request.post<EmergencyPoolResponse<null>>('/api/admin/profit/emergency-pool/inject', payload, { skipAuthRedirect: true }), '应急池注入失败')
+  unwrap(await request.post<EmergencyPoolResponse<null>>('/api/admin/profit/emergency-pool/inject', payload, { skipAuthRedirect: true }), '应急红包池注入失败')
 }

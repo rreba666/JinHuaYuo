@@ -28,7 +28,7 @@ async function load(): Promise<void> {
     logs.value = logResult.list
     total.value = logResult.total
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '应急池数据加载失败')
+    ElMessage.error(error instanceof Error ? error.message : '应急红包池数据加载失败')
   } finally {
     loading.value = false
   }
@@ -42,11 +42,11 @@ async function submitInject(): Promise<void> {
     return
   }
   try {
-    await ElMessageBox.confirm(`确认向应急池注入 ${money(injectAmount.value)} 吗？下次结算将加入父奖池。`, '应急池注入确认', { type: 'warning' })
+    await ElMessageBox.confirm(`确认向应急红包池注入 ${money(injectAmount.value)} 吗？下次结算将加入父奖池。`, '应急红包池注入确认', { type: 'warning' })
     injecting.value = true
     await injectEmergencyPool(injectAmount.value)
     injectVisible.value = false
-    ElMessage.success('应急池注入成功')
+    ElMessage.success('应急红包池注入成功')
     await load()
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '注入失败')
@@ -65,10 +65,10 @@ onMounted(() => { void load() })
   <div class="emergency-pool">
     <el-card shadow="never" class="content-card overview-card">
       <div class="toolbar">
-        <div><strong>应急缓存池</strong></div>
+        <div><strong>应急红包池</strong></div>
         <div class="toolbar-actions">
           <el-button :loading="loading" @click="load"><el-icon><Refresh /></el-icon>刷新</el-button>
-          <el-button type="primary" @click="openInject"><el-icon><TrendCharts /></el-icon>注入应急池</el-button>
+          <el-button type="primary" @click="openInject"><el-icon><TrendCharts /></el-icon>注入应急红包池</el-button>
         </div>
       </div>
       <el-descriptions :column="4" border>
@@ -81,7 +81,7 @@ onMounted(() => { void load() })
 
     <el-card shadow="never" class="content-card">
       <div class="toolbar"><div><strong>流水分页</strong><span class="toolbar-count">共 {{ total }} 条</span></div></div>
-      <DataTable :data="logs" :loading="loading" :total="total" :page="page" :page-size="pageSize" empty-text="暂无应急池流水" @page-change="pageChange" @size-change="sizeChange">
+      <DataTable :data="logs" :loading="loading" :total="total" :page="page" :page-size="pageSize" empty-text="暂无应急红包池流水" @page-change="pageChange" @size-change="sizeChange">
         <el-table-column prop="createTime" label="时间" min-width="180" />
         <el-table-column label="类型" width="120"><template #default="{ row }"><el-tag :type="logTypeTag(row.type)">{{ logTypeText(row.type) }}</el-tag></template></el-table-column>
         <el-table-column label="金额" width="130"><template #default="{ row }">{{ money(row.amount) }}</template></el-table-column>
@@ -89,7 +89,7 @@ onMounted(() => { void load() })
       </DataTable>
     </el-card>
 
-    <el-dialog v-model="injectVisible" title="注入应急池" width="460px" append-to-body>
+    <el-dialog v-model="injectVisible" title="注入应急红包池" width="460px" append-to-body>
       <el-form label-width="90px">
         <el-form-item label="注入金额"><el-input-number v-model="injectAmount" :min="0" :precision="2" :step="0.01" controls-position="right" /></el-form-item>
         <el-form-item label="说明"><span class="inject-tip">注入金额将在下次结算时加入父奖池参与分配。</span></el-form-item>

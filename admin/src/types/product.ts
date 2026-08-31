@@ -15,9 +15,9 @@ export interface ProductListItem {
   /** 平台红包（红包资金，元）。列表接口可能不返回，此时为 undefined。 */
   dividendFund?: number
   dividendEnabled: ProductFundStatusValue
-  /** 是否开启抽应急池：0/1。 */
+  /** 是否开启抽应急红包池：0/1。 */
   emergencyPoolEnabled?: ProductFundStatusValue
-  /** 每单抽取应急池金额（元）。 */
+  /** 每单抽取应急红包池金额（元）。 */
   emergencyPoolAmount?: number
   soldCount: number
   totalStock: number
@@ -69,9 +69,9 @@ export interface AdminProductSaveDTO {
   promotionEnabled: ProductStatus
   dividendFund: number
   dividendEnabled: ProductStatus
-  /** 是否开启抽应急池：0/1。 */
+  /** 是否开启抽应急红包池：0/1。 */
   emergencyPoolEnabled: ProductStatus
-  /** 每单抽取应急池金额（元）。 */
+  /** 每单抽取应急红包池金额（元）。 */
   emergencyPoolAmount: number
   status: ProductStatus
   isRecommended: ProductStatus

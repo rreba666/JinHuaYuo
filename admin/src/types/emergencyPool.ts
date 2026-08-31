@@ -1,6 +1,6 @@
-/** 应急缓存池总账（对应后端 EmergencyPoolVO）。 */
+/** 应急红包池总账（对应后端 EmergencyPoolVO）。 */
 export interface EmergencyPoolOverview {
-  /** 当前应急池余额（元）。 */
+  /** 当前应急红包池余额（元）。 */
   balance: number
   /** 累计抽取（元）。 */
   totalDeduct: number
@@ -10,7 +10,7 @@ export interface EmergencyPoolOverview {
   pendingInject: number
 }
 
-/** 应急池流水记录。 */
+/** 应急红包池流水记录。 */
 export interface EmergencyPoolLog {
   id: string
   /** 流水类型：DEDUCT=抽取，INJECT=注入，INJECT_SETTLE=注入结算。 */
@@ -21,7 +21,7 @@ export interface EmergencyPoolLog {
   createTime: string
 }
 
-/** 应急池流水分页结果。 */
+/** 应急红包池流水分页结果。 */
 export interface EmergencyPoolLogPageResult {
   total: number
   list: EmergencyPoolLog[]
@@ -29,7 +29,7 @@ export interface EmergencyPoolLogPageResult {
   pageSize: number
 }
 
-/** 注入应急池请求体。 */
+/** 注入应急红包池请求体。 */
 export interface EmergencyPoolInjectDTO {
   amount: number
 }
