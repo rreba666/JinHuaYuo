@@ -8,7 +8,7 @@ import { Edit } from '@element-plus/icons-vue'
 
 const store = useHomepageStore()
 const editItem = ref<HomepageConfigVO | null>(null)
-const form = reactive({ moreWelfareImage: [] as string[], followImage: [] as string[], moreWelfareAppId: '' })
+const form = reactive({ moreWelfareImage: [] as string[], followImage: [] as string[], moreWelfareAppId: '', welfareQrImage: [] as string[] })
 
 /** 归一化。 */
 function norm(value: HomepageEnabledValue | undefined): 0 | 1 {
@@ -22,12 +22,13 @@ function openEditor(item: HomepageConfigVO): void {
     moreWelfareImage: item.bottomImageUrl?.[0] ? [item.bottomImageUrl[0]] : [],
     followImage: item.bottomImageUrl?.[1] ? [item.bottomImageUrl[1]] : [],
     moreWelfareAppId: item.bottomLinkTarget?.[0] || '',
+    welfareQrImage: item.welfareMiniProgramQrUrl ? [item.welfareMiniProgramQrUrl] : [],
   })
 }
 
 function closeEditor(): void { editItem.value = null }
 
-type BottomImageField = 'moreWelfareImage' | 'followImage'
+type BottomImageField = 'moreWelfareImage' | 'followImage' | 'welfareQrImage'
 
 function remove(field: BottomImageField, i: number): void { form[field].splice(i, 1) }
 
@@ -57,6 +58,7 @@ async function save(): Promise<void> {
     await store.updateConfig(editItem.value.id, {
       bottomImageUrl: [form.moreWelfareImage[0] || '', form.followImage[0] || ''],
       bottomLinkTarget: [moreWelfareAppId, ''],
+      ...(form.welfareQrImage[0] ? { welfareMiniProgramQrUrl: form.welfareQrImage[0] } : {}),
     })
     closeEditor()
     ElMessage.success('底部推荐保存成功')
@@ -115,6 +117,10 @@ onMounted(() => {
         <el-form label-width="110px">
           <el-form-item label="更多福利">
             <ImageGridUpload v-model="form.moreWelfareImage" :max="1" :uploading="store.uploading" @upload="upload($event, 'moreWelfareImage')" @remove="remove('moreWelfareImage', $event)" />
+          </el-form-item>
+          <el-form-item label="福利小程序码">
+            <div class="field-hint">上传目标小程序的小程序码海报（长图），用户在 C 端「更多福利」点击后长按识别进入。</div>
+            <ImageGridUpload v-model="form.welfareQrImage" :max="1" :uploading="store.uploading" @upload="upload($event, 'welfareQrImage')" @remove="remove('welfareQrImage', $event)" />
           </el-form-item>
           <el-form-item label="跳转小程序">
             <div class="field-hint">此 AppID 仅作用于“更多福利”图片，点击该图片时跳转。</div>
