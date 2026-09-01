@@ -93,11 +93,11 @@ onLoad(async (options) => {
 })
 
 
-/** 商品详情原生转发保留商品 ID，并附带当前推广者身份。 */
+/** 商品详情转发不绑定推广关系（购买前分享）。 */
 onShareAppMessage(() => {
   const productId = product.value?.id
   const path = productId ? `/subpkg-goods/detail/detail?id=${encodeURIComponent(String(productId))}` : '/pages/index/index'
-  return { title: product.value?.name || '商品详情', path: buildPromotionSharePath(path) }
+  return { title: product.value?.name || '商品详情', path }
 })
 
 /** 返回上一级页面，没有历史页面时回到首页。 */
@@ -113,6 +113,13 @@ function goBack(): void {
 /** 返回购物车 TabBar 页面。 */
 function goCart(): void {
   uni.switchTab({ url: '/pages/cart/cart' })
+}
+
+/** 点击商品详情长图：调起系统图片预览，支持手势缩放与左右滑动切换。 */
+function previewDetailImage(current: string): void {
+  const urls = (product.value?.detailImages || []).filter(Boolean)
+  if (!urls.length) return
+  uni.previewImage({ urls, current })
 }
 
 /** 切换收藏状态：已收藏→取消，未收藏→收藏。 */
@@ -289,7 +296,7 @@ onShow(() => {
 
         <view class="detail-heading"><text>产品详情</text></view>
         <view class="detail-media">
-          <image v-for="image in product?.detailImages || []" :key="image" class="product-detail-image" :src="image" mode="widthFix" />
+          <image v-for="image in product?.detailImages || []" :key="image" class="product-detail-image" :src="image" mode="widthFix" @click="previewDetailImage(image)" />
         </view>
       </view>
     </scroll-view>

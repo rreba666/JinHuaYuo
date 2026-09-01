@@ -11,6 +11,7 @@ import { createThrottle } from '@/utils/interaction'
 import { validateText } from '@/utils/input-validation'
 import PromotionCodePoster from '@/components/PromotionCodePoster.vue'
 import LoginGuide from '@/components/LoginGuide.vue'
+import PageWatermark from '@/components/PageWatermark.vue'
 import { getModules, isModuleEnabled, type ModuleConfig } from '@/utils/config'
 
 const menuTop = ref(0)
@@ -34,7 +35,7 @@ const promotionDisplayAmount = computed(() => {
   const withdrawable = Number(wallet.value?.pendingPromotion || 0)
   return (Number.isFinite(withdrawable) ? withdrawable : 0) + promotionFrozenAmount.value
 })
-/** 启用中的公告列表（公开接口，个人页订单模块下方横向滚动展示）。 */
+/** 启用中的公告列表（公开接口，个人页订单模块下方横向跑马灯展示）。 */
 const announcements = ref<Announcement[]>([])
 const announcementVisible = ref(false)
 const activeAnnouncement = ref<Announcement | null>(null)
@@ -62,21 +63,19 @@ const visibleOrderEntries = computed(() => {
 })
 
 const menuItems = [
-  { key: 'invoice', label: '发票记录', icon: '/static/my/发票.png' },
-  { key: 'service', label: '客服', icon: '/static/my/客服_slices/客服.png' },
   { key: 'settings', label: '设置', icon: '/static/my/设置_slices/设置.png' },
+  { key: 'service', label: '客服', icon: '/static/my/客服_slices/客服.png' },
   { key: 'favorite', label: '我的收藏', icon: '/static/my/收藏_slices/收藏.png' },
   { key: 'materials', label: '商品素材', icon: '/static/my/商品素材_slices/商品素材.png' },
+  { key: 'health-survey', label: '健康自查问卷', icon: '/static/my/隐私_slices/隐私.png' },
   { key: 'about', label: '关于我们', icon: '/static/my/关于我们_slices/关于我们.png' },
-  { key: 'agreement', label: '用户协议', icon: '/static/my/隐私_slices/隐私.png' },
-  { key: 'privacy', label: '隐私保护指引', icon: '/static/my/隐私_slices/隐私.png' },
 ]
 
-/** 功能菜单可见性按模块开关过滤：发票记录→invoice，其余条目不受模块控制（basic/通用）。 */
+/** 功能菜单可见性按模块开关过滤（basic/通用）。客服项单独渲染（微信原生客服）。 */
 const visibleMenuItems = computed(() => {
   const modules = moduleConfig.value
-  const moduleOf: Record<string, string> = { invoice: 'invoice' }
-  return menuItems.filter((item) => isModuleEnabled(modules, moduleOf[item.key] || 'basic'))
+  const moduleOf: Record<string, string> = {}
+  return menuItems.filter((item) => item.key !== 'service' && isModuleEnabled(modules, moduleOf[item.key] || 'basic'))
 })
 
 /** 收益卡可见性按模块开关过滤：推广收益/平台红包→promotion，我的余额→basic（停用 wallet 后余额仍展示）。 */
@@ -225,11 +224,14 @@ function goMenu(key: string): void {
   if (!navigationThrottle()) return
   if (key === 'agreement') { uni.navigateTo({ url: '/pages/user-agreement/user-agreement' }); return }
   if (key === 'privacy') { uni.navigateTo({ url: '/pages/privacy/privacy' }); return }
-  if (['invoice', 'favorite'].includes(key) && !isLoggedIn()) {
+  if (key === 'favorite' && !isLoggedIn()) {
     showLoginGuide()
     return
   }
-  if (key === 'invoice') { uni.navigateTo({ url: '/subpkg-order/invoice/list' }); return }
+  if (key === 'settings') { uni.navigateTo({ url: '/pages/settings/settings' }); return }
+  if (key === 'materials') { uni.navigateTo({ url: '/pages/materials/materials' }); return }
+  if (key === 'health-survey') { uni.navigateTo({ url: '/pages/health-survey/health-survey' }); return }
+  if (key === 'about') { uni.navigateTo({ url: '/pages/about/about' }); return }
   if (key === 'favorite') { uni.navigateTo({ url: '/subpkg-wallet/favorite/list' }); return }
   if (key === 'promotion') { goPromotionCenter(); return }
   if (key === 'wallet') { goWallet(); return }
@@ -538,7 +540,7 @@ onShow(() => { void refreshData() })
         </view>
       </view>
 
-      <!-- 公告栏：订单模块下方、功能选项上方，横向滚动展示 -->
+      <!-- 公告栏：订单模块下方、功能选项上方，横向跑马灯循环滚动（所有公告连成一行，循环滚动，点击看详情） -->
       <view v-if="announcements.length" class="announcement-bar">
         <text class="announcement-label">公告</text>
         <view class="announcement-scroll">
@@ -552,6 +554,11 @@ onShow(() => { void refreshData() })
 
       <view class="menu-section">
         <view class="menu-list">
+          <!-- 客服：微信原生客服（open-type=contact），点击弹起客服会话 -->
+          <button class="menu-item menu-item-btn" open-type="contact">
+            <image class="menu-icon menu-icon-image" src="/static/my/客服_slices/客服.png" mode="aspectFit" />
+            <text class="menu-label">客服</text>
+          </button>
           <view v-for="item in visibleMenuItems" :key="item.key" class="menu-item" @click="goMenu(item.key)">
             <image v-if="item.icon" class="menu-icon menu-icon-image" :src="item.icon" mode="aspectFit" />
             <view v-else class="menu-icon" />
@@ -559,6 +566,8 @@ onShow(() => { void refreshData() })
           </view>
         </view>
       </view>
+
+      <PageWatermark />
 
     </scroll-view>
 
@@ -648,10 +657,10 @@ onShow(() => { void refreshData() })
 
 .announcement-bar { display: flex; align-items: center; gap: 16rpx; padding: 20rpx 38.17rpx; background: #fff; border-bottom: 22.9rpx solid #f5f5f5; }
 .announcement-label { flex-shrink: 0; padding: 4rpx 14rpx; border-radius: 8rpx; color: #fff; background: #916448; font-size: 22rpx; font-weight: 600; }
-.announcement-scroll { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; }
-.announcement-marquee { display: inline-flex; width: max-content; min-width: 200vw; animation: announcement-marquee 18s linear infinite; will-change: transform; }
-.announcement-group { display: flex; flex: 0 0 auto; align-items: center; gap: 48rpx; min-width: 100vw; padding-right: 48rpx; box-sizing: border-box; }
-.announcement-item { flex-shrink: 0; color: #4F4F4F; font-size: 24rpx; white-space: nowrap; }
+.announcement-scroll { flex: 1; min-width: 0; height: 44rpx; overflow: hidden; }
+.announcement-marquee { display: inline-flex; animation: announcement-marquee 12s linear infinite; will-change: transform; }
+.announcement-group { display: inline-flex; flex: 0 0 auto; align-items: center; }
+.announcement-item { flex-shrink: 0; display: inline-block; max-width: 520rpx; height: 44rpx; line-height: 44rpx; margin-right: 56rpx; color: #4F4F4F; font-size: 24rpx; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .announcement-item:active { opacity: .65; }
 @keyframes announcement-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 .announcement-mask { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 40rpx; box-sizing: border-box; background: rgba(0, 0, 0, .52); }
@@ -666,6 +675,10 @@ onShow(() => { void refreshData() })
 .menu-list { background: #fff; }
 .menu-item { display: flex; align-items: center; min-height: 99.24rpx; padding: 0 38.17rpx; box-sizing: border-box; border-bottom: 0; }
 .menu-item:last-child { border-bottom: 0; }
+/* 客服项用 <button open-type="contact">：重置微信 button 默认边框/背景，与菜单项视觉一致 */
+.menu-item-btn { display: flex; align-items: center; width: 100%; margin: 0; padding: 0 38.17rpx; min-height: 99.24rpx; background: transparent; border: 0; border-radius: 0; line-height: inherit; text-align: left; }
+.menu-item-btn::after { border: 0; }
+.menu-item-btn:active { opacity: .7; }
 .menu-icon { width: 45.8rpx; height: 45.8rpx; flex-shrink: 0; margin-right: 34.35rpx; background: #d8d8d8; }
 .menu-icon-image { background: transparent; }
 .menu-label { color: #4F4F4F; font-size: 26.72rpx; font-weight: 500; }

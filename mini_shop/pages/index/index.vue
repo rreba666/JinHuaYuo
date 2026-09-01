@@ -15,6 +15,14 @@ const loadError = ref('')
 let homepageLoadPromise: Promise<void> | null = null
 const welfareTab = ref(0)
 const navigationThrottle = createThrottle(500)
+/** 「更多福利」落地中转弹窗：因目标小程序非同一主体，微信禁止直接跨小程序跳转，改为展示引导+小程序码让用户扫码进入。 */
+const welfareLandingVisible = ref(false)
+/** 目标小程序 AppID（由后台 bottomLinkTarget 配置，用于展示/预留）。 */
+const welfareAppId = ref('')
+/** 目标小程序码海报图片 URL（暂未提供，填入后即展示；为空显示「小程序码待配置」占位）。 */
+const welfareQrImage = ref('')
+/** 保存海报到相册进行中。 */
+const welfareSaving = ref(false)
 
 /** 微信胶囊按钮位置（px），用于悬浮导航栏精确定位 */
 const menuTop = ref(0)
@@ -109,22 +117,78 @@ function goHero(index: number): void {
   if (target) uni.navigateTo({ url: target })
 }
 
-/** 点击“更多福利”图片，按后台配置的 AppID 跳转到目标小程序。 */
+/** 点击“更多福利”图片：因目标小程序非同一主体，微信禁止直接跨小程序跳转，改为打开落地中转弹窗（展示小程序码海报让用户长按识别）。 */
 function handleWelfareImageTap(index: number): void {
   if (index !== 0) return
   if (!navigationThrottle()) return
   const appId = homepageMedia.value?.bottomLinkTarget?.[0]?.trim() || ''
-  if (!appId) {
-    uni.showToast({ title: '暂未配置跳转小程序', icon: 'none' })
+  const qrUrl = homepageMedia.value?.welfareMiniProgramQrUrl?.trim() || ''
+  welfareAppId.value = appId
+  welfareQrImage.value = qrUrl
+  // 未配置小程序码海报图时给出提示，避免空弹窗。
+  if (!qrUrl) {
+    uni.showToast({ title: '福利海报暂未配置', icon: 'none' })
     return
   }
-  // @ts-ignore 微信小程序跨小程序跳转 API
-  uni.navigateToMiniProgram({
-    appId,
-    fail: (error: { errMsg?: string }) => {
-      const detail = error?.errMsg?.replace('navigateToMiniProgram:', '').trim() || '跳转失败'
-      if (detail === 'cancel') return
-      uni.showToast({ title: `跳转失败：${detail}`, icon: 'none' })
+  welfareLandingVisible.value = true
+}
+
+/** 关闭「更多福利」落地中转弹窗。 */
+function closeWelfareLanding(): void {
+  welfareLandingVisible.value = false
+}
+
+/** 保存小程序码海报到相册，引导用户用微信「扫一扫-相册」识别进入目标小程序。 */
+function saveWelfarePoster(): void {
+  if (welfareSaving.value || !welfareQrImage.value) return
+  welfareSaving.value = true
+  uni.showLoading({ title: '保存中...' })
+  // 相册保存只接受本地临时文件，网络 URL 需先下载到本地再保存。
+  uni.downloadFile({
+    url: welfareQrImage.value,
+    success: (download) => {
+      if (download.statusCode !== 200 || !download.tempFilePath) {
+        uni.hideLoading()
+        uni.showToast({ title: '图片下载失败，请重试', icon: 'none' })
+        welfareSaving.value = false
+        return
+      }
+      uni.saveImageToPhotosAlbum({
+        filePath: download.tempFilePath,
+        success: () => {
+          uni.hideLoading()
+          uni.showModal({
+            title: '已保存到相册',
+            content: '请打开微信「扫一扫」-「相册」，选择这张海报，识别小程序码后进入福利小程序。',
+            showCancel: false,
+            confirmText: '我知道了',
+          })
+          welfareSaving.value = false
+        },
+        fail: (error) => {
+          uni.hideLoading()
+          welfareSaving.value = false
+          const msg = error?.errMsg || ''
+          // 用户拒绝相册权限时给出授权引导
+          if (msg.includes('auth') || msg.includes('denied') || msg.includes('authorize')) {
+            uni.showModal({
+              title: '需要相册权限',
+              content: '请在设置中允许保存图片到相册，以便保存海报后用微信扫一扫识别。',
+              showCancel: false,
+              confirmText: '去设置',
+              success: () => uni.openSetting(),
+            })
+          } else {
+            // 诊断信息：把真实错误提示出来，便于定位（微信隐私/相册权限等）。
+            uni.showToast({ title: `保存失败：${msg || '未知错误'}`, icon: 'none', duration: 3000 })
+          }
+        },
+      })
+    },
+    fail: () => {
+      uni.hideLoading()
+      uni.showToast({ title: '图片下载失败，请重试', icon: 'none' })
+      welfareSaving.value = false
     },
   })
 }
@@ -135,10 +199,10 @@ onLoad((options) => {
   void bindStoredPromotionIfLoggedIn()
 })
 
-/** 首页原生转发携带当前推广者身份，让接收方进入首页后可继续登录绑定。 */
+/** 首页胶囊转发不绑定推广关系（推广绑定为下单后功能）。 */
 onShareAppMessage(() => ({
   title: brandName.value || '今华有商城',
-  path: buildPromotionSharePath('/pages/index/index'),
+  path: '/pages/index/index',
 }))
 
 onPageScroll(({ scrollTop }: { scrollTop: number }) => {
@@ -270,6 +334,22 @@ onShow(() => { void refreshHomepage() })
       </view>
     </view>
 
+    <!-- 「更多福利」落地中转弹窗：目标小程序非同一主体，微信禁止直接跳转，改为展示小程序码海报，让用户保存后用微信扫一扫识别进入。 -->
+    <view v-if="welfareLandingVisible" class="welfare-mask" @click="closeWelfareLanding">
+      <view class="welfare-dialog" @click.stop>
+        <text class="welfare-dialog-title">福利小程序</text>
+        <text class="welfare-dialog-tip">该福利由合作方提供，请保存下方海报，用微信「扫一扫-相册」识别小程序码进入。</text>
+        <view class="welfare-poster-wrap">
+          <image v-if="welfareQrImage" class="welfare-poster" :src="welfareQrImage" mode="widthFix" @click="saveWelfarePoster" />
+          <view v-else class="welfare-poster-placeholder">
+            <text class="welfare-poster-placeholder-text">海报待配置</text>
+          </view>
+        </view>
+        <button v-if="welfareQrImage" class="welfare-dialog-btn" :loading="welfareSaving" @click="saveWelfarePoster">保存到相册，去扫一扫</button>
+        <button class="welfare-dialog-btn welfare-dialog-btn--plain" @click="closeWelfareLanding">我知道了</button>
+      </view>
+    </view>
+
   </view>
 </template>
 
@@ -346,4 +426,17 @@ onShow(() => { void refreshHomepage() })
 /* 福利图区 301×214px, radius 5px */
 .welfare-img { width: 602rpx; height: 428rpx; margin-top: 44rpx; border-radius: 10rpx; }
 .welfare-placeholder { width: 602rpx; height: 428rpx; margin-top: 44rpx; background: #a9a9a9; border-radius: 10rpx; }
+
+/* ===== 「更多福利」落地中转弹窗 ===== */
+.welfare-mask { position: fixed; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center; padding: 160rpx 40rpx 40rpx; box-sizing: border-box; background: rgba(0,0,0,.5); }
+.welfare-dialog { width: 100%; max-width: 600rpx; padding: 40rpx 36rpx 32rpx; border-radius: 24rpx; background: #fff; display: flex; flex-direction: column; align-items: center; }
+.welfare-dialog-title { color: #232423; font-size: 32rpx; font-weight: 600; }
+.welfare-dialog-tip { margin-top: 16rpx; color: #666; font-size: 24rpx; line-height: 1.6; text-align: center; }
+.welfare-poster-wrap { margin-top: 28rpx; width: 100%; max-height: 64vh; overflow: hidden; border-radius: 12rpx; background: #f2f2f2; }
+.welfare-poster { display: block; width: 100%; height: auto; }
+.welfare-poster-placeholder { display: flex; align-items: center; justify-content: center; width: 100%; height: 320rpx; border-radius: 12rpx; background: #f2f2f2; }
+.welfare-poster-placeholder-text { color: #aaa; font-size: 26rpx; }
+.welfare-dialog-btn { height: 80rpx; margin-top: 32rpx; width: 100%; border-radius: 40rpx; background: #232423; color: #fff; font-size: 28rpx; font-weight: 500; line-height: 80rpx; }
+.welfare-dialog-btn--plain { margin-top: 16rpx; background: #f2f2f2; color: #666; font-weight: 400; }
+.welfare-dialog-btn::after { border: 0; }
 </style>

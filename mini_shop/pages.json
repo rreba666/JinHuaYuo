@@ -53,6 +53,47 @@
       }
     },
     {
+      "path": "pages/settings/settings",
+      "style": {
+        "navigationBarTitleText": "设置",
+        "navigationStyle": "custom"
+      }
+    },
+
+
+    {
+      "path": "pages/settings/address/address",
+      "style": {
+        "navigationBarTitleText": "收货地址",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/settings/bank-card/bank-card",
+      "style": {
+        "navigationBarTitleText": "提现银行卡",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/about/about",
+      "style": {
+        "navigationBarTitleText": "关于我们",
+        "navigationStyle": "custom"
+      }
+    },    {
+      "path": "pages/materials/materials",
+      "style": {
+        "navigationBarTitleText": "商品素材",
+        "navigationStyle": "custom"
+      }
+    },    {
+      "path": "pages/health-survey/health-survey",
+      "style": {
+        "navigationBarTitleText": "健康自查问卷",
+        "navigationStyle": "custom"
+      }
+    },    {
       "path": "pages/promo/landing",
       "style": {
         "navigationBarTitleText": "推广中转",
@@ -85,12 +126,6 @@
           "style": {
             "navigationBarTitleText": "订单详情",
             "navigationBarBackgroundColor": "#FFFFFF"
-          }
-        },
-        {
-          "path": "invoice/list",
-          "style": {
-            "navigationStyle": "custom"
           }
         }
       ]

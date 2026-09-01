@@ -9,6 +9,8 @@ export interface HomepageMediaItem {
   linkTarget: string[]
   bottomImageUrl: string[]
   bottomLinkTarget: string[]
+  /** 「更多福利」目标小程序码海报图 URL（OSS 公共读直链），未配置为 null。 */
+  welfareMiniProgramQrUrl?: string | null
   bottomTitle: string
   isEnabled: number
 }
