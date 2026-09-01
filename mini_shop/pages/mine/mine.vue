@@ -94,10 +94,8 @@ const incomeEntries = computed(() => {
 const pendingBonus = computed(() => Number(wallet.value?.pendingBonus || 0))
 /** 上次已查看的分红金额（本地缓存，用于红点提示新分红）。 */
 const lastSeenBonus = ref(Number(uni.getStorageSync('bonus_last_seen') || 0))
-/** 本地开发预览开关，正式构建仍按真实未读红包触发。 */
-const redPacketPreviewEnabled = import.meta.env.DEV
-/** 是否有未查看的新分红红包（开发环境临时允许预览）。 */
-const hasUnseenBonus = computed(() => redPacketPreviewEnabled || pendingBonus.value > lastSeenBonus.value)
+/** 是否有未查看的新分红红包（有真实新分红才亮，点开查看后按已读隐藏）。 */
+const hasUnseenBonus = computed(() => pendingBonus.value > lastSeenBonus.value)
 /** 红包弹窗可见状态。 */
 const redPacketVisible = ref(false)
 /** 红包弹窗打开时锁定的未转余额分红总额，避免使用旧钱包快照。 */

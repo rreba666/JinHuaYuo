@@ -138,9 +138,25 @@ function closeWelfareLanding(): void {
   welfareLandingVisible.value = false
 }
 
+/** 检测并触发微信隐私授权（保存到相册属隐私接口）；部分环境无该 API 时直接放行。 */
+function ensurePrivacyAuthorize(callback: () => void): void {
+  const authorize = (uni as unknown as { requirePrivacyAuthorize?: (opts: { success: () => void; fail: () => void }) => void }).requirePrivacyAuthorize
+    || (wx as unknown as { requirePrivacyAuthorize?: (opts: { success: () => void; fail: () => void }) => void }).requirePrivacyAuthorize
+  if (authorize) {
+    authorize({ success: () => callback(), fail: () => callback() })
+  } else {
+    callback()
+  }
+}
+
 /** 保存小程序码海报到相册，引导用户用微信「扫一扫-相册」识别进入目标小程序。 */
 function saveWelfarePoster(): void {
   if (welfareSaving.value || !welfareQrImage.value) return
+  ensurePrivacyAuthorize(() => doSaveWelfarePoster())
+}
+
+/** 实际执行保存：下载网络图片到本地临时路径 → 存相册。 */
+function doSaveWelfarePoster(): void {
   welfareSaving.value = true
   uni.showLoading({ title: '保存中...' })
   // 相册保存只接受本地临时文件，网络 URL 需先下载到本地再保存。
@@ -149,7 +165,7 @@ function saveWelfarePoster(): void {
     success: (download) => {
       if (download.statusCode !== 200 || !download.tempFilePath) {
         uni.hideLoading()
-        uni.showToast({ title: '图片下载失败，请重试', icon: 'none' })
+        uni.showToast({ title: `保存失败：${download.statusCode}`, icon: 'none', duration: 3000 })
         welfareSaving.value = false
         return
       }
@@ -168,26 +184,13 @@ function saveWelfarePoster(): void {
         fail: (error) => {
           uni.hideLoading()
           welfareSaving.value = false
-          const msg = error?.errMsg || ''
-          // 用户拒绝相册权限时给出授权引导
-          if (msg.includes('auth') || msg.includes('denied') || msg.includes('authorize')) {
-            uni.showModal({
-              title: '需要相册权限',
-              content: '请在设置中允许保存图片到相册，以便保存海报后用微信扫一扫识别。',
-              showCancel: false,
-              confirmText: '去设置',
-              success: () => uni.openSetting(),
-            })
-          } else {
-            // 诊断信息：把真实错误提示出来，便于定位（微信隐私/相册权限等）。
-            uni.showToast({ title: `保存失败：${msg || '未知错误'}`, icon: 'none', duration: 3000 })
-          }
+          uni.showToast({ title: `保存失败：${error?.errMsg || '未知'}`, icon: 'none', duration: 3000 })
         },
       })
     },
-    fail: () => {
+    fail: (error) => {
       uni.hideLoading()
-      uni.showToast({ title: '图片下载失败，请重试', icon: 'none' })
+      uni.showToast({ title: `下载失败：${error?.errMsg || '未知'}`, icon: 'none', duration: 3000 })
       welfareSaving.value = false
     },
   })
