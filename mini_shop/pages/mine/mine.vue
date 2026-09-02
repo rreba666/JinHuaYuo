@@ -610,7 +610,7 @@ onShow(() => { void refreshData() })
 
 <style>
 .pg { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #fff; color: #242526; }
-.bd { flex: 1; width: 100%; min-height: 0; margin-bottom: -50rpx; box-sizing: border-box; }
+.bd { flex: 1; width: 100%; min-height: 0; box-sizing: border-box; }
 
 .hero { position: relative; overflow: hidden; padding-right: 38.17rpx; padding-left: 38.17rpx; background: #0d0e0f; color: #fff; }
 .hero-bg { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; }
