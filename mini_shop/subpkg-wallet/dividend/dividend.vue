@@ -54,7 +54,8 @@ const displayedPromotionAmount = computed(() => withdrawablePromotion.value + fr
 const totalPromotionText = computed(() => {
   if (!promotionSummary.value) return '--'
   const confirmedAmount = Number(promotionSummary.value.totalPromotion)
-  return Number.isFinite(confirmedAmount) ? formatMoney(confirmedAmount + frozenPromotionAmount.value) : '--'
+  // 契约口径：totalPromotion 已是"全部累计推广金（含冻结）"，前端不再叠加冻结金额，避免重复累加。
+  return Number.isFinite(confirmedAmount) ? formatMoney(confirmedAmount) : '--'
 })
 
 /** 已绑定用户数量，接口失败时保持真实空态。 */
@@ -284,9 +285,10 @@ function goBack(): void {
   uni.switchTab({ url: '/pages/mine/mine' })
 }
 
-/** 配置微信转发卡片，转发后仍回到推广收益页。 */
-onShareAppMessage(() => {
-  const path = buildPromotionSharePath('/pages/index/index')
+/** 主动「分享赚钱」按钮(button)带推广关系；胶囊分享(menu)不绑定。 */
+onShareAppMessage((options) => {
+  const base = '/pages/index/index'
+  const path = options.from === 'button' ? buildPromotionSharePath(base) : base
   return { title: '今华有肽，年轻常在', path, imageUrl: '/static/logo.png' }
 })
 
