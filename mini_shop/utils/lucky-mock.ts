@@ -1,63 +1,72 @@
-import type { LuckyConfigVO, LuckyDrawVO, LuckyRecord } from '@/types/lucky'
+import type { LuckyConfigVO, LuckyDrawVO, LuckyRecord, LuckyPrizeVO } from '@/types/lucky'
 
-/** 本地演示配置：后端就绪前用；活动开启、每人 3 次、6 格。 */
+/** 本地演示配置：后端就绪前用。6 格、每人每日 3 次、总 3 次。 */
 export const LUCKY_MOCK_CONFIG: LuckyConfigVO = {
-  id: 'mock',
-  enabled: 1,
+  activityId: 1,
+  name: '开业大抽奖',
+  description: '每人每日可抽 3 次，点击中心按钮开始；本页为演示版本，奖品以实际活动为准。',
   startTime: '2026-09-04 00:00:00',
   endTime: '2026-09-30 23:59:59',
-  dailyCount: 3,
-  remainCount: 3,
-  rule: '每人每日可抽 3 次，点击中心按钮开始；本页为演示版本，奖品以实际活动为准。',
+  dailyLimitPerUser: 3,
+  totalLimitPerUser: 3,
   prizes: [
-    { index: 0, name: '一等奖', type: 'REAL', weight: 1 },
-    { index: 1, name: '谢谢参与', type: 'NONE', weight: 40, isDefault: true },
-    { index: 2, name: '50积分', type: 'INTEGRAL', weight: 30 },
-    { index: 3, name: '谢谢参与', type: 'NONE', weight: 20, isDefault: true },
-    { index: 4, name: '10积分', type: 'INTEGRAL', weight: 25 },
-    { index: 5, name: '谢谢参与', type: 'NONE', weight: 10, isDefault: true },
+    { prizeId: 1, name: '一等奖-免单券', level: '一等奖' },
+    { prizeId: 2, name: '谢谢参与', level: '谢谢参与' },
+    { prizeId: 3, name: '50 积分', level: '二等奖' },
+    { prizeId: 4, name: '谢谢参与', level: '谢谢参与' },
+    { prizeId: 5, name: '10 积分', level: '三等奖' },
+    { prizeId: 6, name: '谢谢参与', level: '谢谢参与' },
   ],
 }
 
-/** 本地假抽奖：按权重返回命中格位（演示用，仅做动画）。 */
+/** 本地假抽奖：按 prizes 顺序随机返回一个命中（演示用，仅做动画停格在对应格位）。 */
 export function mockLuckyDraw(): LuckyDrawVO {
   const prizes = LUCKY_MOCK_CONFIG.prizes
-  const total = prizes.reduce((sum, prize) => sum + (prize.weight || 1), 0)
-  let rand = Math.random() * total
-  let hit = prizes[0]
-  for (const prize of prizes) {
-    rand -= prize.weight || 1
-    if (rand <= 0) { hit = prize; break }
-  }
+  const idx = Math.floor(Math.random() * prizes.length)
+  const hit = prizes[idx]
+  const won = !/谢谢参与/.test(hit.level || '') && !/谢谢参与/.test(hit.name || '')
   return {
-    prizeIndex: hit.index,
-    prizeName: hit.name,
-    prizeType: hit.type || 'NONE',
-    recordId: String(Date.now()),
+    won,
+    prizeId: won ? hit.prizeId : null,
+    prizeName: won ? hit.name : null,
+    level: won ? hit.level ?? null : null,
+    verifyCode: won ? generateVerifyCode() : null,
+    message: won ? '恭喜中奖！' : '很遗憾，未中奖，感谢参与',
   }
 }
 
-/** 本地演示中奖记录：含自提码/状态/活动名，用于页面展示（实物奖品体现自提码）。 */
+/** 生成 8 位大写字母数字核销码（演示与后端约定一致）。 */
+function generateVerifyCode(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+  let code = ''
+  for (let i = 0; i < 8; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)]
+  }
+  return code
+}
+
+/** 本地演示中奖记录：含核销码/状态/活动名。 */
 export const LUCKY_MOCK_RECORDS: LuckyRecord[] = [
   {
-    id: 'mock-1',
-    prizeName: '一等奖',
-    prizeIndex: 0,
-    prizeType: 'REAL',
+    id: 1,
+    activityId: 1,
+    activityName: '开业大抽奖',
+    won: true,
+    prizeName: '一等奖-免单券',
+    level: '一等奖',
     status: 'WON',
-    statusDesc: '待自提',
-    activityName: '大转盘活动',
     verifyCode: 'A1B2C3D4',
     createTime: '2026-09-04 12:30:00',
   },
   {
-    id: 'mock-2',
-    prizeName: '10积分',
-    prizeIndex: 4,
-    prizeType: 'INTEGRAL',
+    id: 2,
+    activityId: 1,
+    activityName: '开业大抽奖',
+    won: true,
+    prizeName: '10 积分',
+    level: '三等奖',
     status: 'VERIFIED',
-    statusDesc: '已核销',
-    activityName: '大转盘活动',
+    verifyCode: 'X9Y8Z7W6',
     createTime: '2026-09-04 11:00:00',
   },
 ]
