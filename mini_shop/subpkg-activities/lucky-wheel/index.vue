@@ -55,7 +55,6 @@ import { onLoad } from '@dcloudio/uni-app'
 import LuckyWheel from '@/components/lucky-canvas/lucky-wheel.vue'
 import LoginGuide from '@/components/LoginGuide.vue'
 import { getLuckyConfig, drawLucky, getLuckyRecords } from '@/api/lucky'
-import { LUCKY_MOCK_CONFIG, LUCKY_MOCK_RECORDS, mockLuckyDraw } from '@/utils/lucky-mock'
 import { isLoggedIn } from '@/utils/auth'
 import type { LuckyConfigVO, LuckyRecord, LuckyPrizeVO } from '@/types/lucky'
 
@@ -66,7 +65,6 @@ const prizes = ref<LuckyPrizeVO[]>([])
 const records = ref<LuckyRecord[]>([])
 const loginVisible = ref(false)
 const drawing = ref(false)
-const useMock = true
 
 const activable = computed(() => !!config.value)
 
@@ -76,18 +74,15 @@ function goBack(): void {
 
 async function loadConfig(): Promise<void> {
   try {
-    config.value = useMock ? LUCKY_MOCK_CONFIG : await getLuckyConfig()
+    config.value = await getLuckyConfig()
   } catch {
-    config.value = LUCKY_MOCK_CONFIG
+    // 拉取失败：置空，页面显示"无进行中活动"，不回退到本地 mock（避免展示假活动）。
+    config.value = null
   }
   prizes.value = config.value?.prizes || []
 }
 
 async function loadRecords(): Promise<void> {
-  if (useMock) {
-    records.value = [...LUCKY_MOCK_RECORDS]
-    return
-  }
   try {
     const page = await getLuckyRecords(1, 20)
     records.value = page.list || []
@@ -118,12 +113,6 @@ function onStart(): void {
     setTimeout(() => wheelRef.value?.stop?.(index), 40)
   }
 
-  if (useMock) {
-    const result = mockLuckyDraw()
-    const idx = result.won ? prizeIndex(result.prizeId!) : prizeIndexForThanks()
-    startRotate(idx)
-    return
-  }
   drawLucky()
     .then((result) => {
       const idx = result.won ? prizeIndex(result.prizeId!) : prizeIndexForThanks()
