@@ -132,7 +132,16 @@ async function submit(): Promise<void> {
     endTime: form.endTime,
     dailyLimitPerUser: form.dailyLimitPerUser ?? null,
     totalLimitPerUser: form.totalLimitPerUser ?? null,
-    prizes: prizes.value.map((p, index) => ({ ...p, sortOrder: p.sortOrder ?? index })),
+    // 编辑时回传各自 prizeId（后端按 prizeId 匹配复用，避免重复创建）；新奖品留空；剔除 remainingStock。
+    prizes: prizes.value.map((p, index) => ({
+      ...(p.prizeId ? { prizeId: p.prizeId } : {}),
+      name: p.name,
+      image: p.image || null,
+      level: p.level ?? null,
+      weight: p.weight,
+      stock: p.stock,
+      sortOrder: p.sortOrder ?? index,
+    })),
   }
   saving.value = true
   try {
