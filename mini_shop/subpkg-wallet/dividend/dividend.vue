@@ -54,8 +54,8 @@ const displayedPromotionAmount = computed(() => withdrawablePromotion.value + fr
 const totalPromotionText = computed(() => {
   if (!promotionSummary.value) return '--'
   const confirmedAmount = Number(promotionSummary.value.totalPromotion)
-  // 契约口径：totalPromotion 已是"全部累计推广金（含冻结）"，前端不再叠加冻结金额，避免重复累加。
-  return Number.isFinite(confirmedAmount) ? formatMoney(confirmedAmount) : '--'
+  // 展示累计推广：后端全量累计 + 近 7 天冻结（冻结期内的推广金，为体验而展示）。
+  return Number.isFinite(confirmedAmount) ? formatMoney(confirmedAmount + frozenPromotionAmount.value) : '--'
 })
 
 /** 已绑定用户数量，接口失败时保持真实空态。 */
