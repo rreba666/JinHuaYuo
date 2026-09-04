@@ -565,9 +565,10 @@ onShow(() => { void refreshData() })
         </view>
       </view>
 
-      <PageWatermark />
-
     </scroll-view>
+
+    <!-- 页面水印：固定在滚动区底部，安卓机型无需上滑也能完整显示 -->
+    <PageWatermark />
 
     <view v-show="announcementVisible" class="announcement-mask" @click="closeAnnouncement">
       <view class="announcement-dialog" @click.stop>

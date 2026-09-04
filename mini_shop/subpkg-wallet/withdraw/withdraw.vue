@@ -20,7 +20,7 @@ const menuHeight = ref(32)
 const user = ref<UserProfile | null>(null)
 const wallet = ref<WalletInfo | null>(null)
 const loading = ref(false)
-const currentTab = ref<'withdraw' | 'transfer'>('transfer')
+const currentTab = ref<'withdraw' | 'transfer'>('withdraw')
 /** 提现方式入口，默认保留原有零钱提现流程，银行卡作为新增选项。 */
 const withdrawOption = ref<'BALANCE' | 'BANK_CARD'>('BALANCE')
 const withdrawAmount = ref('')
@@ -635,7 +635,6 @@ onUnload(() => {
 
         <view class="tab-row">
           <view class="tab-item" :class="{ active: currentTab === 'withdraw' }" @click="currentTab = 'withdraw'">提现</view>
-          <view class="tab-item" :class="{ active: currentTab === 'transfer' }" @click="currentTab = 'transfer'">转赠他人</view>
         </view>
 
         <view v-show="currentTab === 'withdraw'" class="panel-card">
@@ -677,7 +676,7 @@ onUnload(() => {
           </template>
         </view>
 
-        <view v-show="currentTab === 'transfer'" class="panel-card">
+        <view v-if="false" class="panel-card">
           <text class="panel-title">转账账号</text>
           <view class="search-row">
             <input v-model="transferUserId" class="panel-input search-input" maxlength="19" type="number" placeholder="请输入接收人账号或ID" />
