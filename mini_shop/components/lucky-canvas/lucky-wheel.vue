@@ -1,12 +1,13 @@
 <template>
-  <view class="lucky-wheel-box" :style="{ width: boxWidth + 'px', height: boxHeight + 'px' }">
+  <view class="lucky-wheel-box" :style="{ width: size + 'px', height: size + 'px' }">
     <canvas
       type="2d"
       id="lucky-wheel-canvas"
       canvas-id="lucky-wheel-canvas"
-      :style="{ width: boxWidth + 'px', height: boxHeight + 'px' }"
+      class="lucky-wheel-canvas"
+      :style="{ width: size + 'px', height: size + 'px' }"
     />
-    <!-- 中心抽奖按钮：点击触发抽奖（由父页面决定开始/停止），始终叠加在 canvas 上层 -->
+    <!-- 中心抽奖按钮：叠加在 canvas 上层，点击开始抽奖 -->
     <view class="lucky-wheel-btn" @click="handleBtnClick" :style="{ width: btnSize + 'px', height: btnSize + 'px' }">
       <text class="lucky-wheel-btn-text">抽奖</text>
     </view>
@@ -14,124 +15,186 @@
 </template>
 
 <script setup lang="ts">
-import { computed, getCurrentInstance, onMounted, ref, watch } from 'vue'
+import { getCurrentInstance, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { LuckyPrizeVO } from '@/types/lucky'
-// lucky-canvas 核心引擎（ESM，导出 LuckyWheel）。微信小程序通过 flag='MP-WX' 分支适配 canvas。
-import { LuckyWheel } from './lucky-canvas.js'
 
 const props = withDefaults(defineProps<{
-  /** 奖品格列表（驱动格子渲染与图/文字）。 */
+  /** 奖品格列表（驱动扇区渲染）。 */
   prizes?: LuckyPrizeVO[]
-  /** 中心按钮半径（px，相对转盘默认 34）。 */
+  /** 圆盘直径（px），默认 300。 */
+  size?: number
+  /** 中心按钮半径（px），默认 34。 */
   btnRadius?: number
 }>(), {
   prizes: () => [],
+  size: 300,
   btnRadius: 34,
 })
 
 const emit = defineEmits<{ (e: 'start'): void; (e: 'end', index: number): void }>()
 
 const instance = getCurrentInstance()
-const boxWidth = ref(300)
-const boxHeight = ref(300)
+const size = ref(props.size)
 const btnSize = ref((props.btnRadius || 34) * 2)
-let myLucky: any = null
 
-// 把奖品转成 luck 格式：有图用图，无图用文字 + 默认背景/文字色。
-const prizesConfig = computed(() =>
-  props.prizes.map((prize) => ({
-    name: prize.name,
-    range: 0,
-    ...(prize.image ? { imgs: [{ src: prize.image, width: '40%' }] } : {}),
-  })),
-)
+let canvasNode: any = null
+let ctx: any = null
+let dpr = 1
+let timer: ReturnType<typeof setTimeout> | null = null
 
-/** 初始化 canvas 并创建 LuckyWheel 实例（微信 2d canvas）。 */
+/** 当前转动角度（度）。 */
+let angle = 0
+let animating = false
+/** 格子背景色盘。 */
+const PALETTE = ['#ffd7d7', '#fff0c9', '#d7f5e0', '#dbe7ff', '#f7e0ff', '#ffe6c9']
+
 function initCanvas(): void {
   uni.createSelectorQuery().in(instance?.proxy).select('#lucky-wheel-canvas')
     .fields({ node: true, size: true })
     .exec((res) => {
       const info = res?.[0]
       if (!info || !info.node) return
-      const canvas = info.node
-      const width = info.width
-      const height = info.height
-      const dpr = uni.getSystemInfoSync().pixelRatio
-      canvas.width = width * dpr
-      canvas.height = height * dpr
-      const ctx = canvas.getContext('2d')
+      canvasNode = info.node
+      const w = info.width || props.size
+      const h = info.height || props.size
+      canvasNode.width = w * dpr
+      canvasNode.height = h * dpr
+      ctx = canvasNode.getContext('2d')
       ctx.scale(dpr, dpr)
-      boxWidth.value = width
-      boxHeight.value = height
+      size.value = w
       btnSize.value = (props.btnRadius || 34) * 2
-
-      const Radius = Math.min(width, height) / 2
-      myLucky = new LuckyWheel({
-        flag: 'MP-WX',
-        ctx,
-        dpr,
-        setTimeout,
-        clearTimeout,
-        setInterval,
-        clearInterval,
-        // 以画布中心为原点绘制
-        beforeCreate: () => ctx.translate(Radius, Radius),
-        beforeResize: () => ctx.translate(-Radius, -Radius),
-        afterInit: () => undefined,
-        afterStart: () => emit('start'),
-      }, {
-        width: '100%',
-        height: '100%',
-        prizes: prizesConfig.value,
-        buttons: [{ radius: `${props.btnRadius}px`, background: '#e5322d' }],
-        defaultConfig: {
-          responsive: false,
-          gutter: 0,
-          speed: 20,
-          accelerationTime: 2500,
-          decelerationTime: 2500,
-        },
-        defaultStyle: {
-          fontColor: '#333',
-          fontSize: '15px',
-          background: '#fff3e8',
-        },
-        start: () => emit('start'),
-        end: (index: number) => emit('end', index),
-      })
+      draw()
     })
 }
 
-/** 点中心抽奖按钮：发 start 事件，由父页面决定后续开始/停止。 */
+/** 在画布上按当前角度绘制圆盘（分扇区 + 奖品文字，指针固定在顶部）。 */
+function draw(): void {
+  if (!ctx || !canvasNode) return
+  const center = size.value / 2
+  const radius = center
+  ctx.clearRect(0, 0, size.value, size.value)
+  ctx.save()
+  ctx.translate(center, center)
+  ctx.rotate((angle * Math.PI) / 180)
+
+  const prizes = props.prizes
+  const count = prizes.length || 1
+  const sector = (Math.PI * 2) / count
+
+  prizes.forEach((prize, i) => {
+    const startAngle = i * sector
+    const endAngle = startAngle + sector
+    // 每格背景
+    ctx.beginPath()
+    ctx.moveTo(0, 0)
+    ctx.arc(0, 0, radius, startAngle, endAngle)
+    ctx.closePath()
+    ctx.fillStyle = PALETTE[i % PALETTE.length]
+    ctx.fill()
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 2
+    ctx.stroke()
+
+    // 奖品文字（沿扇区外侧径向布置）
+    ctx.save()
+    ctx.rotate(startAngle + sector / 2)
+    ctx.textAlign = 'right'
+    ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#5a4a42'
+    ctx.font = 'bold 15px sans-serif'
+    const text = prize.name || ''
+    ctx.fillText(text, radius - 16, 0)
+    ctx.restore()
+  })
+
+  // 画外圈描边
+  ctx.beginPath()
+  ctx.arc(0, 0, radius - 1, 0, Math.PI * 2)
+  ctx.lineWidth = 4
+  ctx.strokeStyle = '#e5322d'
+  ctx.stroke()
+
+  // 顶部指针（固定指向 0 点）
+  ctx.beginPath()
+  ctx.moveTo(0, -radius)
+  ctx.lineTo(-9, -radius + 20)
+  ctx.lineTo(9, -radius + 20)
+  ctx.closePath()
+  ctx.fillStyle = '#e5322d'
+  ctx.fill()
+
+  ctx.restore()
+}
+
+/** 在 x 度基础上加速 rotate，落到 y 度。 */
+function easeOutQuad(t: number): number {
+  return 1 - (1 - t) * (1 - t)
+}
+
+/** 转到目标角度（用 easeOutQuad 缓动）。 */
+function rotateTo(index: number, duration: number): void {
+  const prizes = props.prizes
+  const count = prizes.length || 1
+  const sector = 360 / count
+  // 目标角度：用 4 圈以上余量，让 index 格的中心对齐顶部指针。
+  const base = 360 * 4 + (360 - index * sector - sector / 2)
+  const start = angle
+  const delta = ((base - (start % 360) + 360) % 360) + 360
+  const end = start + delta
+  const startTime = Date.now()
+
+  const step = (): void => {
+    const t = Math.min(1, (Date.now() - startTime) / duration)
+    angle = start + delta * easeOutQuad(t)
+    draw()
+    if (t < 1) {
+      timer = setTimeout(step, 16)
+    } else {
+      angle = end
+      draw()
+      animating = false
+      emit('end', index)
+    }
+  }
+  timer = setTimeout(step, 16)
+}
+
+/** 开始转动（先转到一个随机格，转入动画）。 */
+function play(): void {
+  if (animating) return
+  animating = true
+  const idx = Math.floor(Math.random() * (props.prizes.length || 1))
+  rotateTo(idx, 2500)
+}
+
+/** 停止到指定格：若正在转动则重定向到该格并减速停下。 */
+function stop(index: number): void {
+  if (timer) { clearTimeout(timer); timer = null }
+  animating = true
+  rotateTo(index, 1200)
+}
+
 function handleBtnClick(): void {
   emit('start')
 }
 
-/** 开始旋转（转盘进入加速/匀速阶段，等待外部 stop）。 */
-function play(): void {
-  myLucky?.play?.()
-}
-
-/** 停止到指定格（index：第几格，0 起）。调用前需先 play，后再按接口结果 stop(index)。 */
-function stop(index: number): void {
-  myLucky?.stop?.(index)
-}
-
-watch(prizesConfig, () => {
-  if (myLucky) myLucky.prizes = prizesConfig.value
-}, { deep: true })
+watch(() => props.prizes, () => draw(), { deep: true })
 
 onMounted(() => {
-  // 等页面渲染完成再获取 canvas
+  dpr = uni.getSystemInfoSync().pixelRatio || 2
   setTimeout(() => initCanvas(), 60)
+})
+
+onUnmounted(() => {
+  if (timer) { clearTimeout(timer); timer = null }
 })
 
 defineExpose({ play, stop })
 </script>
 
 <style scoped>
-.lucky-wheel-box { position: relative; margin: 0 auto; overflow: hidden; }
-.lucky-wheel-box canvas { position: absolute; left: 0; top: 0; pointer-events: none; }
+.lucky-wheel-box { position: relative; margin: 0 auto; }
+.lucky-wheel-canvas { position: absolute; left: 0; top: 0; }
 .lucky-wheel-btn {
   position: absolute;
   left: 50%;
@@ -142,7 +205,7 @@ defineExpose({ play, stop })
   justify-content: center;
   border-radius: 50%;
   background: #e5322d;
-  cursor: pointer;
+  box-shadow: 0 4rpx 12rpx rgba(229, 50, 45, .4);
   z-index: 1;
 }
 .lucky-wheel-btn-text { color: #fff; font-size: 26rpx; font-weight: 600; }

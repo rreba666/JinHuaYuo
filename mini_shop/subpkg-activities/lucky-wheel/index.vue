@@ -13,6 +13,7 @@
       <LuckyWheel
         ref="wheelRef"
         class="lucky-wheel"
+        :size="wheelSize"
         :prizes="prizes"
         @start="onStart"
         @end="onEnd"
@@ -54,6 +55,8 @@ import { isLoggedIn } from '@/utils/auth'
 import type { LuckyConfigVO, LuckyRecord, LuckyPrizeVO } from '@/types/lucky'
 
 const wheelRef = ref<InstanceType<typeof LuckyWheel> | null>(null)
+/** 转盘边长（px）：按屏宽计算，两侧留 16px 边距。 */
+const wheelSize = Math.min(Math.floor((uni.getSystemInfoSync().windowWidth || 375) - 32), 320)
 const config = ref<LuckyConfigVO>(LUCKY_MOCK_CONFIG)
 const prizes = ref<LuckyPrizeVO[]>([])
 const remainCount = ref(0)
@@ -95,21 +98,8 @@ async function loadRecords(): Promise<void> {
   }
 }
 
+/** 点中心抽奖按钮（组件 emit @start）：校验登录/可抽，先 play 再按结果 stop。 */
 function onStart(): void {
-  // 转盘开始抽奖
-}
-
-/** 转盘停止到指定格后回调。 */
-function onEnd(index: number): void {
-  drawing.value = false
-  const hit = prizes.value.find((p) => p.index === index)
-  uni.showToast({ title: `中奖：${hit?.name || '谢谢参与'}`, icon: 'none' })
-  remainCount.value = Math.max(0, remainCount.value - 1)
-  void loadRecords()
-}
-
-/** 点中心按钮：校验登录/可抽，先 play 再按结果 stop。 */
-function handleDraw(): void {
   if (drawing.value) return
   if (!isLoggedIn()) {
     loginVisible.value = true
@@ -140,6 +130,15 @@ function handleDraw(): void {
     })
 }
 
+/** 转盘停止到指定格后回调。 */
+function onEnd(index: number): void {
+  drawing.value = false
+  const hit = prizes.value.find((p) => p.index === index)
+  uni.showToast({ title: `中奖：${hit?.name || '谢谢参与'}`, icon: 'none' })
+  remainCount.value = Math.max(0, remainCount.value - 1)
+  void loadRecords()
+}
+
 onLoad(() => {
   void loadConfig()
   void loadRecords()
@@ -154,7 +153,7 @@ onLoad(() => {
 .nav-space { width: 60rpx; }
 .lucky-body { display: flex; flex-direction: column; align-items: center; padding: 40rpx 32rpx; }
 .lucky-tip { margin-bottom: 24rpx; color: #c97b6a; font-size: 26rpx; }
-.lucky-wheel { width: 600rpx; height: 600rpx; margin-top: 20rpx; }
+.lucky-wheel { margin-top: 20rpx; }
 .remain { margin-top: 32rpx; color: #8a5a4a; font-size: 28rpx; }
 .rule-card { width: 100%; margin-top: 40rpx; padding: 28rpx 32rpx; border-radius: 16rpx; background: #fff; box-sizing: border-box; }
 .rule-title { display: block; margin-bottom: 12rpx; color: #a54f3c; font-size: 28rpx; font-weight: 600; }
