@@ -150,6 +150,19 @@
       ]
     },
     {
+      "root": "subpkg-activities",
+      "name": "activities",
+      "pages": [
+        {
+          "path": "lucky-wheel/index",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTitleText": "大转盘"
+          }
+        }
+      ]
+    },
+    {
       "root": "subpkg-wallet",
       "name": "wallet",
       "pages": [

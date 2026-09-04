@@ -68,6 +68,7 @@ const menuItems = [
   { key: 'favorite', label: '我的收藏', icon: '/static/my/收藏_slices/收藏.png' },
   { key: 'materials', label: '商品素材', icon: '/static/my/商品素材_slices/商品素材.png' },
   { key: 'health-survey', label: '健康自查问卷', icon: '/static/my/隐私_slices/隐私.png' },
+  { key: 'lucky', label: '大转盘', icon: '/static/my/推广金_slices/推广金.png' },
   { key: 'about', label: '关于我们', icon: '/static/my/关于我们_slices/关于我们.png' },
 ]
 
@@ -229,6 +230,7 @@ function goMenu(key: string): void {
   if (key === 'settings') { uni.navigateTo({ url: '/pages/settings/settings' }); return }
   if (key === 'materials') { uni.navigateTo({ url: '/pages/materials/materials' }); return }
   if (key === 'health-survey') { uni.navigateTo({ url: '/pages/health-survey/health-survey' }); return }
+  if (key === 'lucky') { uni.navigateTo({ url: '/subpkg-activities/lucky-wheel/index' }); return }
   if (key === 'about') { uni.navigateTo({ url: '/pages/about/about' }); return }
   if (key === 'favorite') { uni.navigateTo({ url: '/subpkg-wallet/favorite/list' }); return }
   if (key === 'promotion') { goPromotionCenter(); return }
