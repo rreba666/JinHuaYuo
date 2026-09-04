@@ -111,6 +111,7 @@ onMounted(() => {
           <el-menu-item index="/homepage"><el-icon><DataBoard /></el-icon><template #title>首屏与品牌</template></el-menu-item>
           <el-menu-item index="/homepage/bottom-recommendation"><el-icon><Promotion /></el-icon><template #title>底部推荐</template></el-menu-item>
           <el-menu-item index="/announcement"><el-icon><Bell /></el-icon><template #title>公告栏</template></el-menu-item>
+          <el-menu-item index="/lucky"><el-icon><Tickets /></el-icon><template #title>大转盘活动</template></el-menu-item>
         </el-sub-menu>
         <el-menu-item v-if="isService" index="/users">
           <el-icon><User /></el-icon>

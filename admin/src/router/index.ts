@@ -114,6 +114,12 @@ const router = createRouter({
           meta: { title: '公告栏', roles: SUPER_AND_ADMIN, requiresAuth: true },
         },
         {
+          path: 'lucky',
+          name: 'Lucky',
+          component: () => import('@/views/lucky/index.vue'),
+          meta: { title: '大转盘活动', roles: SUPER_AND_ADMIN, requiresAuth: true },
+        },
+        {
           path: 'invoices',
           name: 'Invoices',
           component: () => import('@/views/invoices/index.vue'),
