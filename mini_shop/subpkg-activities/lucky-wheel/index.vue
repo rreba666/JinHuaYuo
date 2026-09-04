@@ -32,8 +32,15 @@
       <text class="record-title">我的中奖记录</text>
       <view v-if="records.length" class="record-list">
         <view v-for="record in records" :key="record.id" class="record-item">
-          <text class="record-prize">{{ record.prizeName }}</text>
-          <text class="record-time">{{ record.createTime }}</text>
+          <view class="record-main">
+            <text class="record-prize">{{ record.prizeName }}</text>
+            <text v-if="record.activityName" class="record-sub">活动：{{ record.activityName }}</text>
+            <text v-if="record.verifyCode" class="record-code">自提码：{{ record.verifyCode }}</text>
+          </view>
+          <view class="record-right">
+            <text class="record-status" :class="{ 'record-status-ok': record.status === 'VERIFIED' }">{{ record.statusDesc || (record.status === 'VERIFIED' ? '已核销' : '待自提') }}</text>
+            <text class="record-time">{{ record.createTime }}</text>
+          </view>
         </view>
       </view>
       <view v-else class="record-empty">暂无中奖记录</view>
@@ -50,7 +57,7 @@ import { onLoad } from '@dcloudio/uni-app'
 import LuckyWheel from '@/components/lucky-canvas/lucky-wheel.vue'
 import LoginGuide from '@/components/LoginGuide.vue'
 import { getLuckyConfig, drawLucky, getLuckyRecords } from '@/api/lucky'
-import { LUCKY_MOCK_CONFIG, mockLuckyDraw } from '@/utils/lucky-mock'
+import { LUCKY_MOCK_CONFIG, LUCKY_MOCK_RECORDS, mockLuckyDraw } from '@/utils/lucky-mock'
 import { isLoggedIn } from '@/utils/auth'
 import type { LuckyConfigVO, LuckyRecord, LuckyPrizeVO } from '@/types/lucky'
 
@@ -89,7 +96,10 @@ async function loadConfig(): Promise<void> {
 
 /** 加载我的中奖记录。 */
 async function loadRecords(): Promise<void> {
-  if (useMock) return
+  if (useMock) {
+    records.value = [...LUCKY_MOCK_RECORDS]
+    return
+  }
   try {
     const page = await getLuckyRecords(1, 20)
     records.value = page.list || []
@@ -160,8 +170,14 @@ onLoad(() => {
 .rule-text { color: #6b5a52; font-size: 26rpx; line-height: 40rpx; white-space: pre-wrap; }
 .record-section { padding: 32rpx; }
 .record-title { display: block; margin-bottom: 20rpx; color: #a54f3c; font-size: 28rpx; font-weight: 600; }
-.record-item { display: flex; align-items: center; justify-content: space-between; padding: 24rpx 0; border-bottom: 1rpx solid #f0e0da; }
-.record-prize { color: #333; font-size: 28rpx; }
-.record-time { color: #9a8a82; font-size: 24rpx; }
+.record-item { display: flex; align-items: flex-start; justify-content: space-between; padding: 24rpx 0; border-bottom: 1rpx solid #f0e0da; }
+.record-main { display: flex; flex: 1; min-width: 0; flex-direction: column; }
+.record-prize { color: #333; font-size: 28rpx; font-weight: 500; }
+.record-sub { margin-top: 8rpx; color: #9a8a82; font-size: 24rpx; }
+.record-code { margin-top: 6rpx; color: #a54f3c; font-size: 24rpx; font-weight: 500; }
+.record-right { display: flex; flex-direction: column; align-items: flex-end; margin-left: 16rpx; }
+.record-status { color: #c97b6a; font-size: 24rpx; }
+.record-status-ok { color: #5a9a6a; }
+.record-time { margin-top: 8rpx; color: #9a8a82; font-size: 24rpx; }
 .record-empty { padding: 40rpx 0; color: #9a8a82; font-size: 26rpx; text-align: center; }
 </style>

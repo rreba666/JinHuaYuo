@@ -1,4 +1,4 @@
-import type { LuckyConfigVO, LuckyDrawVO } from '@/types/lucky'
+import type { LuckyConfigVO, LuckyDrawVO, LuckyRecord } from '@/types/lucky'
 
 /** 本地演示配置：后端就绪前用；活动开启、每人 3 次、6 格。 */
 export const LUCKY_MOCK_CONFIG: LuckyConfigVO = {
@@ -36,3 +36,28 @@ export function mockLuckyDraw(): LuckyDrawVO {
     recordId: String(Date.now()),
   }
 }
+
+/** 本地演示中奖记录：含自提码/状态/活动名，用于页面展示（实物奖品体现自提码）。 */
+export const LUCKY_MOCK_RECORDS: LuckyRecord[] = [
+  {
+    id: 'mock-1',
+    prizeName: '一等奖',
+    prizeIndex: 0,
+    prizeType: 'REAL',
+    status: 'WON',
+    statusDesc: '待自提',
+    activityName: '大转盘活动',
+    verifyCode: 'A1B2C3D4',
+    createTime: '2026-09-04 12:30:00',
+  },
+  {
+    id: 'mock-2',
+    prizeName: '10积分',
+    prizeIndex: 4,
+    prizeType: 'INTEGRAL',
+    status: 'VERIFIED',
+    statusDesc: '已核销',
+    activityName: '大转盘活动',
+    createTime: '2026-09-04 11:00:00',
+  },
+]

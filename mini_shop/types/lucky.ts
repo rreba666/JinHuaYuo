@@ -59,8 +59,14 @@ export interface LuckyRecord {
   prizeIndex: number
   /** 奖品类型。 */
   prizeType: LuckyPrizeType
-  /** 状态：UNCLAIMED=待领取 CLAIMED=已领取 SHIPPED=已发奖 EXPIRE=已过期。 */
-  status: string
+  /** 状态：WON=已中奖待自提 VERIFIED=已自提核销（实物奖品才生成自提码）。 */
+  status: 'WON' | 'VERIFIED'
+  /** 状态中文文案（后端返回，前端展示用）。 */
+  statusDesc?: string
+  /** 活动名称。 */
+  activityName?: string
+  /** 自提码（实物奖品中奖后生成，用户到店出示）。 */
+  verifyCode?: string
   /** 时间 yyyy-MM-dd HH:mm:ss。 */
   createTime: string
 }
