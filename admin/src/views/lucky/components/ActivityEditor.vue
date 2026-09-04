@@ -170,7 +170,7 @@ onMounted(() => { void loadDetail() })
   <el-dialog
     v-model="open"
     :title="props.activityId ? '编辑活动' : '新增活动'"
-    width="860px"
+    width="960px"
     append-to-body
     :close-on-click-modal="false"
     @close="open = false; emit('cancel')"
