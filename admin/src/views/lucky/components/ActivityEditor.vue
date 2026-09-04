@@ -178,10 +178,11 @@ onMounted(() => { void loadDetail() })
     <el-form ref="formRef" v-loading="loading" :model="form" :rules="rules" label-width="90px" label-position="top">
       <el-divider content-position="left">活动基础信息</el-divider>
       <el-form-item label="活动名称" prop="name">
-        <el-input v-model="form.name" maxlength="64" show-word-limit placeholder="请输入活动名称" />
+        <el-input v-model="form.name" maxlength="64" show-word-limit placeholder="请输入活动名称，如：开业大抽奖" />
       </el-form-item>
       <el-form-item label="活动描述">
-        <el-input v-model="form.description" type="textarea" :rows="2" maxlength="255" show-word-limit placeholder="请输入活动描述（选填）" />
+        <el-input v-model="form.description" type="textarea" :rows="2" maxlength="255" show-word-limit placeholder="请输入活动说明，选填" />
+        <div class="field-hint">描述会展示在小程序活动页，说明活动玩法</div>
       </el-form-item>
       <el-form-item label="启用状态" prop="status">
         <el-radio-group v-model="form.status">
@@ -193,23 +194,37 @@ onMounted(() => { void loadDetail() })
         <el-date-picker v-model="form.startTime" type="datetime" placeholder="开始时间" value-format="YYYY-MM-DD HH:mm:ss" style="width: 220px" />
         <span class="sep">至</span>
         <el-date-picker v-model="form.endTime" type="datetime" placeholder="结束时间" value-format="YYYY-MM-DD HH:mm:ss" style="width: 220px" />
+        <div class="field-hint">仅在此时间段内可参与抽奖</div>
       </el-form-item>
       <el-form-item label="抽奖次数">
         <el-input-number v-model="form.dailyLimitPerUser" :min="0" :max="9999" placeholder="每日" controls-position="right" :value-on-clear="null" />
         <span class="sep">每日 / </span>
         <el-input-number v-model="form.totalLimitPerUser" :min="0" :max="999999" placeholder="总次数" controls-position="right" :value-on-clear="null" />
         <span class="form-tip">留空=不限</span>
+        <div class="field-hint">每人每日可抽次数 / 活动期内总次数</div>
       </el-form-item>
 
-      <el-divider content-position="left">奖品配置</el-divider>
+      <el-divider content-position="left">奖品配置<span class="divider-tip">至少一个奖品；建议一个「谢谢参与」格，权重最高，降低中奖难度</span></el-divider>
       <div v-for="(prize, index) in prizes" :key="index" class="prize-row">
         <div class="prize-head"><span class="prize-index">奖品 {{ index + 1 }}</span><el-button class="row-remove" link type="danger" :icon="Delete" @click="removePrize(index)">删除</el-button></div>
         <div class="prize-grid">
-          <el-form-item label="名称"><el-input v-model="prize.name" maxlength="64" placeholder="奖品名称" /></el-form-item>
-          <el-form-item label="奖项等级"><el-input v-model="prize.level" maxlength="32" placeholder="如：一等奖/谢谢参与" /></el-form-item>
-          <el-form-item label="权重"><el-input-number v-model="prize.weight" :min="0" controls-position="right" /></el-form-item>
-          <el-form-item label="库存"><el-input-number v-model="prize.stock" :min="0" controls-position="right" /></el-form-item>
-          <el-form-item label="排序"><el-input-number v-model="prize.sortOrder" :min="0" controls-position="right" /></el-form-item>
+          <el-form-item label="名称"><el-input v-model="prize.name" maxlength="64" placeholder="奖品名称，如：一等奖-免单券" /></el-form-item>
+          <el-form-item label="奖项等级">
+            <el-input v-model="prize.level" maxlength="32" placeholder="如：一等奖/二等奖" />
+            <div class="field-hint">填「谢谢参与」则表示未中奖格</div>
+          </el-form-item>
+          <el-form-item label="权重">
+            <el-input-number v-model="prize.weight" :min="0" controls-position="right" />
+            <div class="field-hint">数值越大越容易抽中</div>
+          </el-form-item>
+          <el-form-item label="库存">
+            <el-input-number v-model="prize.stock" :min="0" controls-position="right" />
+            <div class="field-hint">该奖品可被抽中的总数量</div>
+          </el-form-item>
+          <el-form-item label="排序">
+            <el-input-number v-model="prize.sortOrder" :min="0" controls-position="right" />
+            <div class="field-hint">越小越靠前</div>
+          </el-form-item>
           <el-form-item label="奖品图片">
             <ImageGridUpload
               :model-value="prize.image ? [prize.image] : []"
@@ -218,17 +233,19 @@ onMounted(() => { void loadDetail() })
               @upload="onUpload($event, index)"
               @remove="removeRiggedImage('image', index)"
             />
+            <div class="field-hint">建议正方形图片</div>
           </el-form-item>
         </div>
       </div>
       <el-button :icon="Plus" @click="addPrize">添加奖品</el-button>
 
-      <el-divider content-position="left">内定名单<span class="divider-tip">指定用户必中某奖品（命中一次后失效）</span></el-divider>
+      <el-divider content-position="left">内定名单<span class="divider-tip">指定某用户必中某奖品；命中一次后失效，之后恢复普通概率</span></el-divider>
       <div v-for="(item, index) in rigged" :key="index" class="rigged-row">
         <el-input v-model="item.userId" type="number" placeholder="内定用户ID" />
         <el-input v-model="item.prizeId" type="number" placeholder="内定奖品ID" />
         <el-button link type="danger" :icon="Delete" @click="removeRigged(index)">删除</el-button>
       </div>
+      <div class="rigged-hint">用户ID 填小程序用户ID；奖品ID 填上方奖品列表中的某个奖品 ID（编辑活动时可在奖品配置看到）。留空=不启用内定。</div>
       <el-button :icon="Plus" @click="addRigged">添加内定</el-button>
     </el-form>
 
@@ -247,7 +264,10 @@ onMounted(() => { void loadDetail() })
 .prize-index { font-weight: 600; font-size: 14px; }
 .row-remove { padding: 0; }
 .prize-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 0 16px; }
+.prize-grid :deep(.el-form-item) { margin-bottom: 14px; }
 .rigged-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .rigged-row .el-input { width: 200px; }
 .divider-tip { margin-left: 12px; color: var(--el-text-color-secondary); font-size: 12px; font-weight: 400; }
+.field-hint { margin-top: 4px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.4; }
+.rigged-hint { margin: 4px 0 12px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.6; }
 </style>
