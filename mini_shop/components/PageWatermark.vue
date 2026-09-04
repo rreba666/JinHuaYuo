@@ -11,15 +11,15 @@
   align-items: center;
   justify-content: center;
   width: 100%;
-  min-height: 76rpx;
-  padding: 18rpx 24rpx calc(26rpx + env(safe-area-inset-bottom));
+  min-height: 44rpx;
+  padding: 8rpx 24rpx calc(14rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
   pointer-events: none;
 }
 
 .page-watermark-text {
   color: rgba(118, 118, 118, .42);
-  font-size: 22rpx;
+  font-size: 20rpx;
   line-height: 1.4;
   letter-spacing: 1rpx;
   white-space: nowrap;

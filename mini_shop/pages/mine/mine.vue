@@ -565,10 +565,10 @@ onShow(() => { void refreshData() })
         </view>
       </view>
 
-    </scroll-view>
+      <!-- 页面水印：作为滚动内容末尾随内容滚动，不占固定空间、不遮挡内容 -->
+      <PageWatermark />
 
-    <!-- 页面水印：固定在滚动区底部，安卓机型无需上滑也能完整显示 -->
-    <PageWatermark />
+    </scroll-view>
 
     <view v-show="announcementVisible" class="announcement-mask" @click="closeAnnouncement">
       <view class="announcement-dialog" @click.stop>
@@ -670,7 +670,7 @@ onShow(() => { void refreshData() })
 .announcement-detail-scroll { height: 520rpx; padding: 30rpx 32rpx; box-sizing: border-box; }
 .announcement-detail-content { color: #4F4F4F; font-size: 26rpx; font-weight: 400; line-height: 42rpx; white-space: pre-wrap; word-break: break-all; }
 
-.menu-section { padding: 0 0 120rpx; background: #fff; font-family: 'PingFang SC', '苹方-简', sans-serif; font-weight: 500; }
+.menu-section { padding: 0 0 24rpx; background: #fff; font-family: 'PingFang SC', '苹方-简', sans-serif; font-weight: 500; }
 .menu-list { background: #fff; }
 .menu-item { display: flex; align-items: center; min-height: 99.24rpx; padding: 0 38.17rpx; box-sizing: border-box; border-bottom: 0; }
 .menu-item:last-child { border-bottom: 0; }
