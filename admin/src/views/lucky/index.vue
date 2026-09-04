@@ -102,7 +102,7 @@ onMounted(() => { void load() })
 <template>
   <section class="page-container page-enter">
     <div class="page-heading">
-      <div><h1>大转盘活动</h1><p>配置抽奖活动、奖品（权重/库存）、抽奖次数与内定名单；核销中奖自提码。</p></div>
+      <div><h1>大转盘活动</h1><p>配置抽奖活动、奖品（中奖概率/库存）、抽奖次数与内定名单；核销中奖自提码。</p></div>
       <div class="heading-actions">
         <el-button :loading="loading" @click="load"><el-icon><Refresh /></el-icon>刷新</el-button>
         <el-button type="primary" @click="verifyDialogVisible = true"><el-icon><Tickets /></el-icon>核销码核销</el-button>

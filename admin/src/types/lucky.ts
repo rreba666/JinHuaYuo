@@ -13,8 +13,8 @@ export interface LuckyPrize {
   image?: string | null
   /** 奖项等级（如"一等奖"/"谢谢参与"）。 */
   level?: string | null
-  /** 抽中权重（越大越易中）。 */
-  weight: number
+  /** 中奖概率百分比（0~100，所有奖品含「谢谢参与」加总须=100）。 */
+  probability: number
   /** 总库存。 */
   stock: number
   /** 展示排序（越小越靠前）。 */

@@ -37,7 +37,7 @@ const rules: FormRules = {
 }
 
 function defaultPrize(): LuckyPrize {
-  return { name: '', level: '', image: '', weight: 1, stock: 1, sortOrder: 0 }
+  return { name: '', level: '', image: '', probability: 0, stock: 1, sortOrder: 0 }
 }
 
 function resetForm(): void {
@@ -120,8 +120,14 @@ async function submit(): Promise<void> {
   if (!prizes.value.length) { ElMessage.error('至少需要一个奖品'); return }
   for (const p of prizes.value) {
     if (!p.name) { ElMessage.error('奖品名称不能为空'); return }
-    if (p.weight < 0) { ElMessage.error('权重不能为负'); return }
+    if (p.probability < 0 || p.probability > 100) { ElMessage.error(`${p.name} 的概率需在 0~100 之间`); return }
     if (p.stock < 0) { ElMessage.error('库存不能为负'); return }
+  }
+  // 概率总和必须等于 100（含「谢谢参与」格）。
+  const totalProbability = prizes.value.reduce((sum, p) => sum + (Number(p.probability) || 0), 0)
+  if (Math.abs(totalProbability - 100) > 0.001) {
+    ElMessage.error(`奖品概率总和需等于 100%，当前为 ${totalProbability}%`)
+    return
   }
   // 校验奖品格位去重（名称相同视为同一格，去重避免不必要）。
   const payload: LuckyActivitySaveDTO = {
@@ -138,7 +144,7 @@ async function submit(): Promise<void> {
       name: p.name,
       image: p.image || null,
       level: p.level ?? null,
-      weight: p.weight,
+      probability: p.probability,
       stock: p.stock,
       sortOrder: p.sortOrder ?? index,
     })),
@@ -204,7 +210,7 @@ onMounted(() => { void loadDetail() })
         <div class="field-hint">每人每日可抽次数 / 活动期内总次数</div>
       </el-form-item>
 
-      <el-divider content-position="left">奖品配置<span class="divider-tip">至少一个奖品；建议一个「谢谢参与」格，权重最高，降低中奖难度</span></el-divider>
+      <el-divider content-position="left">奖品配置<span class="divider-tip">至少一个奖品；含「谢谢参与」格；所有奖品概率相加须等于 100%</span></el-divider>
       <div v-for="(prize, index) in prizes" :key="index" class="prize-row">
         <div class="prize-head"><span class="prize-index">奖品 {{ index + 1 }}</span><el-button class="row-remove" link type="danger" :icon="Delete" @click="removePrize(index)">删除</el-button></div>
         <div class="prize-grid">
@@ -213,9 +219,9 @@ onMounted(() => { void loadDetail() })
             <el-input v-model="prize.level" maxlength="32" placeholder="如：一等奖/二等奖" />
             <div class="field-hint">填「谢谢参与」则表示未中奖格</div>
           </el-form-item>
-          <el-form-item label="权重">
-            <el-input-number v-model="prize.weight" :min="0" controls-position="right" />
-            <div class="field-hint">数值越大越容易抽中</div>
+          <el-form-item label="概率(%)">
+            <el-input-number v-model="prize.probability" :min="0" :max="100" controls-position="right" />
+            <div class="field-hint">所有奖品（含谢谢参与）概率相加=100</div>
           </el-form-item>
           <el-form-item label="库存">
             <el-input-number v-model="prize.stock" :min="0" controls-position="right" />

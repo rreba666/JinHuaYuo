@@ -26,7 +26,7 @@ function normalizePrize(value: unknown): LuckyPrize {
     name: String(row.name ?? ''),
     image: extractMediaUrl(row.image) || '',
     level: row.level ?? '',
-    weight: Number(row.weight ?? 1),
+    probability: Number(row.probability ?? 0),
     stock: Number(row.stock ?? 0),
     sortOrder: Number(row.sortOrder ?? 0),
     remainingStock: row.remainingStock != null ? Number(row.remainingStock) : null,
