@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import { computed, reactive, ref, watch } from 'vue'
-import { cancelOrder, getAddressChangeRequest, getOrderDetail, getPickupCode, receiveOrder, refundOrder, submitAddressChangeRequest, type AddressChangeRequestDTO, type OrderAddressChangeRequest, type OrderDetail, type PickupCodeVO } from '@/api/order'
+import { cancelOrder, getAddressChangeRequest, getOrderDetail, getPickupCode, receiveOrder, refundOrder, refundOrderFast, submitAddressChangeRequest, type AddressChangeRequestDTO, type OrderAddressChangeRequest, type OrderDetail, type PickupCodeVO } from '@/api/order'
 import { getEnabledShops, type EnabledShop } from '@/api/shop'
 import { getAfterSaleList } from '@/api/after-sale'
 import { getAuth, isLoggedIn } from '@/utils/auth'
@@ -33,6 +33,18 @@ let pickupStatusInFlight = false
 const pickupShop = ref<EnabledShop | null>(null)
 /** 当前订单是否有「处理中」的售后单（用于把退款按钮换成「售后中」）。 */
 const processingAfterSale = ref(false)
+
+/** 秒退窗口：支付后 30 分钟内可秒退（立即退款），超过走售后申请。 */
+const SEC_REFUND_WINDOW_MS = 30 * 60 * 1000
+/** 是否可秒退：已支付待发货、订单携带支付时间、且距支付 ≤30 分钟。 */
+const canSecRefund = computed(() => {
+  if (order.value?.status !== 1) return false
+  const payTime = order.value?.payTime
+  if (!payTime) return false
+  const paidAt = Date.parse(String(payTime).replace(' ', 'T'))
+  if (!Number.isFinite(paidAt)) return false
+  return Date.now() - paidAt <= SEC_REFUND_WINDOW_MS
+})
 
 /** 地址修改申请表单，内容按当前用户和订单自动缓存。 */
 interface AddressChangeForm {
@@ -428,12 +440,18 @@ watch(addressChangeForm, () => {
   }
 }, { deep: true })
 
-async function action(type: 'cancel' | 'receive' | 'refund'): Promise<void> {
+async function action(type: 'cancel' | 'receive' | 'refund' | 'refundFast'): Promise<void> {
   if (!order.value || actionLoading.value) return
   actionLoading.value = true
   try {
     if (type === 'cancel') await cancelOrder(order.value.id)
     if (type === 'receive') await receiveOrder(order.value.id)
+    if (type === 'refundFast') {
+      await refundOrderFast(order.value.id)
+      uni.showToast({ title: '退款处理中，原路退回', icon: 'success' })
+      await load(String(order.value.id))
+      return
+    }
     if (type === 'refund') {
       await refundOrder(order.value.id)
       uni.showToast({ title: '退款申请已提交', icon: 'success' })
@@ -531,7 +549,7 @@ onUnload(() => {
         </view>
       </view>
 
-      <view class="actions"><button v-if="order?.status === 0" :disabled="actionLoading" @click="action('cancel')">取消订单</button><button v-if="order?.status === 2" :disabled="actionLoading" @click="action('receive')">确认收货</button><button v-if="order?.status === 1 && processingAfterSale" disabled>售后中</button><button v-else-if="order?.status === 1" :disabled="actionLoading" @click="action('refund')">申请售后</button></view>
+      <view class="actions"><button v-if="order?.status === 0" :disabled="actionLoading" @click="action('cancel')">取消订单</button><button v-if="order?.status === 2" :disabled="actionLoading" @click="action('receive')">确认收货</button><button v-if="order?.status === 1 && processingAfterSale" disabled>售后中</button><button v-else-if="order?.status === 1 && canSecRefund" :disabled="actionLoading" @click="action('refundFast')">立即退款</button><button v-else-if="order?.status === 1" :disabled="actionLoading" @click="action('refund')">申请售后</button></view>
     </scroll-view>
 
     <!-- 地址修改申请表单：只创建审核申请，不直接更新订单地址。 -->

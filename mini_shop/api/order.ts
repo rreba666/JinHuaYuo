@@ -51,6 +51,8 @@ export interface OrderSummary {
   freightAmount?: number
   /** 支付截止时间（格式 yyyy-MM-dd HH:mm:ss，仅待付款订单有值，前端据此倒计时） */
   payExpireTime?: string
+  /** 支付完成时间（格式 yyyy-MM-dd HH:mm:ss，已支付订单有值，前端据此判断秒退窗口）。 */
+  payTime?: string
   /** 第一件商品名（列表卡片标题，待后端在列表接口补字段） */
   firstProductName?: string
   /** 物流送达状态（待收货订单）：0=已发货(运输中)，1=已送达(待确认收货) */
