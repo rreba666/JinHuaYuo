@@ -1,20 +1,23 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { getCustomerServiceConfig, getDividendCap, getProfitRatesConfig, getWithdrawRules, saveCustomerServiceConfig, saveDividendCap, saveProfitRatesConfig as postProfitRatesConfig, saveWithdrawRules } from '@/api/setting'
+import { getCustomerServiceConfig, getDividendCap, getDividendRandomFloat, getProfitRatesConfig, getWithdrawRules, saveCustomerServiceConfig, saveDividendCap, saveDividendRandomFloat, saveProfitRatesConfig as postProfitRatesConfig, saveWithdrawRules } from '@/api/setting'
 import { setFundRates } from '@/utils/productPricing'
-import type { DividendCap, DividendCapSaveDTO, ProfitRatesConfig, ProfitRatesSaveDTO, SysConfig, SysConfigSaveDTO, WithdrawRulesConfig, WithdrawRulesSaveDTO } from '@/types/setting'
+import type { DividendCap, DividendCapSaveDTO, DividendRandomFloatConfig, DividendRandomFloatSaveDTO, ProfitRatesConfig, ProfitRatesSaveDTO, SysConfig, SysConfigSaveDTO, WithdrawRulesConfig, WithdrawRulesSaveDTO } from '@/types/setting'
 
 export const useSettingStore = defineStore('setting', () => {
   const customerService = ref<SysConfig | null>(null)
   const dividendCap = ref<DividendCap>({ multiplier: 1.5, remark: '' })
+  const dividendRandomFloat = ref<DividendRandomFloatConfig>({ floatAmount: 10, remark: '' })
   const profitRates = ref<ProfitRatesConfig>({ promotionRate: 0.2, bonusPoolRate: 0.26, remark: '' })
   const withdrawRules = ref<WithdrawRulesConfig>({ minAmount: 0, dailyAmountLimit: 0, dailyCountLimit: 0, feeRate: 0, testUserMinAmount: 0, testUserId: null, testSkipLock: false, maxConcurrent: 0, frozenLimit: 0, remark: '' })
   const customerServiceLoading = ref(false)
   const dividendCapLoading = ref(false)
+  const dividendRandomFloatLoading = ref(false)
   const profitRatesLoading = ref(false)
   const withdrawRulesLoading = ref(false)
   const customerServiceSaving = ref(false)
   const dividendCapSaving = ref(false)
+  const dividendRandomFloatSaving = ref(false)
   const profitRatesSaving = ref(false)
   const withdrawRulesSaving = ref(false)
 
@@ -28,13 +31,23 @@ export const useSettingStore = defineStore('setting', () => {
     }
   }
 
-  /** 独立读取分红倍率，未配置时由 API 提供默认值。 */
+  /** 独立读取红包倍率，未配置时由 API 提供默认值。 */
   async function loadDividendCap(): Promise<void> {
     dividendCapLoading.value = true
     try {
       dividendCap.value = await getDividendCap()
     } finally {
       dividendCapLoading.value = false
+    }
+  }
+
+  /** 独立读取分红随机浮动幅度，未配置时由 API 提供默认值。 */
+  async function loadDividendRandomFloat(): Promise<void> {
+    dividendRandomFloatLoading.value = true
+    try {
+      dividendRandomFloat.value = await getDividendRandomFloat()
+    } finally {
+      dividendRandomFloatLoading.value = false
     }
   }
 
@@ -69,7 +82,7 @@ export const useSettingStore = defineStore('setting', () => {
     }
   }
 
-  /** 保存后只刷新分红倍率配置本身。 */
+  /** 保存后只刷新红包倍率配置本身。 */
   async function saveDividendCapConfig(payload: DividendCapSaveDTO): Promise<void> {
     dividendCapSaving.value = true
     try {
@@ -77,6 +90,17 @@ export const useSettingStore = defineStore('setting', () => {
       await loadDividendCap()
     } finally {
       dividendCapSaving.value = false
+    }
+  }
+
+  /** 保存后只刷新分红随机浮动幅度配置本身。 */
+  async function saveDividendRandomFloatConfig(payload: DividendRandomFloatSaveDTO): Promise<void> {
+    dividendRandomFloatSaving.value = true
+    try {
+      await saveDividendRandomFloat(payload)
+      await loadDividendRandomFloat()
+    } finally {
+      dividendRandomFloatSaving.value = false
     }
   }
 
@@ -103,22 +127,27 @@ export const useSettingStore = defineStore('setting', () => {
   return {
     customerService,
     dividendCap,
+    dividendRandomFloat,
     profitRates,
     withdrawRules,
     customerServiceLoading,
     dividendCapLoading,
+    dividendRandomFloatLoading,
     profitRatesLoading,
     withdrawRulesLoading,
     customerServiceSaving,
     dividendCapSaving,
+    dividendRandomFloatSaving,
     profitRatesSaving,
     withdrawRulesSaving,
     loadCustomerService,
     loadDividendCap,
+    loadDividendRandomFloat,
     loadProfitRates,
     loadWithdrawRules,
     saveCustomerService,
     saveDividendCapConfig,
+    saveDividendRandomFloatConfig,
     saveProfitRatesConfig,
     saveWithdrawRulesConfig,
   }

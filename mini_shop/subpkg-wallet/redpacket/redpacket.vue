@@ -6,6 +6,7 @@ import { isLoggedIn, isRegisteredUser } from '@/utils/auth'
 import RequestState from '@/components/RequestState.vue'
 import LoginGuide from '@/components/LoginGuide.vue'
 import { useModuleGuard } from '@/utils/config'
+import { isBeforeBonusShowTime } from '@/utils/bonus-show-time'
 
 /** promotion 模块守卫：停用则拦截平台红包（深链防护）。 */
 const { moduleEnabled: promotionEnabled, loadModuleConfig: loadPromotionModule } = useModuleGuard('promotion')
@@ -58,15 +59,24 @@ async function loadData(): Promise<void> {
 
     let failed = false
     try {
-      wallet.value = await getWalletInfo()
+      const info = await getWalletInfo()
+      // 红包 9 点后才展示：9:00 前 pendingBonus 按 0 对待，不展示红包金额。
+      wallet.value = isBeforeBonusShowTime() ? { ...info, pendingBonus: 0 } : info
     } catch {
       failed = true
     }
     try {
-      const result = await getDividendRecords({ page: 1, pageSize: 10 })
-      records.value = result.list || []
-      recordsPage.value = result.page || 1
-      recordsTotal.value = result.total || 0
+      // 红包 9 点后才展示：9:00 前不拉取红包流水。
+      if (isBeforeBonusShowTime()) {
+        records.value = []
+        recordsPage.value = 1
+        recordsTotal.value = 0
+      } else {
+        const result = await getDividendRecords({ page: 1, pageSize: 10 })
+        records.value = result.list || []
+        recordsPage.value = result.page || 1
+        recordsTotal.value = result.total || 0
+      }
     } catch {
       failed = true
     }

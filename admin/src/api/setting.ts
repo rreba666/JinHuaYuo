@@ -1,10 +1,11 @@
 import { request } from './request'
 import type { ApiResponse } from './request'
-import type { DividendCap, DividendCapSaveDTO, ProfitRatesConfig, ProfitRatesSaveDTO, SysConfig, SysConfigSaveDTO, WithdrawRulesConfig, WithdrawRulesSaveDTO } from '@/types/setting'
+import type { DividendCap, DividendCapSaveDTO, DividendRandomFloatConfig, DividendRandomFloatSaveDTO, ProfitRatesConfig, ProfitRatesSaveDTO, SysConfig, SysConfigSaveDTO, WithdrawRulesConfig, WithdrawRulesSaveDTO } from '@/types/setting'
 import { DEFAULT_DIVIDEND_RATE, DEFAULT_PROMOTION_RATE } from '@/utils/productPricing'
 
 const CUSTOMER_SERVICE_KEY = 'customer_service_phone'
 const DEFAULT_DIVIDEND_MULTIPLIER = 1.5
+const DEFAULT_DIVIDEND_RANDOM_FLOAT = 10
 const PROFIT_RATES_PATH = '/api/admin/setting/profit-rates'
 
 /** 读取客服电话配置。未配置时返回空表单值，不创建后端历史配置。 */
@@ -24,11 +25,11 @@ export async function saveCustomerServiceConfig(payload: SysConfigSaveDTO): Prom
   ensureSuccess(response.data, '客服电话配置保存失败')
 }
 
-/** 读取分红倍率；后端未配置或返回非有限值时使用约定默认值。 */
+/** 读取红包倍率；后端未配置或返回非有限值时使用约定默认值。 */
 export async function getDividendCap(): Promise<DividendCap> {
   const response = await request.get<ApiResponse<DividendCap | null>>('/api/admin/setting/dividend-cap')
   const result = response.data
-  ensureSuccess(result, '分红上限倍率查询失败')
+  ensureSuccess(result, '红包上限倍率查询失败')
   const data: Partial<DividendCap> = result.data || {}
   const multiplier = Number(data.multiplier)
   return {
@@ -37,17 +38,43 @@ export async function getDividendCap(): Promise<DividendCap> {
   }
 }
 
-/** 保存分红倍率，避免无效值绕过页面控件提交。 */
+/** 保存红包倍率，避免无效值绕过页面控件提交。 */
 export async function saveDividendCap(payload: DividendCapSaveDTO): Promise<void> {
   const multiplier = Number(payload.multiplier)
   if (!Number.isFinite(multiplier) || multiplier < 0.01 || multiplier > 100) {
-    throw new Error('分红上限倍率必须在 0.01 到 100 之间')
+    throw new Error('红包上限倍率必须在 0.01 到 100 之间')
   }
   const response = await request.post<ApiResponse<null>>('/api/admin/setting/dividend-cap', {
     ...payload,
     multiplier,
   })
-  ensureSuccess(response.data, '分红上限倍率保存失败')
+  ensureSuccess(response.data, '红包上限倍率保存失败')
+}
+
+/** 读取分红均分金额随机浮动幅度；后端未配置或返回非有限值时使用约定默认值 10。 */
+export async function getDividendRandomFloat(): Promise<DividendRandomFloatConfig> {
+  const response = await request.get<ApiResponse<DividendRandomFloatConfig | null>>('/api/admin/setting/dividend-random-float')
+  const result = response.data
+  ensureSuccess(result, '分红浮动幅度查询失败')
+  const data: Partial<DividendRandomFloatConfig> = result.data || {}
+  const floatAmount = Number(data.floatAmount)
+  return {
+    floatAmount: Number.isFinite(floatAmount) ? floatAmount : DEFAULT_DIVIDEND_RANDOM_FLOAT,
+    remark: String(data.remark ?? ''),
+  }
+}
+
+/** 保存分红均分金额随机浮动幅度，避免无效值绕过页面控件提交。 */
+export async function saveDividendRandomFloat(payload: DividendRandomFloatSaveDTO): Promise<void> {
+  const floatAmount = Number(payload.floatAmount)
+  if (!Number.isFinite(floatAmount) || floatAmount < 0) {
+    throw new Error('分红浮动幅度不能小于 0')
+  }
+  const response = await request.post<ApiResponse<null>>('/api/admin/setting/dividend-random-float', {
+    ...payload,
+    floatAmount,
+  })
+  ensureSuccess(response.data, '分红浮动幅度保存失败')
 }
 
 /** 读取商品资金比例。 */
@@ -66,7 +93,7 @@ export async function saveProfitRatesConfig(payload: ProfitRatesSaveDTO): Promis
     throw new Error('推广资金比例必须在 0 到 100 之间')
   }
   if (!Number.isFinite(bonusPoolRate) || bonusPoolRate < 0 || bonusPoolRate > 100) {
-    throw new Error('分红奖池比例必须在 0 到 100 之间')
+    throw new Error('红包池比例必须在 0 到 100 之间')
   }
   const response = await request.post<ApiResponse<null>>(PROFIT_RATES_PATH, {
     ...payload,

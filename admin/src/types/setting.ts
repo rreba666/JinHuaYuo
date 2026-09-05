@@ -16,15 +16,28 @@ export interface SysConfigSaveDTO {
   remark?: string
 }
 
-/** 分红上限倍率配置。 */
+/** 红包上限倍率配置。 */
 export interface DividendCap {
   multiplier: number
   remark: string
 }
 
-/** 分红上限倍率保存参数。 */
+/** 红包上限倍率保存参数。 */
 export interface DividendCapSaveDTO {
   multiplier: number
+  remark?: string
+}
+
+/** 分红均分金额随机浮动幅度配置（对应配置键 dividend_random_float）。 */
+export interface DividendRandomFloatConfig {
+  /** 浮动幅度（元）：池 2 起每人金额 = 均分基准 ± 浮动。默认 10。 */
+  floatAmount: number
+  remark: string
+}
+
+/** 分红随机浮动幅度保存参数。 */
+export interface DividendRandomFloatSaveDTO {
+  floatAmount: number
   remark?: string
 }
 

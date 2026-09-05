@@ -3,31 +3,30 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import { useSettingStore } from '@/stores/setting'
-import type { DividendCapSaveDTO, ProfitRatesSaveDTO, SysConfigSaveDTO, WithdrawRulesConfig } from '@/types/setting'
+import type { DividendCapSaveDTO, DividendRandomFloatSaveDTO, ProfitRatesSaveDTO, SysConfigSaveDTO, WithdrawRulesConfig } from '@/types/setting'
 import { fromDisplayFundRate, toDisplayFundRate } from '@/utils/fundRate'
 
 const store = useSettingStore()
-const customerServiceFormRef = ref<FormInstance>()
 const dividendCapFormRef = ref<FormInstance>()
 const profitRatesFormRef = ref<FormInstance>()
 const withdrawRulesFormRef = ref<FormInstance>()
-const customerServiceForm = reactive<SysConfigSaveDTO>({
-  configKey: 'customer_service_phone',
-  configValue: '',
-  remark: '',
-})
+const dividendRandomFloatFormRef = ref<FormInstance>()
 const dividendCapForm = reactive<DividendCapSaveDTO>({ multiplier: 1.5, remark: '' })
+const dividendRandomFloatForm = reactive<DividendRandomFloatSaveDTO>({ floatAmount: 10, remark: '' })
 const profitRatesForm = reactive<ProfitRatesSaveDTO>({ promotionRate: 20, bonusPoolRate: 26, remark: '' })
 type WithdrawRulesForm = Omit<WithdrawRulesConfig, 'feeRate'> & { feeRate: number }
 const withdrawRulesForm = reactive<WithdrawRulesForm>({ minAmount: 0, dailyAmountLimit: 0, dailyCountLimit: 0, feeRate: 0, testUserMinAmount: 0, testUserId: null, testSkipLock: false, maxConcurrent: 0, frozenLimit: 0, remark: '' })
 
-const customerServiceRules: FormRules = {
-  configValue: [{ required: true, message: '请输入客服电话', trigger: 'blur' }],
-}
 const dividendCapRules: FormRules = {
   multiplier: [
-    { required: true, message: '请输入分红上限倍率', trigger: 'blur' },
+    { required: true, message: '请输入红包上限倍率', trigger: 'blur' },
     { type: 'number', min: 0.01, max: 100, message: '倍率范围为 0.01~100', trigger: 'change' },
+  ],
+}
+const dividendRandomFloatRules: FormRules = {
+  floatAmount: [
+    { required: true, message: '请输入分红浮动幅度', trigger: 'blur' },
+    { type: 'number', min: 0, message: '浮动幅度不能小于 0', trigger: 'change' },
   ],
 }
 const profitRatesRules: FormRules = {
@@ -54,23 +53,23 @@ function showError(error: unknown, fallback: string): void {
   ElMessage.error(error instanceof Error ? error.message : fallback)
 }
 
-async function loadCustomerService(): Promise<void> {
-  try {
-    await store.loadCustomerService()
-    customerServiceForm.configValue = store.customerService?.configValue || ''
-    customerServiceForm.remark = store.customerService?.remark || ''
-  } catch (error) {
-    showError(error, '客服电话配置加载失败')
-  }
-}
-
 async function loadDividendCap(): Promise<void> {
   try {
     await store.loadDividendCap()
     dividendCapForm.multiplier = store.dividendCap.multiplier
     dividendCapForm.remark = store.dividendCap.remark
   } catch (error) {
-    showError(error, '分红上限倍率加载失败')
+    showError(error, '红包上限倍率加载失败')
+  }
+}
+
+async function loadDividendRandomFloat(): Promise<void> {
+  try {
+    await store.loadDividendRandomFloat()
+    dividendRandomFloatForm.floatAmount = store.dividendRandomFloat.floatAmount
+    dividendRandomFloatForm.remark = store.dividendRandomFloat.remark
+  } catch (error) {
+    showError(error, '分红浮动幅度加载失败')
   }
 }
 
@@ -94,25 +93,24 @@ async function loadWithdrawRules(): Promise<void> {
   }
 }
 
-async function saveCustomerService(): Promise<void> {
-  if (!(await customerServiceFormRef.value?.validate().catch(() => false))) return
-  try {
-    await ElMessageBox.confirm('保存客服电话配置吗？', '保存确认', { type: 'warning' })
-    await store.saveCustomerService({ ...customerServiceForm, configKey: 'customer_service_phone' })
-    ElMessage.success('客服电话配置已保存')
-  } catch (error) {
-    if (error !== 'cancel' && error !== 'close') showError(error, '客服电话配置保存失败')
-  }
-}
-
 async function saveDividendCap(): Promise<void> {
   if (!(await dividendCapFormRef.value?.validate().catch(() => false))) return
   try {
-    await ElMessageBox.confirm('保存分红上限倍率后，仅影响之后新开的槽位，确认继续吗？', '保存确认', { type: 'warning' })
+    await ElMessageBox.confirm('保存红包上限倍率后，仅影响之后新开的槽位，确认继续吗？', '保存确认', { type: 'warning' })
     await store.saveDividendCapConfig({ ...dividendCapForm })
-    ElMessage.success('分红上限倍率已保存')
+    ElMessage.success('红包上限倍率已保存')
   } catch (error) {
-    if (error !== 'cancel' && error !== 'close') showError(error, '分红上限倍率保存失败')
+    if (error !== 'cancel' && error !== 'close') showError(error, '红包上限倍率保存失败')
+  }
+}
+
+async function saveDividendRandomFloat(): Promise<void> {
+  if (!(await dividendRandomFloatFormRef.value?.validate().catch(() => false))) return
+  try {
+    await store.saveDividendRandomFloatConfig({ ...dividendRandomFloatForm })
+    ElMessage.success('分红浮动幅度已保存')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') showError(error, '分红浮动幅度保存失败')
   }
 }
 
@@ -143,8 +141,8 @@ async function saveWithdrawRules(): Promise<void> {
 }
 
 function reload(): void {
-  void loadCustomerService()
   void loadDividendCap()
+  void loadDividendRandomFloat()
   void loadProfitRates()
   void loadWithdrawRules()
 }
@@ -155,27 +153,28 @@ onMounted(reload)
 <template>
   <section class="page-container page-enter">
     <div class="page-heading">
-      <div><h1>业务设置</h1><p>管理本品牌的客服电话、推广/分红比例、提现规则。各商户独立配置，仅影响本品牌。</p></div>
-      <el-button :icon="Refresh" :loading="store.customerServiceLoading || store.dividendCapLoading || store.profitRatesLoading || store.withdrawRulesLoading" @click="reload">刷新</el-button>
+      <div><h1>业务设置</h1><p>管理本品牌的推广/红包比例、提现规则。各商户独立配置，仅影响本品牌。</p></div>
+      <el-button :icon="Refresh" :loading="store.dividendCapLoading || store.dividendRandomFloatLoading || store.profitRatesLoading || store.withdrawRulesLoading" @click="reload">刷新</el-button>
     </div>
 
     <div class="settings-grid">
       <section class="content-card setting-section">
-        <div class="setting-heading"><div><h2>客服电话</h2><p>用于用户咨询和后台联系。</p></div></div>
-        <el-form ref="customerServiceFormRef" :model="customerServiceForm" :rules="customerServiceRules" label-width="90px" @submit.prevent="saveCustomerService">
-          <el-form-item label="客服电话" prop="configValue"><el-input v-model="customerServiceForm.configValue" placeholder="请输入客服电话" clearable /></el-form-item>
-          <el-form-item label="备注"><el-input v-model="customerServiceForm.remark" placeholder="可选" clearable /></el-form-item>
-          <el-form-item><el-button type="primary" :loading="store.customerServiceSaving" @click="saveCustomerService">保存客服电话</el-button></el-form-item>
-        </el-form>
-      </section>
-
-      <section class="content-card setting-section">
-        <div class="setting-heading"><div><h2>分红上限倍率</h2><p>设置新槽位使用的分红额度倍率。</p></div></div>
+        <div class="setting-heading"><div><h2>红包上限倍率</h2><p>设置新槽位使用的红包额度倍率。</p></div></div>
         <el-alert title="仅影响之后新开的槽位" type="warning" :closable="false" show-icon />
         <el-form ref="dividendCapFormRef" :model="dividendCapForm" :rules="dividendCapRules" label-width="90px" @submit.prevent="saveDividendCap">
           <el-form-item label="倍率" prop="multiplier"><el-input-number v-model="dividendCapForm.multiplier" :min="0.01" :max="100" :precision="2" :step="0.01" controls-position="right" /></el-form-item>
           <el-form-item label="备注"><el-input v-model="dividendCapForm.remark" placeholder="可选" clearable /></el-form-item>
           <el-form-item><el-button type="primary" :loading="store.dividendCapSaving" @click="saveDividendCap">保存倍率</el-button></el-form-item>
+        </el-form>
+      </section>
+
+      <section class="content-card setting-section">
+        <div class="setting-heading"><div><h2>分红随机浮动幅度</h2><p>设置分红均分金额的随机浮动幅度（元）：奖池 2 起，每人金额 = 均分基准 ± 浮动。</p></div></div>
+        <el-alert title="仅影响之后发放的分红" type="info" :closable="false" show-icon />
+        <el-form ref="dividendRandomFloatFormRef" :model="dividendRandomFloatForm" :rules="dividendRandomFloatRules" label-width="100px" @submit.prevent="saveDividendRandomFloat">
+          <el-form-item label="浮动幅度" prop="floatAmount"><el-input-number v-model="dividendRandomFloatForm.floatAmount" :min="0" :precision="2" :step="1" controls-position="right" /><span class="hint">元</span></el-form-item>
+          <el-form-item label="备注"><el-input v-model="dividendRandomFloatForm.remark" placeholder="可选" clearable /></el-form-item>
+          <el-form-item><el-button type="primary" :loading="store.dividendRandomFloatSaving" @click="saveDividendRandomFloat">保存浮动幅度</el-button></el-form-item>
         </el-form>
       </section>
 
@@ -189,7 +188,7 @@ onMounted(reload)
               <span class="rate-suffix">%</span>
             </div>
           </el-form-item>
-          <el-form-item label="分红奖池比例" prop="bonusPoolRate">
+          <el-form-item label="红包池比例" prop="bonusPoolRate">
             <div class="rate-control">
               <el-input-number v-model="profitRatesForm.bonusPoolRate" :min="0" :max="100" :precision="2" :step="0.1" controls-position="right" class="rate-input" />
               <span class="rate-suffix">%</span>
