@@ -50,7 +50,8 @@ function parsePayTimeMs(payTime: string | null | undefined): number {
 const inRefundWindow = computed(() => {
   if (order.value?.status !== 1) return false
   const paidAt = parsePayTimeMs(order.value?.payTime)
-  if (!Number.isFinite(paidAt)) return false
+  // 拿不到支付时间时，保守视为在可退款窗口内（走「申请售后」），保证至少售后可触发。
+  if (!Number.isFinite(paidAt)) return true
   const window = order.value.pickupType === 1 ? PICKUP_REFUND_WINDOW_MS : LOGISTICS_REFUND_WINDOW_MS
   return Date.now() - paidAt <= window
 })
