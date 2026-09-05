@@ -28,19 +28,6 @@ export interface DividendCapSaveDTO {
   remark?: string
 }
 
-/** 分红均分金额随机浮动幅度配置（对应配置键 dividend_random_float）。 */
-export interface DividendRandomFloatConfig {
-  /** 浮动幅度（元）：池 2 起每人金额 = 均分基准 ± 浮动。默认 10。 */
-  floatAmount: number
-  remark: string
-}
-
-/** 分红随机浮动幅度保存参数。 */
-export interface DividendRandomFloatSaveDTO {
-  floatAmount: number
-  remark?: string
-}
-
 /** 商品资金比例配置。 */
 export interface ProfitRatesConfig {
   promotionRate: number
