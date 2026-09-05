@@ -34,14 +34,31 @@ const pickupShop = ref<EnabledShop | null>(null)
 /** 当前订单是否有「处理中」的售后单（用于把退款按钮换成「售后中」）。 */
 const processingAfterSale = ref(false)
 
-/** 秒退窗口：支付后 30 分钟内可秒退（立即退款），超过走售后申请。 */
+/** 秒退窗口：支付后 30 分钟内可秒退（立即退款，原路退回）。 */
 const SEC_REFUND_WINDOW_MS = 30 * 60 * 1000
-/** 是否可秒退：已支付待发货、订单携带支付时间、且距支付 ≤30 分钟。 */
+/** 可退款窗口：物流 7 天 / 自提 30 天（从支付时间算）。 */
+const LOGISTICS_REFUND_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+const PICKUP_REFUND_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
+
+/** 解析订单支付时间（yyyy-MM-dd HH:mm:ss → 毫秒时间戳），失败返回 NaN。 */
+function parsePayTimeMs(payTime: string | null | undefined): number {
+  if (!payTime) return NaN
+  return Date.parse(String(payTime).replace(' ', 'T'))
+}
+
+/** 是否在可退款窗口内（物流 7 天 / 自提 30 天）。超出则不可退款。 */
+const inRefundWindow = computed(() => {
+  if (order.value?.status !== 1) return false
+  const paidAt = parsePayTimeMs(order.value?.payTime)
+  if (!Number.isFinite(paidAt)) return false
+  const window = order.value.pickupType === 1 ? PICKUP_REFUND_WINDOW_MS : LOGISTICS_REFUND_WINDOW_MS
+  return Date.now() - paidAt <= window
+})
+
+/** 是否可秒退：在可退款窗口内，且距支付 ≤30 分钟。 */
 const canSecRefund = computed(() => {
   if (order.value?.status !== 1) return false
-  const payTime = order.value?.payTime
-  if (!payTime) return false
-  const paidAt = Date.parse(String(payTime).replace(' ', 'T'))
+  const paidAt = parsePayTimeMs(order.value?.payTime)
   if (!Number.isFinite(paidAt)) return false
   return Date.now() - paidAt <= SEC_REFUND_WINDOW_MS
 })
@@ -549,7 +566,7 @@ onUnload(() => {
         </view>
       </view>
 
-      <view class="actions"><button v-if="order?.status === 0" :disabled="actionLoading" @click="action('cancel')">取消订单</button><button v-if="order?.status === 2" :disabled="actionLoading" @click="action('receive')">确认收货</button><button v-if="order?.status === 1 && processingAfterSale" disabled>售后中</button><button v-else-if="order?.status === 1 && canSecRefund" :disabled="actionLoading" @click="action('refundFast')">立即退款</button><button v-else-if="order?.status === 1" :disabled="actionLoading" @click="action('refund')">申请售后</button></view>
+      <view class="actions"><button v-if="order?.status === 0" :disabled="actionLoading" @click="action('cancel')">取消订单</button><button v-if="order?.status === 2" :disabled="actionLoading" @click="action('receive')">确认收货</button><button v-if="order?.status === 1 && processingAfterSale" disabled>售后中</button><button v-else-if="order?.status === 1 && inRefundWindow && canSecRefund" :disabled="actionLoading" @click="action('refundFast')">立即退款</button><button v-else-if="order?.status === 1 && inRefundWindow" :disabled="actionLoading" @click="action('refund')">申请售后</button></view>
     </scroll-view>
 
     <!-- 地址修改申请表单：只创建审核申请，不直接更新订单地址。 -->
