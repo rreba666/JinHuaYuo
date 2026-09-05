@@ -210,15 +210,22 @@ export function submitAddressChangeRequest(orderId: number | string, data: Addre
 
 /** 取消待支付订单。 */
 export function cancelOrder(orderId: number | string): Promise<void> {
-  return request<void>({ url: `/api/order/cancel/${orderId}`, method: 'POST' })
+  return request<void>({ url: `/api/order/cancel/${orderId}`, method: 'POST', data: {} })
 }
 
 /** 确认收货，仅物流订单使用。 */
 export function receiveOrder(orderId: number | string): Promise<void> {
-  return request<void>({ url: `/api/order/receive/${orderId}`, method: 'POST' })
+  return request<void>({ url: `/api/order/receive/${orderId}`, method: 'POST', data: {} })
 }
 
 /** 申请订单退款。 */
 export function refundOrder(orderId: number | string, reason?: string): Promise<void> {
   return request<void>({ url: `/api/order/refund/${orderId}`, method: 'POST', data: reason ? { reason } : {} })
+}
+
+/** 快速退款（已支付未发货原路退回，处理中提示）。 */
+export function refundOrderFast(orderId: number | string): Promise<void> {
+  // 必须携带空 JSON body：POST 在 request.ts 会强制 Content-Type=application/json，
+  // 若 body 为空，后端 @RequestBody 无法反序列化会报“请求体格式错误”。
+  return request<void>({ url: `/api/order/refund/fast/${orderId}`, method: 'POST', data: {} })
 }
