@@ -531,7 +531,7 @@ onUnload(() => {
         </view>
       </view>
 
-      <view class="actions"><button v-if="order?.status === 0" :disabled="actionLoading" @click="action('cancel')">取消订单</button><button v-if="order?.status === 2" :disabled="actionLoading" @click="action('receive')">确认收货</button><button v-if="order?.status === 1 && processingAfterSale" disabled>售后中</button><button v-else-if="order?.status === 1" :disabled="actionLoading" @click="action('refund')">申请退款</button></view>
+      <view class="actions"><button v-if="order?.status === 0" :disabled="actionLoading" @click="action('cancel')">取消订单</button><button v-if="order?.status === 2" :disabled="actionLoading" @click="action('receive')">确认收货</button><button v-if="order?.status === 1 && processingAfterSale" disabled>售后中</button><button v-else-if="order?.status === 1" :disabled="actionLoading" @click="action('refund')">申请售后</button></view>
     </scroll-view>
 
     <!-- 地址修改申请表单：只创建审核申请，不直接更新订单地址。 -->
