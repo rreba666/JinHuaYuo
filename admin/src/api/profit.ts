@@ -50,7 +50,7 @@ function normalizeContribution(value: unknown): DividendContribution {
     userName: String(row.userName ?? row.buyerName ?? row.nickname ?? user.nickname ?? ''),
     amount: Number(row.amount ?? row.contributionAmount ?? 0),
     paidAt: String(row.paidAt ?? row.paymentTime ?? row.payTime ?? ''),
-    matureAt: String(row.matureAt ?? row.expectedMatureTime ?? row.maturityTime ?? ''),
+    matureAt: String(row.maturityAt ?? row.expectedMatureTime ?? ''),
     status: String(row.status ?? ''),
     statusDesc: String(row.statusDesc ?? row.statusName ?? ''),
     confirmedAt: String(row.confirmedAt ?? row.confirmTime ?? ''),
