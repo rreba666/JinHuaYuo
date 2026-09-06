@@ -23,9 +23,7 @@ const poolId = ref('')
 const dailyId = ref('')
 const rebindRow = ref<PromotionBinding | null>(null)
 const promoterId = ref('')
-const settleForm = reactive({ startDate: '', endDate: '' })
 const testInjectForm = reactive({ poolDate: '', amount: 1000 })
-const testSettleForm = reactive({ startDate: '', endDate: '' })
 const testPoolId = ref('')
 const userToken = ref('')
 const testResultLoading = ref(false)
@@ -76,10 +74,6 @@ async function unbindPromotionRelation(row: PromotionBinding): Promise<void> {
   } catch (error) { if (error !== 'cancel' && error !== 'close') showError(error, '解除绑定失败') }
 }
 
-async function settlePool(): Promise<void> {
-  if (!settleForm.startDate || !settleForm.endDate) { ElMessage.warning('请选择结算日期范围'); return }
-  try { await store.settle(settleForm.startDate, settleForm.endDate); ElMessage.success('红包结算已完成') } catch (error) { showError(error, '红包结算失败') }
-}
 async function injectTestPool(): Promise<void> {
   const amount = Number(testInjectForm.amount)
   if (!Number.isFinite(amount) || amount <= 0) { ElMessage.warning('注入金额必须大于 0'); return }
@@ -89,24 +83,7 @@ async function injectTestPool(): Promise<void> {
     ElMessage.success('红包金额已注入，请继续查看未结算红包')
   } catch (error) { if (error !== 'cancel' && error !== 'close') showError(error, '红包注入失败') }
 }
-async function settleTestPool(): Promise<void> {
-  if (!testSettleForm.startDate || !testSettleForm.endDate) { ElMessage.warning('请选择结算日期范围'); return }
-  try {
-    await store.settle(testSettleForm.startDate, testSettleForm.endDate)
-    const pool = store.sevenDayPools.find((item) => item.startDate === testSettleForm.startDate && item.endDate === testSettleForm.endDate)
-    testPoolId.value = pool?.id || ''
-    ElMessage.success(pool ? `结算完成，已选中红包 ${pool.id}` : '结算完成，请在下方选择新建父红包')
-  } catch (error) { showError(error, '红包结算失败') }
-}
-async function confirmTestPool(): Promise<void> {
-  const pool = selectedTestPool.value
-  if (!pool) { ElMessage.warning('请先选择要发放的父红包'); return }
-  try {
-    await ElMessageBox.confirm(`确认发放 ${pool.startDate} 至 ${pool.endDate} 的红包 ${pool.id} 吗？此操作会增加用户待提现红包并写入红包流水。`, '确认发放红包', { type: 'warning', confirmButtonText: '确认发放', cancelButtonText: '取消' })
-    await store.confirm(pool.id)
-    ElMessage.success('红包已发放，请使用 C 端 Token 核验结果')
-  } catch (error) { if (error !== 'cancel' && error !== 'close') showError(error, '红包发放失败') }
-}
+
 async function verifyUserDividend(): Promise<void> {
   if (!userToken.value.trim()) { ElMessage.warning('请输入 C 端用户 Token'); return }
   testResultLoading.value = true
@@ -133,7 +110,6 @@ function openPoolAdjust(pool: SevenDayBonusPool): void { poolId.value = pool.id;
 async function submitPoolAdjust(): Promise<void> { if (!(await adjustPoolFormRef.value?.validate().catch(() => false))) return; try { await store.adjust(poolId.value, { ...adjustPoolForm }); adjustPoolVisible.value = false; ElMessage.success('红包已调整') } catch (error) { showError(error, '红包调整失败') } }
 function openDailyAdjust(detail: SevenDayBonusDetail): void { dailyId.value = detail.id; Object.assign(adjustDailyForm, { dailyAmount: detail.dailyAmount, dailyUserCount: detail.dailyUserCount }); adjustDailyVisible.value = true }
 async function submitDailyAdjust(): Promise<void> { if (!(await adjustDailyFormRef.value?.validate().catch(() => false))) return; try { await store.adjustDetail(dailyId.value, { ...adjustDailyForm }); adjustDailyVisible.value = false; ElMessage.success('每日红包已调整') } catch (error) { showError(error, '每日红包调整失败') } }
-async function confirmPool(pool: SevenDayBonusPool): Promise<void> { try { await ElMessageBox.confirm(`确认并发放 ${pool.startDate} 至 ${pool.endDate} 的红包吗？`, '确认并发放', { type: 'warning' }); await store.confirm(pool.id); ElMessage.success('红包已确认并发放') } catch (error) { if (error !== 'cancel' && error !== 'close') showError(error, '确认发放失败') } }
 async function resetLimit(row: UserDividendLimit): Promise<void> { try { await ElMessageBox.confirm(`确认重置用户 ${row.userId} 的购买机会吗？`, '重置购买机会', { type: 'warning' }); await store.resetLimit(row.userId); ElMessage.success('购买机会已重置') } catch (error) { if (error !== 'cancel' && error !== 'close') showError(error, '重置失败') } }
 
 onMounted(() => { void load(); void loadRelations() })
@@ -179,13 +155,12 @@ onMounted(() => { void load(); void loadRelations() })
           </el-card>
           <el-card shadow="never" class="content-card test-step-card">
             <div class="test-step-heading"><div><span class="step-index">3</span><strong>结算每日红包</strong></div></div>
-            <p class="test-help">按日期范围创建父红包。此步骤只结算，不会增加用户钱包。</p>
-            <div class="test-form-row"><el-date-picker v-model="testSettleForm.startDate" type="date" value-format="YYYY-MM-DD" placeholder="开始日期" /><el-date-picker v-model="testSettleForm.endDate" type="date" value-format="YYYY-MM-DD" placeholder="结束日期" /><el-button type="primary" :loading="store.actionLoading" @click="settleTestPool">结算每日红包</el-button></div>
+            <p class="test-help">手动结算已由系统自动完成（每日 00:00 定时结算），此处仅查看，不支持手动结算。</p>
           </el-card>
           <el-card shadow="never" class="content-card test-step-card">
-            <div class="test-step-heading"><div><span class="step-index">4</span><strong>选择并发放父红包</strong></div></div>
-            <p class="test-help">先选择已结算的父红包，可先查看每日明细，再执行不可逆的正式发放。</p>
-            <div class="test-form-row"><el-select v-model="testPoolId" placeholder="选择父红包" class="test-pool-select"><el-option v-for="pool in store.sevenDayPools" :key="pool.id" :label="`${pool.id}：${pool.startDate} 至 ${pool.endDate}，${money(pool.totalAmount)}`" :value="pool.id" /></el-select><el-button :disabled="!selectedTestPool" @click="selectedTestPool && showPoolDetails(selectedTestPool)"><el-icon><View /></el-icon>查看明细</el-button><el-button type="danger" :loading="store.actionLoading" :disabled="!selectedTestPool" @click="confirmTestPool">确认发放</el-button></div>
+            <div class="test-step-heading"><div><span class="step-index">4</span><strong>查看并发放父红包</strong></div></div>
+            <p class="test-help">父红包已由系统自动发放（每日 00:00 定时发放）。此处仅查看明细，不支持手动发放。</p>
+            <div class="test-form-row"><el-select v-model="testPoolId" placeholder="选择父红包" class="test-pool-select"><el-option v-for="pool in store.sevenDayPools" :key="pool.id" :label="`${pool.id}：${pool.startDate} 至 ${pool.endDate}，${money(pool.totalAmount)}`" :value="pool.id" /></el-select><el-button :disabled="!selectedTestPool" @click="selectedTestPool && showPoolDetails(selectedTestPool)"><el-icon><View /></el-icon>查看明细</el-button></div>
             <el-descriptions v-if="selectedTestPool" :column="3" border size="small" class="test-summary"><el-descriptions-item label="红包 ID">{{ selectedTestPool.id }}</el-descriptions-item><el-descriptions-item label="总金额">{{ money(selectedTestPool.totalAmount) }}</el-descriptions-item><el-descriptions-item label="结算人数">{{ selectedTestPool.settledUserCount }}</el-descriptions-item></el-descriptions>
           </el-card>
           <el-card shadow="never" class="content-card test-step-card test-result-card">
@@ -202,8 +177,8 @@ onMounted(() => { void load(); void loadRelations() })
         </div>
       </el-tab-pane>
       <el-tab-pane label="周红包" name="pools">
-        <el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>周红包</strong><span class="toolbar-count">按周期管理红包</span></div><div class="toolbar-actions"><el-date-picker v-model="settleForm.startDate" type="date" value-format="YYYY-MM-DD" placeholder="开始日期" /><el-date-picker v-model="settleForm.endDate" type="date" value-format="YYYY-MM-DD" placeholder="结束日期" /><el-button type="primary" :loading="store.actionLoading" @click="settlePool">结算周期</el-button></div></div>
-          <el-table :data="store.sevenDayPools" v-loading="store.loading" border stripe><el-table-column prop="id" label="红包 ID" width="110" /><el-table-column label="周期" min-width="200"><template #default="{ row }">{{ row.startDate }} 至 {{ row.endDate }}</template></el-table-column><el-table-column label="总金额" width="140"><template #default="{ row }">{{ money(row.totalAmount) }}</template></el-table-column><el-table-column prop="settledUserCount" label="已结算人数" width="120" /><el-table-column prop="settleTime" label="结算时间" min-width="180" /><el-table-column label="操作" width="250" fixed="right"><template #default="{ row }"><div class="operator-actions"><el-button size="small" @click="showPoolDetails(row)"><el-icon><View /></el-icon>明细</el-button><el-button size="small" @click="openPoolAdjust(row)"><el-icon><Setting /></el-icon>调整</el-button><el-button size="small" type="primary" @click="confirmPool(row)">确认并发放</el-button></div></template></el-table-column></el-table>
+        <el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>周红包</strong><span class="toolbar-count">按周期管理红包</span></div><div class="toolbar-actions"><el-button :loading="store.loading" :icon="Refresh" @click="load">刷新</el-button></div></div>
+          <el-table :data="store.sevenDayPools" v-loading="store.loading" border stripe><el-table-column prop="id" label="红包 ID" width="110" /><el-table-column label="周期" min-width="200"><template #default="{ row }">{{ row.startDate }} 至 {{ row.endDate }}</template></el-table-column><el-table-column label="总金额" width="140"><template #default="{ row }">{{ money(row.totalAmount) }}</template></el-table-column><el-table-column prop="settledUserCount" label="已结算人数" width="120" /><el-table-column prop="settleTime" label="结算时间" min-width="180" /><el-table-column label="操作" width="160" fixed="right"><template #default="{ row }"><div class="operator-actions"><el-button size="small" @click="showPoolDetails(row)"><el-icon><View /></el-icon>明细</el-button><el-button size="small" @click="openPoolAdjust(row)"><el-icon><Setting /></el-icon>调整</el-button></div></template></el-table-column></el-table>
         </el-card>
         <el-card shadow="never" class="content-card"><div class="toolbar"><strong>未结算每日红包</strong></div><el-table :data="store.unsettledDaily" v-loading="store.loading" border stripe><el-table-column prop="id" label="明细 ID" width="110" /><el-table-column prop="poolDate" label="日期" width="160" /><el-table-column label="每日金额" width="140"><template #default="{ row }">{{ money(row.dailyAmount) }}</template></el-table-column><el-table-column prop="dailyUserCount" label="用户数" width="120" /><el-table-column label="操作" width="110"><template #default="{ row }"><el-button size="small" @click="openDailyAdjust(row)"><el-icon><Setting /></el-icon>调整</el-button></template></el-table-column></el-table></el-card>
       </el-tab-pane>
