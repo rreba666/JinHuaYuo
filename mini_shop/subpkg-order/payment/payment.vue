@@ -770,7 +770,7 @@ async function submitPayment(): Promise<void> {
     try {
       const slots = await getDividendSlots()
       if ((slots?.availablePurchase ?? 0) < dividendQty) {
-        uni.showToast({ title: '您的分红槽位已满，暂时无法再获得分红资格，请等待已有槽位释放后再购买', icon: 'none', duration: 3000 })
+        uni.showToast({ title: '您当前补贴商品的购买机会已达上限，暂时无法购买哦', icon: 'none', duration: 3000 })
         return
       }
     } catch { /* 槽位查询失败时交由后端最终校验拦截 */ }
