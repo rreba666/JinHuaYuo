@@ -1,6 +1,6 @@
 import { request } from './request'
 import type { ApiResponse } from './request'
-import type { DividendCap, DividendCapSaveDTO, ProfitRatesConfig, ProfitRatesSaveDTO, RandomDividendConfig, RandomFloatConfig, SysConfig, SysConfigSaveDTO, WithdrawRulesConfig, WithdrawRulesSaveDTO } from '@/types/setting'
+import type { DividendCap, DividendCapSaveDTO, ProfitRatesConfig, ProfitRatesSaveDTO, RandomDividendConfig, RandomFloatConfig, SlotCountConfig, SysConfig, SysConfigSaveDTO, WithdrawRulesConfig, WithdrawRulesSaveDTO } from '@/types/setting'
 import { DEFAULT_DIVIDEND_RATE, DEFAULT_PROMOTION_RATE } from '@/utils/productPricing'
 
 const CUSTOMER_SERVICE_KEY = 'customer_service_phone'
@@ -112,6 +112,33 @@ export async function saveRandomFloatConfig(payload: { floatAmount: number; rema
     remark: payload.remark,
   })
   ensureSuccess(response.data, '分红浮动幅度保存失败')
+}
+
+/** 分红槽位数量上限配置键与默认值（每用户最多活跃槽位数，默认 3）。 */
+const SLOT_COUNT_KEY = 'dividend_slot_count'
+const DEFAULT_SLOT_COUNT = 3
+
+/** 读取分红槽位数量上限配置；未配置或返回非正整数时使用约定默认值 3。 */
+export async function getSlotCountConfig(): Promise<SlotCountConfig> {
+  const response = await request.get<ApiResponse<SysConfig | null>>(`/api/admin/setting/${SLOT_COUNT_KEY}`, { skipAuthRedirect: true })
+  const result = response.data
+  try { ensureSuccess(result, '槽位数量查询失败') } catch { /* 未配置时用默认 */ }
+  const value = Number(result?.data?.configValue)
+  return {
+    slotCount: Number.isInteger(value) && value >= 1 ? value : DEFAULT_SLOT_COUNT,
+    remark: String(result?.data?.remark ?? ''),
+  }
+}
+
+/** 保存分红槽位数量上限配置（通用配置接口 POST /api/admin/setting/{configKey}）。 */
+export async function saveSlotCountConfig(payload: { slotCount: number; remark?: string }): Promise<void> {
+  const slotCount = Number(payload.slotCount)
+  if (!Number.isInteger(slotCount) || slotCount < 1) throw new Error('槽位数量必须为不小于 1 的整数')
+  const response = await request.post<ApiResponse<null>>(`/api/admin/setting/${SLOT_COUNT_KEY}`, {
+    configValue: String(slotCount),
+    remark: payload.remark,
+  })
+  ensureSuccess(response.data, '槽位数量保存失败')
 }
 
 /** 读取商品资金比例。ADMIN 无权限访问时按业务错误处理，不触发登录跳转。 */

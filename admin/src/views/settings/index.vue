@@ -19,6 +19,7 @@ const customerServiceForm = reactive<SysConfigSaveDTO>({
 const dividendCapForm = reactive<DividendCapSaveDTO>({ multiplier: 1.5, remark: '' })
 const randomDividendForm = reactive<{ minAmount: number; maxAmount: number; remark: string }>({ minAmount: 10, maxAmount: 50, remark: '' })
 const randomFloatForm = reactive<{ floatAmount: number; remark: string }>({ floatAmount: 10, remark: '' })
+const slotCountForm = reactive<{ slotCount: number; remark: string }>({ slotCount: 3, remark: '' })
 const profitRatesForm = reactive<ProfitRatesSaveDTO>({ promotionRate: 20, bonusPoolRate: 26, remark: '' })
 type WithdrawRulesForm = Omit<WithdrawRulesConfig, 'feeRate'> & { feeRate: number }
 const withdrawRulesForm = reactive<WithdrawRulesForm>({ minAmount: 0, dailyAmountLimit: 0, dailyCountLimit: 0, feeRate: 0, testUserMinAmount: 0, testUserId: null, testSkipLock: false, maxConcurrent: 0, frozenLimit: 0, remark: '' })
@@ -97,6 +98,16 @@ async function loadRandomFloat(): Promise<void> {
   }
 }
 
+async function loadSlotCount(): Promise<void> {
+  try {
+    await store.loadSlotCount()
+    slotCountForm.slotCount = store.slotCount.slotCount
+    slotCountForm.remark = store.slotCount.remark
+  } catch (error) {
+    showError(error, '槽位数量加载失败')
+  }
+}
+
 async function loadProfitRates(): Promise<void> {
   try {
     await store.loadProfitRates()
@@ -162,6 +173,17 @@ async function saveRandomFloat(): Promise<void> {
   }
 }
 
+async function saveSlotCount(): Promise<void> {
+  try {
+    if (!Number.isInteger(slotCountForm.slotCount) || slotCountForm.slotCount < 1) { ElMessage.warning('槽位数量必须为不小于 1 的整数'); return }
+    await ElMessageBox.confirm('保存分红槽位数量上限吗？改小仅停新开、不影响已有槽位，对所有用户立即生效。', '保存确认', { type: 'warning' })
+    await store.saveSlotCount({ ...slotCountForm })
+    ElMessage.success('槽位数量已保存')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') showError(error, '槽位数量保存失败')
+  }
+}
+
 async function saveProfitRates(): Promise<void> {
   if (!(await profitRatesFormRef.value?.validate().catch(() => false))) return
   try {
@@ -193,6 +215,7 @@ function reload(): void {
   void loadDividendCap()
   void loadRandomDividend()
   void loadRandomFloat()
+  void loadSlotCount()
   void loadProfitRates()
   void loadWithdrawRules()
 }
@@ -204,7 +227,7 @@ onMounted(reload)
   <section class="page-container page-enter">
     <div class="page-heading">
       <div><h1>系统设置</h1><p>管理客服电话和红包业务参数。</p></div>
-      <el-button :icon="Refresh" :loading="store.customerServiceLoading || store.dividendCapLoading || store.randomDividendLoading || store.randomFloatLoading || store.profitRatesLoading || store.withdrawRulesLoading" @click="reload">刷新</el-button>
+      <el-button :icon="Refresh" :loading="store.customerServiceLoading || store.dividendCapLoading || store.randomDividendLoading || store.randomFloatLoading || store.slotCountLoading || store.profitRatesLoading || store.withdrawRulesLoading" @click="reload">刷新</el-button>
     </div>
 
     <div class="settings-grid">
@@ -250,6 +273,18 @@ onMounted(reload)
           </el-form-item>
           <el-form-item label="备注"><el-input v-model="randomFloatForm.remark" placeholder="可选" clearable maxlength="40" show-word-limit /></el-form-item>
           <el-form-item class="form-item-full"><el-button type="primary" :loading="store.randomFloatSaving" @click="saveRandomFloat">保存浮动幅度</el-button></el-form-item>
+        </el-form>
+      </section>
+
+      <section class="content-card setting-section fund-rate-section">
+        <div class="setting-heading"><div><h2>分红槽位数量</h2><p>每用户最多可同时拥有的活跃槽位数（默认 3）。</p></div></div>
+        <el-alert title="对所有用户立即生效" description="每个槽位=一件分红商品；改小仅停新开、不影响已开旧槽。达到上限后购买分红商品将无法开新槽。" type="info" :closable="false" show-icon />
+        <el-form :model="slotCountForm" label-width="110px" @submit.prevent="saveSlotCount">
+          <el-form-item label="槽位数上限">
+            <div class="rate-control"><el-input-number v-model="slotCountForm.slotCount" :min="1" :max="20" :precision="0" :step="1" controls-position="right" /><span class="rate-suffix">个</span></div>
+          </el-form-item>
+          <el-form-item label="备注"><el-input v-model="slotCountForm.remark" placeholder="可选" clearable maxlength="40" show-word-limit /></el-form-item>
+          <el-form-item class="form-item-full"><el-button type="primary" :loading="store.slotCountSaving" @click="saveSlotCount">保存槽位数量</el-button></el-form-item>
         </el-form>
       </section>
 

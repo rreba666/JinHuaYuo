@@ -30,12 +30,15 @@ const testResultLoading = ref(false)
 const walletTestResult = ref<WalletTestResult | null>(null)
 const dividendSlotTestResult = ref<DividendSlotTestResult | null>(null)
 const dividendRecordTestResult = ref<DividendRecordTestResult | null>(null)
+const slotSearchUserId = ref('')
 
 const relationKeyword = computed({ get: () => store.relationFilters.keyword, set: (value: string) => { store.relationFilters.keyword = value } })
 const relationSource = computed<PromotionBindingSource | ''>({ get: () => store.relationFilters.source, set: (value) => { store.relationFilters.source = value } })
 const selectedTestPool = computed(() => store.sevenDayPools.find((pool) => pool.id === testPoolId.value) || null)
 
 function money(value: number): string { return `¥ ${Number(value || 0).toFixed(2)}` }
+function slotStatus(row: { locked?: number; invalidFlag?: number }): string { return Number(row.invalidFlag) === 1 ? '退款作废' : Number(row.locked) === 1 ? '满额锁死' : '活跃' }
+function slotType(row: { locked?: number; invalidFlag?: number }): 'success' | 'warning' | 'info' { return Number(row.invalidFlag) === 1 ? 'info' : Number(row.locked) === 1 ? 'warning' : 'success' }
 function statusType(status: string): 'success' | 'warning' | 'info' | 'danger' { return /CONFIRMED|SETTLED|SUCCESS|BOUND/i.test(status) ? 'success' : /REJECT|BLOCK|FAIL/i.test(status) ? 'danger' : /PENDING|WAIT/i.test(status) ? 'warning' : 'info' }
 function statusText(status: string): string { return ({ PENDING: '待处理', CONFIRMED: '已确认', SETTLED: '已结算', BOUND: '已绑定' } as Record<string, string>)[status] || status || '未知' }
 function contributionStatusText(status: string, statusDesc = ''): string { return statusDesc || ({ PENDING: '待确认（7天后自动确认）', CONFIRMING: '系统确认中', CONFIRMED: '已进入红包池', VOIDED: '订单退款，红包作废' } as Record<string, string>)[status] || status || '未知' }
@@ -111,6 +114,15 @@ async function submitPoolAdjust(): Promise<void> { if (!(await adjustPoolFormRef
 function openDailyAdjust(detail: SevenDayBonusDetail): void { dailyId.value = detail.id; Object.assign(adjustDailyForm, { dailyAmount: detail.dailyAmount, dailyUserCount: detail.dailyUserCount }); adjustDailyVisible.value = true }
 async function submitDailyAdjust(): Promise<void> { if (!(await adjustDailyFormRef.value?.validate().catch(() => false))) return; try { await store.adjustDetail(dailyId.value, { ...adjustDailyForm }); adjustDailyVisible.value = false; ElMessage.success('每日红包已调整') } catch (error) { showError(error, '每日红包调整失败') } }
 
+/** 查询后台「用户分红资格」槽位（按 userId 过滤，留空查全部；只读）。 */
+async function searchSlots(): Promise<void> {
+  try {
+    await store.fetchAdminSlots(slotSearchUserId.value.trim() || undefined)
+  } catch (error) {
+    showError(error, '用户分红槽位加载失败')
+  }
+}
+
 onMounted(() => { void load(); void loadRelations() })
 </script>
 
@@ -179,10 +191,31 @@ onMounted(() => { void load(); void loadRelations() })
         <el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>周红包</strong><span class="toolbar-count">按周期管理红包</span></div><div class="toolbar-actions"><el-button :loading="store.loading" :icon="Refresh" @click="load">刷新</el-button></div></div>
           <el-table :data="store.sevenDayPools" v-loading="store.loading" border stripe><el-table-column prop="id" label="红包 ID" width="110" /><el-table-column label="周期" min-width="200"><template #default="{ row }">{{ row.startDate }} 至 {{ row.endDate }}</template></el-table-column><el-table-column label="总金额" width="140"><template #default="{ row }">{{ money(row.totalAmount) }}</template></el-table-column><el-table-column prop="settledUserCount" label="已结算人数" width="120" /><el-table-column prop="settleTime" label="结算时间" min-width="180" /><el-table-column label="操作" width="160" fixed="right"><template #default="{ row }"><div class="operator-actions"><el-button size="small" @click="showPoolDetails(row)"><el-icon><View /></el-icon>明细</el-button><el-button size="small" @click="openPoolAdjust(row)"><el-icon><Setting /></el-icon>调整</el-button></div></template></el-table-column></el-table>
         </el-card>
-        <el-card shadow="never" class="content-card"><div class="toolbar"><strong>未结算每日红包</strong></div><el-table :data="store.unsettledDaily" v-loading="store.loading" border stripe><el-table-column prop="id" label="明细 ID" width="110" /><el-table-column prop="poolDate" label="日期" width="160" /><el-table-column label="每日金额" width="140"><template #default="{ row }">{{ money(row.dailyAmount) }}</template></el-table-column><el-table-column prop="dailyUserCount" label="用户数" width="120" /><el-table-column label="操作" width="110"><template #default="{ row }"><el-button size="small" @click="openDailyAdjust(row)"><el-icon><Setting /></el-icon>调整</el-button></template></el-table-column></el-table></el-card>
-        <el-card shadow="never" class="content-card"><div class="toolbar"><strong>已结算每日红包</strong></div><el-table :data="store.settledDaily" v-loading="store.loading" border stripe><el-table-column prop="id" label="明细 ID" width="110" /><el-table-column prop="poolId" label="父红包 ID" width="120" /><el-table-column prop="poolDate" label="日期" width="160" /><el-table-column label="每日金额" width="140"><template #default="{ row }">{{ money(row.dailyAmount) }}</template></el-table-column><el-table-column prop="dailyUserCount" label="参与人数" width="120" /><el-table-column prop="settlementVersion" label="版本" width="90" /></el-table></el-card>
+        <el-card shadow="never" class="content-card"><div class="toolbar"><strong>未结算每日红包</strong></div><el-table :data="store.unsettledDaily" v-loading="store.loading" border stripe><el-table-column prop="id" label="明细 ID" width="110" /><el-table-column prop="poolDate" label="日期" width="160" /><el-table-column label="每日金额" width="140"><template #default="{ row }">{{ money(row.dailyAmount) }}</template></el-table-column><el-table-column label="累计人数" width="120"><template #default="{ row }">{{ row.cumulativeUserCount ?? row.dailyUserCount }}</template></el-table-column><el-table-column label="操作" width="110"><template #default="{ row }"><el-button size="small" @click="openDailyAdjust(row)"><el-icon><Setting /></el-icon>调整</el-button></template></el-table-column></el-table></el-card>
+        <el-card shadow="never" class="content-card"><div class="toolbar"><strong>已结算每日红包</strong></div><el-table :data="store.settledDaily" v-loading="store.loading" border stripe><el-table-column prop="id" label="明细 ID" width="110" /><el-table-column prop="poolId" label="父红包 ID" width="120" /><el-table-column prop="poolDate" label="日期" width="160" /><el-table-column label="每日金额" width="140"><template #default="{ row }">{{ money(row.dailyAmount) }}</template></el-table-column><el-table-column label="实发金额" width="140"><template #default="{ row }">{{ row.settledAmount == null ? '--' : money(row.settledAmount) }}</template></el-table-column><el-table-column label="累计人数" width="120"><template #default="{ row }">{{ row.cumulativeUserCount ?? row.dailyUserCount }}</template></el-table-column><el-table-column prop="settlementVersion" label="版本" width="90" /></el-table></el-card>
       </el-tab-pane>
       <el-tab-pane label="用户购买机会" name="limits"><el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>用户购买机会</strong><span class="toolbar-count">共 {{ store.dividendLimits.length }} 条</span></div></div><el-table :data="store.dividendLimits" v-loading="store.loading" border stripe><el-table-column prop="userId" label="用户 ID" width="120" /><el-table-column prop="availablePurchase" label="可用购买机会" width="140" /><el-table-column prop="totalPurchases" label="累计购买" width="120" /><el-table-column prop="createTime" label="创建时间" min-width="170" /><el-table-column prop="updateTime" label="更新时间" min-width="170" /></el-table></el-card></el-tab-pane>
+      <el-tab-pane label="用户分红槽位" name="slots">
+        <el-card shadow="never" class="content-card">
+          <div class="toolbar">
+            <div class="toolbar-actions">
+              <el-input v-model="slotSearchUserId" class="relationKeyword" placeholder="输入用户 ID（留空查全部）" clearable @keyup.enter="searchSlots" />
+              <el-button type="primary" :loading="store.loading" :icon="Search" @click="searchSlots">查询</el-button>
+            </div>
+          </div>
+          <el-table :data="store.adminSlots" v-loading="store.loading" border stripe>
+            <el-table-column prop="id" label="槽位 ID" width="90" />
+            <el-table-column prop="userId" label="用户 ID" width="110" />
+            <el-table-column prop="orderNo" label="订单号" min-width="180" />
+            <el-table-column prop="productName" label="商品" min-width="150" />
+            <el-table-column label="商品价" width="110"><template #default="{ row }">{{ money(row.productPrice) }}</template></el-table-column>
+            <el-table-column label="分红上限" width="110"><template #default="{ row }">{{ money(row.capAmount) }}</template></el-table-column>
+            <el-table-column label="累计分红" width="110"><template #default="{ row }">{{ money(row.totalReceived) }}</template></el-table-column>
+            <el-table-column label="状态" width="110"><template #default="{ row }"><el-tag :type="slotType(row)" size="small">{{ slotStatus(row) }}</el-tag></template></el-table-column>
+            <el-table-column prop="lockedAt" label="锁死时间" min-width="150" />
+          </el-table>
+        </el-card>
+      </el-tab-pane>
       <el-tab-pane label="应急红包池" name="emergency"><EmergencyPoolPanel /></el-tab-pane>
     </el-tabs>
     <el-dialog v-model="rebindVisible" title="重新绑定推广员" width="460px"><p v-if="rebindRow" class="dialog-context">买家：{{ rebindRow.buyerName || rebindRow.buyerUserId }}</p><el-input v-model="promoterId" placeholder="请输入推广员 ID" inputmode="numeric" /><template #footer><el-button @click="rebindVisible = false">取消</el-button><el-button type="primary" :loading="store.relationActionLoading" @click="rebindPromotionRelation">重新绑定</el-button></template></el-dialog>

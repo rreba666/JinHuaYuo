@@ -1,26 +1,29 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { getCustomerServiceConfig, getDividendCap, getProfitRatesConfig, getRandomDividendConfig, getRandomFloatConfig, getWithdrawRules, saveCustomerServiceConfig, saveDividendCap, saveProfitRatesConfig as postProfitRatesConfig, saveRandomDividendConfig, saveRandomFloatConfig, saveWithdrawRules } from '@/api/setting'
+import { getCustomerServiceConfig, getDividendCap, getProfitRatesConfig, getRandomDividendConfig, getRandomFloatConfig, getSlotCountConfig, getWithdrawRules, saveCustomerServiceConfig, saveDividendCap, saveProfitRatesConfig as postProfitRatesConfig, saveRandomDividendConfig, saveRandomFloatConfig, saveSlotCountConfig, saveWithdrawRules } from '@/api/setting'
 import { setFundRates } from '@/utils/productPricing'
-import type { DividendCap, DividendCapSaveDTO, ProfitRatesConfig, ProfitRatesSaveDTO, RandomDividendConfig, RandomFloatConfig, SysConfig, SysConfigSaveDTO, WithdrawRulesConfig, WithdrawRulesSaveDTO } from '@/types/setting'
+import type { DividendCap, DividendCapSaveDTO, ProfitRatesConfig, ProfitRatesSaveDTO, RandomDividendConfig, RandomFloatConfig, SlotCountConfig, SysConfig, SysConfigSaveDTO, WithdrawRulesConfig, WithdrawRulesSaveDTO } from '@/types/setting'
 
 export const useSettingStore = defineStore('setting', () => {
   const customerService = ref<SysConfig | null>(null)
   const dividendCap = ref<DividendCap>({ multiplier: 1.5, remark: '' })
   const randomDividend = ref<RandomDividendConfig>({ minAmount: 10, maxAmount: 50, remark: '' })
   const randomFloat = ref<RandomFloatConfig>({ floatAmount: 10, remark: '' })
+  const slotCount = ref<SlotCountConfig>({ slotCount: 3, remark: '' })
   const profitRates = ref<ProfitRatesConfig>({ promotionRate: 0.2, bonusPoolRate: 0.26, remark: '' })
   const withdrawRules = ref<WithdrawRulesConfig>({ minAmount: 0, dailyAmountLimit: 0, dailyCountLimit: 0, feeRate: 0, testUserMinAmount: 0, testUserId: null, testSkipLock: false, maxConcurrent: 0, frozenLimit: 0, remark: '' })
   const customerServiceLoading = ref(false)
   const dividendCapLoading = ref(false)
   const randomDividendLoading = ref(false)
   const randomFloatLoading = ref(false)
+  const slotCountLoading = ref(false)
   const profitRatesLoading = ref(false)
   const withdrawRulesLoading = ref(false)
   const customerServiceSaving = ref(false)
   const dividendCapSaving = ref(false)
   const randomDividendSaving = ref(false)
   const randomFloatSaving = ref(false)
+  const slotCountSaving = ref(false)
   const profitRatesSaving = ref(false)
   const withdrawRulesSaving = ref(false)
 
@@ -83,6 +86,27 @@ export const useSettingStore = defineStore('setting', () => {
       await loadRandomFloat()
     } finally {
       randomFloatSaving.value = false
+    }
+  }
+
+  /** 读取分红槽位数量上限配置（每用户最多活跃槽位数，默认 3）。 */
+  async function loadSlotCount(): Promise<void> {
+    slotCountLoading.value = true
+    try {
+      slotCount.value = await getSlotCountConfig()
+    } finally {
+      slotCountLoading.value = false
+    }
+  }
+
+  /** 保存分红槽位数量上限配置。 */
+  async function saveSlotCount(payload: { slotCount: number; remark?: string }): Promise<void> {
+    slotCountSaving.value = true
+    try {
+      await saveSlotCountConfig(payload)
+      await loadSlotCount()
+    } finally {
+      slotCountSaving.value = false
     }
   }
 
@@ -153,30 +177,35 @@ export const useSettingStore = defineStore('setting', () => {
     dividendCap,
     randomDividend,
     randomFloat,
+    slotCount,
     profitRates,
     withdrawRules,
     customerServiceLoading,
     dividendCapLoading,
     randomDividendLoading,
     randomFloatLoading,
+    slotCountLoading,
     profitRatesLoading,
     withdrawRulesLoading,
     customerServiceSaving,
     dividendCapSaving,
     randomDividendSaving,
     randomFloatSaving,
+    slotCountSaving,
     profitRatesSaving,
     withdrawRulesSaving,
     loadCustomerService,
     loadDividendCap,
     loadRandomDividend,
     loadRandomFloat,
+    loadSlotCount,
     loadProfitRates,
     loadWithdrawRules,
     saveCustomerService,
     saveDividendCapConfig,
     saveRandomDividend,
     saveRandomFloat,
+    saveSlotCount,
     saveProfitRatesConfig,
     saveWithdrawRulesConfig,
   }

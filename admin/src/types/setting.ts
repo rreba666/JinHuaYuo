@@ -41,6 +41,12 @@ export interface RandomFloatConfig {
   remark: string
 }
 
+/** 分红槽位数量上限配置（每用户最多活跃槽位数，默认 3）。 */
+export interface SlotCountConfig {
+  slotCount: number
+  remark: string
+}
+
 /** 商品资金比例配置。 */
 export interface ProfitRatesConfig {
   promotionRate: number

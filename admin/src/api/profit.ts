@@ -1,5 +1,5 @@
 import { request } from './request'
-import type { BonusInjectDTO, DividendContribution, DividendContributionPage, DividendRecordTestItem, DividendRecordTestResult, DividendSlotTestItem, DividendSlotTestResult, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, ProfitResponse, PromotionBinding, PromotionBindingPage, PromotionBindingQuery, PromotionPage, PendingPromotionRecord, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
+import type { AdminDividendSlot, BonusInjectDTO, DividendContribution, DividendContributionPage, DividendRecordTestItem, DividendRecordTestResult, DividendSlotTestItem, DividendSlotTestResult, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, ProfitResponse, PromotionBinding, PromotionBindingPage, PromotionBindingQuery, PromotionPage, PendingPromotionRecord, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
 
 function unwrap<T>(response: { data: ProfitResponse<T> }, fallback: string): T {
   const result = response.data
@@ -37,7 +37,7 @@ function normalizePool(value: unknown): SevenDayBonusPool {
 
 function normalizeDetail(value: unknown): SevenDayBonusDetail {
   const row = (value || {}) as Partial<SevenDayBonusDetail>
-  return { ...row, id: String(row.id ?? ''), poolId: String(row.poolId ?? ''), poolDate: String(row.poolDate ?? ''), dailyAmount: Number(row.dailyAmount ?? 0), dailyUserCount: Number(row.dailyUserCount ?? 0), settlementVersion: row.settlementVersion ? String(row.settlementVersion) : '', createTime: String(row.createTime ?? ''), updateTime: String(row.updateTime ?? '') }
+  return { ...row, id: String(row.id ?? ''), poolId: String(row.poolId ?? ''), poolDate: String(row.poolDate ?? ''), dailyAmount: Number(row.dailyAmount ?? 0), dailyUserCount: Number(row.dailyUserCount ?? 0), cumulativeUserCount: row.cumulativeUserCount == null ? undefined : Number(row.cumulativeUserCount), settledFlag: row.settledFlag == null ? undefined : Number(row.settledFlag), settledAmount: row.settledAmount == null ? null : Number(row.settledAmount), settlementVersion: row.settlementVersion ? String(row.settlementVersion) : '', createTime: String(row.createTime ?? ''), updateTime: String(row.updateTime ?? '') }
 }
 
 function normalizeContribution(value: unknown): DividendContribution {
@@ -177,6 +177,32 @@ export async function getUnsettledDailyDetails(): Promise<SevenDayBonusDetail[]>
 export async function getSettledDailyDetails(): Promise<SevenDayBonusDetail[]> {
   const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/daily/settled'), '已结算红包查询失败')
   return Array.isArray(data) ? data.map(normalizeDetail) : []
+}
+
+/** 后台「用户分红资格」槽位列表（GET /api/admin/profit/slots，按 userId 过滤，只读）。 */
+export async function getAdminDividendSlots(userId?: string): Promise<AdminDividendSlot[]> {
+  const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/slots', { params: userId ? { userId } : {} }), '用户分红槽位查询失败')
+  return Array.isArray(data) ? data.map(normalizeSlot) : []
+}
+
+/** 归一化后台槽位：BIGINT 字段转字符串，数值字段落地。 */
+function normalizeSlot(value: unknown): AdminDividendSlot {
+  const row = (value || {}) as Partial<AdminDividendSlot>
+  return {
+    id: String(row.id ?? ''),
+    userId: String(row.userId ?? ''),
+    orderId: String(row.orderId ?? ''),
+    orderNo: String(row.orderNo ?? ''),
+    productId: String(row.productId ?? ''),
+    productName: String(row.productName ?? ''),
+    productPrice: Number(row.productPrice ?? 0),
+    capAmount: Number(row.capAmount ?? 0),
+    totalReceived: Number(row.totalReceived ?? 0),
+    locked: Number(row.locked ?? 0),
+    invalidFlag: Number(row.invalidFlag ?? 0),
+    invalidReason: row.invalidReason == null ? null : String(row.invalidReason),
+    lockedAt: row.lockedAt == null ? null : String(row.lockedAt),
+  }
 }
 
 export async function getProfitContributions(query: { status?: string; page: number; size: number }): Promise<DividendContributionPage> {

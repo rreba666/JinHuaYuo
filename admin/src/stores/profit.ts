@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
-import { adjustDaily, adjustPool, confirmPool, getBonusDetails, getBonusPools, getDividendLimits, getPendingPromotion, getProfitContributions, getPromotionRelations, getUnsettledDailyDetails, getSettledDailyDetails, injectBonusPool, rebindPromotionRelation, settleProfit, unbindPromotionRelation } from '@/api/profit'
-import type { BonusInjectDTO, DividendContribution, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, PromotionBinding, PromotionBindingSource, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit } from '@/types/profit'
+import { adjustDaily, adjustPool, confirmPool, getAdminDividendSlots, getBonusDetails, getBonusPools, getDividendLimits, getPendingPromotion, getProfitContributions, getPromotionRelations, getUnsettledDailyDetails, getSettledDailyDetails, injectBonusPool, rebindPromotionRelation, settleProfit, unbindPromotionRelation } from '@/api/profit'
+import type { AdminDividendSlot, BonusInjectDTO, DividendContribution, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, PromotionBinding, PromotionBindingSource, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit } from '@/types/profit'
 
 export const useProfitStore = defineStore('profit', () => {
   const pendingPromotion = ref<import('@/types/profit').PendingPromotionRecord[]>([])
@@ -20,6 +20,7 @@ export const useProfitStore = defineStore('profit', () => {
   const unsettledDaily = ref<SevenDayBonusDetail[]>([])
   const settledDaily = ref<SevenDayBonusDetail[]>([])
   const dividendLimits = ref<UserDividendLimit[]>([])
+  const adminSlots = ref<AdminDividendSlot[]>([])
   const contributions = ref<DividendContribution[]>([])
   const contributionTotal = ref(0)
   const contributionPage = ref(1)
@@ -78,5 +79,15 @@ export const useProfitStore = defineStore('profit', () => {
   async function adjust(poolId: string, payload: ProfitAdjustPoolDTO): Promise<void> { await runAction(() => adjustPool(poolId, payload)) }
   async function adjustDetail(detailId: string, payload: ProfitAdjustDailyDTO): Promise<void> { await runAction(() => adjustDaily(detailId, payload)) }
 
-  return { pendingPromotion, pendingTotal, pendingPage, pendingSize, relations, relationTotal, relationPage, relationSize, relationLoading, relationActionLoading, relationFilters, sevenDayPools, poolDetails, unsettledDaily, settledDaily, dividendLimits, contributions, contributionTotal, contributionPage, contributionSize, contributionStatus, contributionLoading, loading, actionLoading, fetchAll, fetchRelations, fetchContributions, fetchPoolDetails, rebindRelation, unbindRelation, inject, settle, confirm, adjust, adjustDetail }
+  /** 查询后台「用户分红资格」槽位（按 userId 过滤，留空查全部；只读）。 */
+  async function fetchAdminSlots(userId?: string): Promise<void> {
+    loading.value = true
+    try {
+      adminSlots.value = await getAdminDividendSlots(userId)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  return { pendingPromotion, pendingTotal, pendingPage, pendingSize, relations, relationTotal, relationPage, relationSize, relationLoading, relationActionLoading, relationFilters, sevenDayPools, poolDetails, unsettledDaily, settledDaily, dividendLimits, adminSlots, contributions, contributionTotal, contributionPage, contributionSize, contributionStatus, contributionLoading, loading, actionLoading, fetchAll, fetchRelations, fetchContributions, fetchPoolDetails, fetchAdminSlots, rebindRelation, unbindRelation, inject, settle, confirm, adjust, adjustDetail }
 })
