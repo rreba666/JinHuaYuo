@@ -37,7 +37,7 @@ function normalizePool(value: unknown): SevenDayBonusPool {
 
 function normalizeDetail(value: unknown): SevenDayBonusDetail {
   const row = (value || {}) as Partial<SevenDayBonusDetail>
-  return { ...row, id: String(row.id ?? ''), poolId: String(row.poolId ?? ''), poolDate: String(row.poolDate ?? ''), dailyAmount: Number(row.dailyAmount ?? 0), dailyUserCount: Number(row.dailyUserCount ?? 0), createTime: String(row.createTime ?? ''), updateTime: String(row.updateTime ?? '') }
+  return { ...row, id: String(row.id ?? ''), poolId: String(row.poolId ?? ''), poolDate: String(row.poolDate ?? ''), dailyAmount: Number(row.dailyAmount ?? 0), dailyUserCount: Number(row.dailyUserCount ?? 0), settlementVersion: row.settlementVersion ? String(row.settlementVersion) : '', createTime: String(row.createTime ?? ''), updateTime: String(row.updateTime ?? '') }
 }
 
 function normalizeContribution(value: unknown): DividendContribution {
@@ -171,6 +171,11 @@ export async function getBonusDetails(poolId: string): Promise<SevenDayBonusDeta
 
 export async function getUnsettledDailyDetails(): Promise<SevenDayBonusDetail[]> {
   const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/daily/unsettled'), '未结算红包查询失败')
+  return Array.isArray(data) ? data.map(normalizeDetail) : []
+}
+
+export async function getSettledDailyDetails(): Promise<SevenDayBonusDetail[]> {
+  const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/daily/settled'), '已结算红包查询失败')
   return Array.isArray(data) ? data.map(normalizeDetail) : []
 }
 

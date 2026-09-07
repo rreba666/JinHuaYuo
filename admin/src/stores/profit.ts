@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
-import { adjustDaily, adjustPool, confirmPool, getBonusDetails, getBonusPools, getDividendLimits, getPendingPromotion, getProfitContributions, getPromotionRelations, getUnsettledDailyDetails, injectBonusPool, rebindPromotionRelation, resetDividendLimit, settleProfit, unbindPromotionRelation } from '@/api/profit'
+import { adjustDaily, adjustPool, confirmPool, getBonusDetails, getBonusPools, getDividendLimits, getPendingPromotion, getProfitContributions, getPromotionRelations, getUnsettledDailyDetails, getSettledDailyDetails, injectBonusPool, rebindPromotionRelation, resetDividendLimit, settleProfit, unbindPromotionRelation } from '@/api/profit'
 import type { BonusInjectDTO, DividendContribution, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, PromotionBinding, PromotionBindingSource, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit } from '@/types/profit'
 
 export const useProfitStore = defineStore('profit', () => {
@@ -18,6 +18,7 @@ export const useProfitStore = defineStore('profit', () => {
   const sevenDayPools = ref<SevenDayBonusPool[]>([])
   const poolDetails = ref<SevenDayBonusDetail[]>([])
   const unsettledDaily = ref<SevenDayBonusDetail[]>([])
+  const settledDaily = ref<SevenDayBonusDetail[]>([])
   const dividendLimits = ref<UserDividendLimit[]>([])
   const contributions = ref<DividendContribution[]>([])
   const contributionTotal = ref(0)
@@ -32,11 +33,12 @@ export const useProfitStore = defineStore('profit', () => {
   async function fetchAll(): Promise<void> {
     loading.value = true
     try {
-      const [pending, pools, daily, limits] = await Promise.all([getPendingPromotion({ page: pendingPage.value, size: pendingSize.value }), getBonusPools(), getUnsettledDailyDetails(), getDividendLimits()])
+      const [pending, pools, daily, limits, settled] = await Promise.all([getPendingPromotion({ page: pendingPage.value, size: pendingSize.value }), getBonusPools(), getUnsettledDailyDetails(), getDividendLimits(), getSettledDailyDetails()])
       pendingPromotion.value = pending.list
       pendingTotal.value = pending.total
       sevenDayPools.value = pools
       unsettledDaily.value = daily
+      settledDaily.value = settled
       dividendLimits.value = limits
     } finally { loading.value = false }
   }
@@ -77,5 +79,5 @@ export const useProfitStore = defineStore('profit', () => {
   async function adjustDetail(detailId: string, payload: ProfitAdjustDailyDTO): Promise<void> { await runAction(() => adjustDaily(detailId, payload)) }
   async function resetLimit(userId: string): Promise<void> { await runAction(() => resetDividendLimit(userId)) }
 
-  return { pendingPromotion, pendingTotal, pendingPage, pendingSize, relations, relationTotal, relationPage, relationSize, relationLoading, relationActionLoading, relationFilters, sevenDayPools, poolDetails, unsettledDaily, dividendLimits, contributions, contributionTotal, contributionPage, contributionSize, contributionStatus, contributionLoading, loading, actionLoading, fetchAll, fetchRelations, fetchContributions, fetchPoolDetails, rebindRelation, unbindRelation, inject, settle, confirm, adjust, adjustDetail, resetLimit }
+  return { pendingPromotion, pendingTotal, pendingPage, pendingSize, relations, relationTotal, relationPage, relationSize, relationLoading, relationActionLoading, relationFilters, sevenDayPools, poolDetails, unsettledDaily, settledDaily, dividendLimits, contributions, contributionTotal, contributionPage, contributionSize, contributionStatus, contributionLoading, loading, actionLoading, fetchAll, fetchRelations, fetchContributions, fetchPoolDetails, rebindRelation, unbindRelation, inject, settle, confirm, adjust, adjustDetail, resetLimit }
 })

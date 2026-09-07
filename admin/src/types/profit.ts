@@ -55,6 +55,8 @@ export interface SevenDayBonusDetail {
   poolDate: string
   dailyAmount: number
   dailyUserCount: number
+  /** 结算版本（如 V2）。 */
+  settlementVersion?: string
   createTime: string
   updateTime: string
 }
