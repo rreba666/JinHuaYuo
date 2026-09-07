@@ -7,6 +7,8 @@ export interface ProductDetail {
   /** 当前用户是否已收藏该商品（未登录恒为 false） */
   favorite?: boolean
   images?: string[]
+  /** 商品详情海报（商品素材页用的长图）。 */
+  detailPosterUrl?: string
   videoUrl?: string
   description: string
   descriptionTitle?: string
