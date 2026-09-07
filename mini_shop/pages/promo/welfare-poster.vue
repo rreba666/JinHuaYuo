@@ -1,11 +1,10 @@
 <template>
   <view class="welfare-page">
-    <!-- 自定义导航栏（悬浮顶部，避开状态栏） -->
+    <!-- 自定义导航栏（悬浮顶部，透明背景不遮海报，仅保留返回按钮） -->
     <view class="welfare-nav">
       <view class="welfare-nav-back" @click="goBack">
         <image class="welfare-nav-back-icon" src="/static/left_arrow.png" />
       </view>
-      <text class="welfare-nav-title">福利海报</text>
     </view>
 
     <!-- 整张海报占满页面；show-menu-by-longpress 开启长按后识别图中小程序码（默认关闭，必须显式开启） -->
@@ -37,10 +36,9 @@ function goBack(): void {
 
 <style scoped>
 .welfare-page { position: relative; width: 100%; height: 100vh; background: #fff; overflow: hidden; }
-.welfare-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 10; display: flex; align-items: center; height: calc(88rpx + var(--status-bar-height)); padding: var(--status-bar-height) 24rpx 0; box-sizing: border-box; background: rgba(0,0,0,.28); }
-.welfare-nav-back { width: 44rpx; height: 44rpx; display: flex; align-items: center; }
+.welfare-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 10; display: flex; align-items: center; height: calc(88rpx + var(--status-bar-height)); padding: var(--status-bar-height) 24rpx 0; box-sizing: border-box; background: transparent; }
+.welfare-nav-back { display: flex; align-items: center; justify-content: center; width: 64rpx; height: 64rpx; border-radius: 50%; background: rgba(255,255,255,.6); }
 .welfare-nav-back-icon { width: 34rpx; height: 34rpx; }
-.welfare-nav-title { position: absolute; top: var(--status-bar-height); left: 50%; height: 88rpx; line-height: 88rpx; color: #fff; font-size: 30rpx; font-weight: 600; transform: translateX(-50%); }
 .welfare-poster-body { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
 .welfare-poster-img { width: 100%; height: 100%; }
 .welfare-poster-empty { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
