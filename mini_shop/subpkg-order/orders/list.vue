@@ -242,6 +242,7 @@ onShow(() => {
         <view v-for="order in list" :key="order.id" class="order-card" @click="openDetail(order)">
           <view class="card-head"><text class="card-title">{{ order.pickupType === 1 ? (order.shopName || '门店自提') : order.orderNo }}</text><text class="card-status">{{ order.statusDesc }}</text></view>
           <text class="card-time">{{ order.createTime }}</text>
+          <text v-if="order.pickupType === 1 && (order.receiverName || order.receiverPhone)" class="card-receiver">取货人：{{ order.receiverName }} {{ order.receiverPhone }}</text>
 
           <!-- 物流状态条（仅待收货，两态：已发货/已送达） -->
           <view v-if="order.status === 2" class="logistics" @click.stop="openDetail(order)">
@@ -301,6 +302,7 @@ onShow(() => {
 .card-title { color: #303030; font-size: 30rpx; font-weight: 600; max-width: 420rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-status { color: #916448; font-size: 28rpx; flex-shrink: 0; }
 .card-time { display: block; margin-top: 8rpx; color: #959595; font-size: 26rpx; }
+.card-receiver { display: block; margin-top: 8rpx; color: #303030; font-size: 26rpx; }
 .logistics { display: flex; align-items: center; margin-top: 20rpx; padding: 14rpx 20rpx; background: rgba(224, 215, 206, 0.27); border-radius: 8rpx; }
 .logi-icon { width: 40rpx; height: 40rpx; margin-right: 12rpx; border: 2rpx solid #c9b8a8; border-radius: 50%; flex-shrink: 0; }
 .logi-status { color: #000; font-size: 26rpx; font-weight: 600; flex-shrink: 0; }
