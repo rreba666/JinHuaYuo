@@ -31,6 +31,8 @@ const walletTestResult = ref<WalletTestResult | null>(null)
 const dividendSlotTestResult = ref<DividendSlotTestResult | null>(null)
 const dividendRecordTestResult = ref<DividendRecordTestResult | null>(null)
 const slotSearchUserId = ref('')
+const dailyUsersDialogVisible = ref(false)
+const dailyUsersAsOfDate = ref('')
 
 const relationKeyword = computed({ get: () => store.relationFilters.keyword, set: (value: string) => { store.relationFilters.keyword = value } })
 const relationSource = computed<PromotionBindingSource | ''>({ get: () => store.relationFilters.source, set: (value) => { store.relationFilters.source = value } })
@@ -123,8 +125,18 @@ async function searchSlots(): Promise<void> {
   }
 }
 
-onMounted(() => { void load(); void loadRelations() })
-</script>
+/** 查看某支付日的累计用户贡献明细。 */
+async function viewDailyUsers(detail: SevenDayBonusDetail): Promise<void> {
+  try {
+    await store.fetchDailyUsers(detail.poolDate)
+    dailyUsersAsOfDate.value = detail.poolDate
+    dailyUsersDialogVisible.value = true
+  } catch (error) {
+    showError(error, '累计用户明细加载失败')
+  }
+}
+
+onMounted(() => { void load(); void loadRelations() })</script>
 
 <template>
   <section class="page-container page-enter">
@@ -192,7 +204,7 @@ onMounted(() => { void load(); void loadRelations() })
           <el-table :data="store.sevenDayPools" v-loading="store.loading" border stripe><el-table-column prop="id" label="红包 ID" width="110" /><el-table-column label="周期" min-width="200"><template #default="{ row }">{{ row.startDate }} 至 {{ row.endDate }}</template></el-table-column><el-table-column label="总金额" width="140"><template #default="{ row }">{{ money(row.totalAmount) }}</template></el-table-column><el-table-column prop="settledUserCount" label="已结算人数" width="120" /><el-table-column prop="settleTime" label="结算时间" min-width="180" /><el-table-column label="操作" width="160" fixed="right"><template #default="{ row }"><div class="operator-actions"><el-button size="small" @click="showPoolDetails(row)"><el-icon><View /></el-icon>明细</el-button><el-button size="small" @click="openPoolAdjust(row)"><el-icon><Setting /></el-icon>调整</el-button></div></template></el-table-column></el-table>
         </el-card>
         <el-card shadow="never" class="content-card"><div class="toolbar"><strong>未结算每日红包</strong></div><el-table :data="store.unsettledDaily" v-loading="store.loading" border stripe><el-table-column prop="id" label="明细 ID" width="110" /><el-table-column prop="poolDate" label="日期" width="160" /><el-table-column label="每日金额" width="140"><template #default="{ row }">{{ money(row.dailyAmount) }}</template></el-table-column><el-table-column label="累计人数" width="120"><template #default="{ row }">{{ row.cumulativeUserCount ?? row.dailyUserCount }}</template></el-table-column><el-table-column label="操作" width="110"><template #default="{ row }"><el-button size="small" @click="openDailyAdjust(row)"><el-icon><Setting /></el-icon>调整</el-button></template></el-table-column></el-table></el-card>
-        <el-card shadow="never" class="content-card"><div class="toolbar"><strong>已结算每日红包</strong></div><el-table :data="store.settledDaily" v-loading="store.loading" border stripe><el-table-column prop="id" label="明细 ID" width="110" /><el-table-column prop="poolId" label="父红包 ID" width="120" /><el-table-column prop="poolDate" label="日期" width="160" /><el-table-column label="每日金额" width="140"><template #default="{ row }">{{ money(row.dailyAmount) }}</template></el-table-column><el-table-column label="实发金额" width="140"><template #default="{ row }">{{ row.settledAmount == null ? '--' : money(row.settledAmount) }}</template></el-table-column><el-table-column label="累计人数" width="120"><template #default="{ row }">{{ row.cumulativeUserCount ?? row.dailyUserCount }}</template></el-table-column><el-table-column prop="settlementVersion" label="版本" width="90" /></el-table></el-card>
+        <el-card shadow="never" class="content-card"><div class="toolbar"><strong>已结算每日红包</strong></div><el-table :data="store.settledDaily" v-loading="store.loading" border stripe><el-table-column prop="id" label="明细 ID" width="110" /><el-table-column prop="poolId" label="父红包 ID" width="120" /><el-table-column prop="poolDate" label="日期" width="160" /><el-table-column label="每日金额" width="140"><template #default="{ row }">{{ money(row.dailyAmount) }}</template></el-table-column><el-table-column label="实发金额" width="140"><template #default="{ row }">{{ row.settledAmount == null ? '--' : money(row.settledAmount) }}</template></el-table-column><el-table-column label="累计人数" width="120"><template #default="{ row }">{{ row.cumulativeUserCount ?? row.dailyUserCount }}</template></el-table-column><el-table-column prop="settlementVersion" label="版本" width="90" /><el-table-column label="操作" width="110"><template #default="{ row }"><el-button size="small" @click="viewDailyUsers(row)"><el-icon><View /></el-icon>累计用户</el-button></template></el-table-column></el-table></el-card>
       </el-tab-pane>
       <el-tab-pane label="用户购买机会" name="limits"><el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>用户购买机会</strong><span class="toolbar-count">共 {{ store.dividendLimits.length }} 条</span></div></div><el-table :data="store.dividendLimits" v-loading="store.loading" border stripe><el-table-column prop="userId" label="用户 ID" width="120" /><el-table-column prop="availablePurchase" label="可用购买机会" width="140" /><el-table-column prop="totalPurchases" label="累计购买" width="120" /><el-table-column prop="createTime" label="创建时间" min-width="170" /><el-table-column prop="updateTime" label="更新时间" min-width="170" /></el-table></el-card></el-tab-pane>
       <el-tab-pane label="用户分红槽位" name="slots">
@@ -222,6 +234,7 @@ onMounted(() => { void load(); void loadRelations() })
     <el-dialog v-model="poolDetailVisible" title="每日红包明细" width="760px"><el-table :data="store.poolDetails" border><el-table-column prop="poolDate" label="日期" /><el-table-column label="每日金额"><template #default="{ row }">{{ money(row.dailyAmount) }}</template></el-table-column><el-table-column prop="dailyUserCount" label="用户数" /><el-table-column prop="updateTime" label="更新时间" /></el-table></el-dialog>
     <el-dialog v-model="adjustPoolVisible" title="调整 周红包" width="460px"><el-form ref="adjustPoolFormRef" :model="adjustPoolForm" :rules="poolFormRules" label-width="100px"><el-form-item label="总金额" prop="totalAmount"><el-input-number v-model="adjustPoolForm.totalAmount" :min="0" :precision="2" /></el-form-item><el-form-item label="用户数" prop="userCount"><el-input-number v-model="adjustPoolForm.userCount" :min="0" /></el-form-item></el-form><template #footer><el-button @click="adjustPoolVisible = false">取消</el-button><el-button type="primary" :loading="store.actionLoading" @click="submitPoolAdjust">保存</el-button></template></el-dialog>
     <el-dialog v-model="adjustDailyVisible" title="调整每日红包" width="460px"><el-form ref="adjustDailyFormRef" :model="adjustDailyForm" :rules="dailyFormRules" label-width="110px"><el-form-item label="每日金额" prop="dailyAmount"><el-input-number v-model="adjustDailyForm.dailyAmount" :min="0" :precision="2" /></el-form-item><el-form-item label="每日用户数" prop="dailyUserCount"><el-input-number v-model="adjustDailyForm.dailyUserCount" :min="0" /></el-form-item></el-form><template #footer><el-button @click="adjustDailyVisible = false">取消</el-button><el-button type="primary" :loading="store.actionLoading" @click="submitDailyAdjust">保存</el-button></template></el-dialog>
+    <el-dialog v-model="dailyUsersDialogVisible" :title="`累计用户明细（截至 ${dailyUsersAsOfDate}）`" width="760px"><el-table :data="store.dailyUsers" v-loading="store.loading" border><el-table-column prop="userId" label="用户 ID" width="110" /><el-table-column prop="orderNo" label="订单号" min-width="180" /><el-table-column prop="poolDate" label="支付日" width="120" /><el-table-column label="贡献金额" width="130"><template #default="{ row }">{{ money(row.amount) }}</template></el-table-column><el-table-column label="应急抽取" width="130"><template #default="{ row }">{{ row.emergencyAmount == null ? '--' : money(row.emergencyAmount) }}</template></el-table-column><el-table-column prop="statusDesc" label="状态" width="110" /></el-table></el-dialog>
   </section>
 </template>
 

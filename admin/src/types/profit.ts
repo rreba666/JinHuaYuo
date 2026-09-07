@@ -81,6 +81,23 @@ export interface DividendContribution {
   poolId: string
 }
 
+/** 每日红包「某支付日累计用户贡献」明细（对应 OrderDividendContributionEntity，GET /api/admin/profit/daily/users/{asOfDate}）。 */
+export interface DailyContributionUser {
+  id: string
+  orderId: string
+  orderNo: string
+  userId: string
+  poolDate: string
+  /** 该用户贡献金额（进大池部分，元）。 */
+  amount: number
+  /** 应急池抽取金额（元；未开启应急池为 null）。 */
+  emergencyAmount?: number | null
+  /** 贡献状态（CONFIRMED=已入池 / PENDING=待满7天 / VOIDED=退款作废）。 */
+  status: string
+  statusDesc: string
+  poolId: string
+}
+
 export interface UserDividendLimit {
   id: string
   userId: string

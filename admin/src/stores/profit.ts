@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
-import { adjustDaily, adjustPool, confirmPool, getAdminDividendSlots, getBonusDetails, getBonusPools, getDividendLimits, getPendingPromotion, getProfitContributions, getPromotionRelations, getUnsettledDailyDetails, getSettledDailyDetails, injectBonusPool, rebindPromotionRelation, settleProfit, unbindPromotionRelation } from '@/api/profit'
-import type { AdminDividendSlot, BonusInjectDTO, DividendContribution, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, PromotionBinding, PromotionBindingSource, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit } from '@/types/profit'
+import { adjustDaily, adjustPool, confirmPool, getAdminDividendSlots, getBonusDetails, getBonusPools, getDailyUsers, getDividendLimits, getPendingPromotion, getProfitContributions, getPromotionRelations, getUnsettledDailyDetails, getSettledDailyDetails, injectBonusPool, rebindPromotionRelation, settleProfit, unbindPromotionRelation } from '@/api/profit'
+import type { AdminDividendSlot, BonusInjectDTO, DailyContributionUser, DividendContribution, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, PromotionBinding, PromotionBindingSource, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit } from '@/types/profit'
 
 export const useProfitStore = defineStore('profit', () => {
   const pendingPromotion = ref<import('@/types/profit').PendingPromotionRecord[]>([])
@@ -21,6 +21,7 @@ export const useProfitStore = defineStore('profit', () => {
   const settledDaily = ref<SevenDayBonusDetail[]>([])
   const dividendLimits = ref<UserDividendLimit[]>([])
   const adminSlots = ref<AdminDividendSlot[]>([])
+  const dailyUsers = ref<DailyContributionUser[]>([])
   const contributions = ref<DividendContribution[]>([])
   const contributionTotal = ref(0)
   const contributionPage = ref(1)
@@ -89,5 +90,15 @@ export const useProfitStore = defineStore('profit', () => {
     }
   }
 
-  return { pendingPromotion, pendingTotal, pendingPage, pendingSize, relations, relationTotal, relationPage, relationSize, relationLoading, relationActionLoading, relationFilters, sevenDayPools, poolDetails, unsettledDaily, settledDaily, dividendLimits, adminSlots, contributions, contributionTotal, contributionPage, contributionSize, contributionStatus, contributionLoading, loading, actionLoading, fetchAll, fetchRelations, fetchContributions, fetchPoolDetails, fetchAdminSlots, rebindRelation, unbindRelation, inject, settle, confirm, adjust, adjustDetail }
+  /** 查询某支付日的累计用户贡献明细。 */
+  async function fetchDailyUsers(asOfDate: string): Promise<void> {
+    loading.value = true
+    try {
+      dailyUsers.value = await getDailyUsers(asOfDate)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  return { pendingPromotion, pendingTotal, pendingPage, pendingSize, relations, relationTotal, relationPage, relationSize, relationLoading, relationActionLoading, relationFilters, sevenDayPools, poolDetails, unsettledDaily, settledDaily, dividendLimits, adminSlots, dailyUsers, contributions, contributionTotal, contributionPage, contributionSize, contributionStatus, contributionLoading, loading, actionLoading, fetchAll, fetchRelations, fetchContributions, fetchPoolDetails, fetchAdminSlots, fetchDailyUsers, rebindRelation, unbindRelation, inject, settle, confirm, adjust, adjustDetail }
 })

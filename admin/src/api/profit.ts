@@ -1,5 +1,5 @@
 import { request } from './request'
-import type { AdminDividendSlot, BonusInjectDTO, DividendContribution, DividendContributionPage, DividendRecordTestItem, DividendRecordTestResult, DividendSlotTestItem, DividendSlotTestResult, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, ProfitResponse, PromotionBinding, PromotionBindingPage, PromotionBindingQuery, PromotionPage, PendingPromotionRecord, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
+import type { AdminDividendSlot, BonusInjectDTO, DailyContributionUser, DividendContribution, DividendContributionPage, DividendRecordTestItem, DividendRecordTestResult, DividendSlotTestItem, DividendSlotTestResult, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, ProfitResponse, PromotionBinding, PromotionBindingPage, PromotionBindingQuery, PromotionPage, PendingPromotionRecord, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
 
 function unwrap<T>(response: { data: ProfitResponse<T> }, fallback: string): T {
   const result = response.data
@@ -183,6 +183,29 @@ export async function getSettledDailyDetails(): Promise<SevenDayBonusDetail[]> {
 export async function getAdminDividendSlots(userId?: string): Promise<AdminDividendSlot[]> {
   const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/slots', { params: userId ? { userId } : {} }), '用户分红槽位查询失败')
   return Array.isArray(data) ? data.map(normalizeSlot) : []
+}
+
+/** 某支付日的累计用户贡献明细（GET /api/admin/profit/daily/users/{asOfDate}，pool_date<=asOfDate 去重贡献）。 */
+export async function getDailyUsers(asOfDate: string): Promise<DailyContributionUser[]> {
+  const data = unwrap(await request.get<ProfitResponse<unknown>>(`/api/admin/profit/daily/users/${encodeURIComponent(asOfDate)}`), '累计用户明细查询失败')
+  return Array.isArray(data) ? data.map(normalizeDailyUser) : []
+}
+
+/** 归一化累计用户贡献：BIGINT 字段转字符串，金额落地。 */
+function normalizeDailyUser(value: unknown): DailyContributionUser {
+  const row = (value || {}) as Partial<DailyContributionUser>
+  return {
+    id: String(row.id ?? ''),
+    orderId: String(row.orderId ?? ''),
+    orderNo: String(row.orderNo ?? ''),
+    userId: String(row.userId ?? ''),
+    poolDate: String(row.poolDate ?? ''),
+    amount: Number(row.amount ?? 0),
+    emergencyAmount: row.emergencyAmount == null ? null : Number(row.emergencyAmount),
+    status: String(row.status ?? ''),
+    statusDesc: String(row.statusDesc ?? ''),
+    poolId: String(row.poolId ?? ''),
+  }
 }
 
 /** 归一化后台槽位：BIGINT 字段转字符串，数值字段落地。 */
