@@ -1,28 +1,32 @@
-# 2026-09-07 「更多福利」落地弹窗改长按识别小程序码
+# 2026-09-07 「更多福利」改为整页海报（长按识别）
 
 ## 背景
-「更多福利」入口指向**合作方小程序**（非同一主体，微信禁止直接跨小程序跳转），此前落地中转弹窗引导用户"保存海报并用微信「扫一扫-相册」识别"。现改为引导用户**长按识别**小程序码（微信客户端原生能力，无需隐私协议、无需额外 API）。
+「更多福利」入口指向**合作方小程序**（非同一主体，微信禁止直接跨小程序跳转）。此前用**弹窗**展示小程序码海报，但合作方海报里小程序码占比太小，长按整图识别不到。经讨论改为：**点击「更多福利」直接跳转一个全屏海报页，整页一张海报占满屏**，用户长按即可识别图中小程序码。
 
-## 问题：整图识别失败
-真机验证发现：海报是**整张图、小程序码嵌在正下方**，但**码占整图比例太小**，微信"长按识别图中的码"定位/解析不到（前端无法把嵌在图中里的小码单独放大）。因此改为**单独提供一张纯小程序码图，前端放大展示供长按识别**。
+> 说明：目标海报里的小程序码需足够大（占满屏后清晰可见），微信长按才能稳定识别。
 
 ## 改动
-### `mini_shop/api/homepage.ts`
-- `HomepageMediaItem` 新增 `welfareMiniProgramQrCodeUrl`（单独的纯小程序码图 URL，方形、仅码，供放大后长按识别；未配置为 null）。
+### 新增全屏海报页 `pages/promo/welfare-poster.vue`
+- 自定义导航栏（`navigationStyle: custom`，悬浮顶部，避开状态栏，左上角返回箭头）。
+- 整张海报 `<image mode="aspectFit">` **占满整个页面**，用户长按识别。
+- 未配置海报时显示"福利海报暂未配置"占位。
+- 点击海报可**保存到相册**（兜底：保存后用微信扫一扫-相册或相册长按识别）。
 
-### `mini_shop/pages/index/index.vue`
-- 弹窗提示：改为"长按下方小程序码即可识别进入"。
-- 新增**放大纯小程序码**展示区（`.welfare-code-wrap`，420rpx 方形白底卡片 + "长按识别小程序码"角标），用户长按**码本身**识别。
-- 整张海报继续展示（可欣赏/保存）；**无单独纯码图时回退**：海报上显示"长按识别"角标（兼容仅配海报图的情况）。
-- 保存按钮文案精简为「保存海报」；保留 `saveWelfarePoster` 保存相册能力 + 隐私授权（`requirePrivacyAuthorize`）兜底。
-- 保存成功提示：改为"在微信中长按相册里的这张海报，即可识别小程序码进入福利小程序"。
+### `pages/index/index.vue`
+- `handleWelfareImageTap`：点击「更多福利」（`index===0`）由"打开弹窗"改为 `navigateTo` 到全屏海报页，`src` 传海报 URL（`welfareMiniProgramQrUrl`）。
+- 删除弹窗相关：`welfareLandingVisible`/`welfareAppId`/`welfareQrImage`/`welfareCodeImage`/`welfareSaving` 等 ref，及 `closeWelfareLanding`/`ensurePrivacyAuthorize`/`saveWelfarePoster`/`doSaveWelfarePoster` 方法，弹窗模板与样式。
+- 保留福利区 Tab（`welfareTab`/`bottomImages`）与「更多福利」「今华有肽」两个标签切换展示。
 
-## 后端需配合
-`GET /api/homepage` 返回的 `mediaList` 项里需新增字段 `welfareMiniProgramQrCodeUrl`，值为**单独的高清小程序码图片 URL**（建议方形、仅含码，如 400×400）。前端已就绪，后端配置后即显示放大码供长按识别；未配置时回退为整海报 + 角标（此时仍可能识别不了）。
+### `api/homepage.ts`
+- 移除上轮新增的 `welfareMiniProgramQrCodeUrl`（单独纯码图字段），本方案不再需要；仅保留 `welfareMiniProgramQrUrl`（海报图 URL）。
+
+### `pages.json`
+- 注册 `pages/promo/welfare-poster`（`navigationStyle: custom`）。
 
 ## 说明
-- 长按识别是微信客户端对 `<image>` 渲染的合法小程序码的原生行为，无需 `@longpress`、无需隐私声明、无需调用任何接口，与头像昵称失效（隐私指引缺声明）机制不同。
-- 该改动仅影响微信小程序端交互；需 HBuilderX 重新编译并在**真机/微信预览**验证长按识别（H5 预览无此能力）。
+- 长按识别是微信客户端对 `<image>` 渲染的合法小程序码的原生行为，无需 `@longpress`、无需隐私声明。
+- 需 HBuilderX 重新编译并在**真机/微信预览**验证长按识别（H5 预览无此能力）。
+- 海报仍来自后端 `welfareMiniProgramQrUrl` 配置；若为空，整页显示"暂未配置"占位。
 
 ## 提交
-- `git add` 后提交 `mini_shop/pages/index/index.vue`、`mini_shop/api/homepage.ts`。
+- `git add` 后提交 `pages/promo/welfare-poster.vue`、`pages/index/index.vue`、`api/homepage.ts`、`pages.json`。
