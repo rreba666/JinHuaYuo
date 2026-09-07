@@ -8,9 +8,9 @@
       <text class="welfare-nav-title">福利海报</text>
     </view>
 
-    <!-- 整张海报占满页面，用户长按识别图中小程序码 -->
+    <!-- 整张海报占满页面；show-menu-by-longpress 开启长按后识别图中小程序码（默认关闭，必须显式开启） -->
     <view class="welfare-poster-body">
-      <image v-if="posterSrc" class="welfare-poster-img" :src="posterSrc" mode="aspectFit" @click="savePoster" />
+      <image v-if="posterSrc" class="welfare-poster-img" :src="posterSrc" mode="aspectFit" :show-menu-by-longpress="true" />
       <view v-else class="welfare-poster-empty">
         <text class="welfare-poster-empty-text">福利海报暂未配置</text>
       </view>
@@ -32,32 +32,6 @@ onLoad((options) => {
 /** 返回上一页。 */
 function goBack(): void {
   uni.navigateBack({ delta: 1 })
-}
-
-/** 保存海报到相册（长按识别之外的兜底：保存后用微信扫一扫-相册，或在相册长按识别）。 */
-function savePoster(): void {
-  if (!posterSrc.value) return
-  uni.downloadFile({
-    url: posterSrc.value,
-    success: (download) => {
-      if (download.statusCode !== 200 || !download.tempFilePath) {
-        uni.showToast({ title: `保存失败：${download.statusCode}`, icon: 'none' })
-        return
-      }
-      uni.saveImageToPhotosAlbum({
-        filePath: download.tempFilePath,
-        success: () => {
-          uni.showToast({ title: '已保存到相册', icon: 'success' })
-        },
-        fail: (error) => {
-          uni.showToast({ title: `保存失败：${error?.errMsg || '未知'}`, icon: 'none' })
-        },
-      })
-    },
-    fail: (error) => {
-      uni.showToast({ title: `下载失败：${error?.errMsg || '未知'}`, icon: 'none' })
-    },
-  })
 }
 </script>
 
