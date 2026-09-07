@@ -99,6 +99,12 @@
         "navigationBarTitleText": "推广中转",
         "navigationStyle": "custom"
       }
+    },    {
+      "path": "pages/promo/welfare-poster",
+      "style": {
+        "navigationBarTitleText": "福利海报",
+        "navigationStyle": "custom"
+      }
     }
   ],
   "subPackages": [
