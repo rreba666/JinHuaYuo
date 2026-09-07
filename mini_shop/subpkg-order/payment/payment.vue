@@ -6,13 +6,14 @@ import { cancelOrder, createOrder, getOrderDetail, type OrderDetail } from '@/ap
 import { createPrepay, requestPayment, payByBalance, switchToBalance } from '@/api/payment'
 import { getEnabledShops, type EnabledShop } from '@/api/shop'
 import { submitInvoice } from '@/api/invoice'
-import { getWalletInfo } from '@/api/user'
+import { getDividendSlots, getWalletInfo } from '@/api/user'
 import { getProductDetail } from '@/api/product'
-import { DIVIDEND_PURCHASE_LIMIT, PURCHASE_LIMIT_MESSAGE, getDividendQuantity, isDividendEligible } from '@/utils/dividend-limit'
+import { getDividendQuantity, isDividendEligible } from '@/utils/dividend-limit'
 import { cleanDigits, cleanText, normalizeEditableMobile, validateEmail, validateMobile, validateTaxNumber, validateText } from '@/utils/input-validation'
 import { isApiRequestError } from '@/utils/request'
 import { isLoggedIn } from '@/utils/auth'
 import { getModules, isModuleEnabled, type ModuleConfig } from '@/utils/config'
+import { getAddressList, type Address as AddressBookAddress } from '@/api/address'
 import LoginGuide from '@/components/LoginGuide.vue'
 
 /** 配送方式：0=物流(快速配送) 1=线下自提 2=同城配送（本期不开放下单，仅占位）。 */
@@ -47,6 +48,9 @@ const loginGuideVisible = ref(false)
 
 const pickupType = ref<PickupType>(0)
 const selectedAddress = ref<Address | null>(null)
+const addressBookVisible = ref(false)
+const addressBookList = ref<AddressBookAddress[]>([])
+const addressBookLoading = ref(false)
 const selectedShop = ref<EnabledShop | null>(null)
 const contactName = ref('')
 const contactPhone = ref('')
@@ -475,6 +479,30 @@ function openAddressEditor(): void {
   addressSheetVisible.value = true
 }
 
+/** 打开地址簿选择。 */
+async function openAddressBookPicker(): Promise<void> {
+  addressBookVisible.value = true
+  if (addressBookLoading.value) return
+  addressBookLoading.value = true
+  try {
+    const list = await getAddressList()
+    addressBookList.value = Array.isArray(list) ? list : []
+  } catch (error) {
+    addressBookList.value = []
+    uni.showToast({ title: error instanceof Error ? error.message : '地址簿加载失败', icon: 'none' })
+  } finally { addressBookLoading.value = false }
+}
+
+/** 选中地址簿地址并填入下单地址。 */
+function pickAddressBook(addr: AddressBookAddress): void {
+  const full = [addr.province, addr.city, addr.district, addr.detail].filter(Boolean).join('')
+  addressForm.name = addr.receiverName
+  addressForm.phone = addr.receiverPhone
+  addressForm.detail = full
+  selectedAddress.value = { name: addr.receiverName, phone: addr.receiverPhone, detail: full }
+  addressBookVisible.value = false
+}
+
 /** 校验并保存本地地址。 */
 function saveAddress(): void {
   const name = validateText(addressForm.name, { label: '收货人姓名', maxLength: PAYMENT_CONTACT_NAME_MAX_LENGTH })
@@ -736,9 +764,16 @@ async function submitPayment(): Promise<void> {
     uni.showToast({ title: '没有可结算的商品', icon: 'none' })
     return
   }
-  if (!isExistingOrder && getDividendQuantity(items.value) > DIVIDEND_PURCHASE_LIMIT) {
-    uni.showToast({ title: PURCHASE_LIMIT_MESSAGE, icon: 'none' })
-    return
+  // 分红商品要求有可用槽位：若可用槽位不足，后端会拒绝下单，这里提前提示更友好。
+  const dividendQty = getDividendQuantity(items.value)
+  if (!isExistingOrder && dividendQty > 0) {
+    try {
+      const slots = await getDividendSlots()
+      if ((slots?.availablePurchase ?? 0) < dividendQty) {
+        uni.showToast({ title: '您的分红槽位已满，暂时无法再获得分红资格，请等待已有槽位释放后再购买', icon: 'none', duration: 3000 })
+        return
+      }
+    } catch { /* 槽位查询失败时交由后端最终校验拦截 */ }
   }
   if (!isExistingOrder && deliveryOptions.value.length === 0) {
     uni.showToast({ title: '当前未开通配送方式，暂无法下单', icon: 'none' })
@@ -888,17 +923,33 @@ function backToCart(): void {
       </view>
 
       <view v-show="pickupType === 0" class="section address-section">
-        <view class="section-row" @click="openAddressEditor">
+        <view class="section-row" @click="openAddressBookPicker">
           <view>
             <view class="row-heading">
               <text class="section-title">配送信息</text>
-              <text class="action-text">添加新地址</text>
+              <text class="action-text" @click.stop="openAddressEditor">添加新地址</text>
             </view>
             <text v-if="selectedAddress" class="address-value">{{ selectedAddress.name }} {{ selectedAddress.phone }}</text>
             <text v-if="selectedAddress" class="address-detail">{{ selectedAddress.detail }}</text>
             <text v-else class="placeholder-text">请添加您的配送地址</text>
           </view>
           <text class="arrow">›</text>
+        </view>
+      </view>
+
+      <!-- 地址簿选择弹窗 -->
+      <view v-if="addressBookVisible" class="mask addr-mask" @click="addressBookVisible = false">
+        <view class="sheet" @click.stop>
+          <view class="sheet-head"><text class="sheet-title">选择收货地址</text><text class="sheet-close" @click="addressBookVisible = false">×</text></view>
+          <scroll-view scroll-y class="addr-list">
+            <view v-if="addressBookLoading" class="addr-state">加载中...</view>
+            <view v-else-if="!addressBookList.length" class="addr-state">暂无收货地址</view>
+            <view v-for="addr in addressBookList" :key="addr.id" class="addr-item" @click="pickAddressBook(addr)">
+              <text class="addr-name">{{ addr.receiverName }}  {{ addr.receiverPhone }}</text>
+              <text class="addr-detail">{{ [addr.province, addr.city, addr.district, addr.detail].filter(Boolean).join('') }}</text>
+            </view>
+          </scroll-view>
+          <button class="addr-add" @click="openAddressEditor">+ 添加新地址</button>
         </view>
       </view>
 
@@ -1153,6 +1204,14 @@ function backToCart(): void {
 .mask { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; background: rgba(0, 0, 0, .68); }
 .sheet { width: 100%; max-height: 86vh; padding: 30rpx 28rpx calc(30rpx + env(safe-area-inset-bottom)); background: #fff; box-sizing: border-box; overflow-y: auto; }
 .sheet-head { display: flex; align-items: center; justify-content: center; min-height: 54rpx; }
+.addr-list { max-height: 50vh; }
+.addr-state { padding: 60rpx 0; color: #98a2b3; font-size: 24rpx; text-align: center; }
+.addr-item { padding: 22rpx 0; border-bottom: 1rpx solid #f2f4f7; }
+.addr-item:last-child { border-bottom: 0; }
+.addr-name { display: block; color: #172033; font-size: 28rpx; font-weight: 600; }
+.addr-detail { display: block; margin-top: 8rpx; color: #667085; font-size: 24rpx; line-height: 1.4; }
+.addr-add { height: 80rpx; margin-top: 20rpx; border: 0; border-radius: 40rpx; background: linear-gradient(135deg, #ff6a2b, #ff5a1f); color: #fff; font-size: 28rpx; font-weight: 600; line-height: 80rpx; }
+.addr-add::after { border: 0; }
 .sheet-title { color: #222; font-size: 30rpx; font-weight: 700; }
 .sheet-close { position: absolute; right: 30rpx; color: #888; font-size: 42rpx; font-weight: 300; line-height: 1; }
 .sheet-form-line { margin-top: 22rpx; }
