@@ -93,7 +93,7 @@ const DEFAULT_RANDOM_FLOAT = 10
 
 /** 读取分红随机浮动幅度配置；未配置或返回非有限值时使用约定默认值 10。 */
 export async function getRandomFloatConfig(): Promise<RandomFloatConfig> {
-  const response = await request.get<ApiResponse<SysConfig | null>>('/api/admin/setting/dividend-random-float', { skipAuthRedirect: true })
+  const response = await request.get<ApiResponse<SysConfig | null>>(`/api/admin/setting/${RANDOM_FLOAT_KEY}`, { skipAuthRedirect: true })
   const result = response.data
   try { ensureSuccess(result, '分红浮动幅度查询失败') } catch { /* 未配置时用默认 */ }
   const value = Number(result?.data?.configValue)
@@ -103,12 +103,11 @@ export async function getRandomFloatConfig(): Promise<RandomFloatConfig> {
   }
 }
 
-/** 保存分红随机浮动幅度配置，避免无效值绕过页面控件提交。 */
+/** 保存分红随机浮动幅度配置（通用配置接口 POST /api/admin/setting/{configKey}），避免无效值绕过页面控件提交。 */
 export async function saveRandomFloatConfig(payload: { floatAmount: number; remark?: string }): Promise<void> {
   const floatAmount = Number(payload.floatAmount)
   if (!Number.isFinite(floatAmount) || floatAmount < 0 || floatAmount > 100) throw new Error('浮动幅度必须在 0 到 100 之间')
-  const response = await request.post<ApiResponse<null>>('/api/admin/setting/dividend-random-float', {
-    configKey: RANDOM_FLOAT_KEY,
+  const response = await request.post<ApiResponse<null>>(`/api/admin/setting/${RANDOM_FLOAT_KEY}`, {
     configValue: String(floatAmount),
     remark: payload.remark,
   })

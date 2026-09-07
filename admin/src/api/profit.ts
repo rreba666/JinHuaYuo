@@ -198,7 +198,6 @@ export async function settleProfit(startDate: string, endDate: string): Promise<
 export async function confirmPool(poolId: string): Promise<void> { unwrap(await request.post<ProfitResponse<null>>(`/api/admin/profit/pool/${poolId}/confirm`), '红包确认失败') }
 export async function adjustPool(poolId: string, payload: ProfitAdjustPoolDTO): Promise<void> { unwrap(await request.put<ProfitResponse<null>>(`/api/admin/profit/pool/${poolId}/adjust`, payload), '红包调整失败') }
 export async function adjustDaily(detailId: string, payload: ProfitAdjustDailyDTO): Promise<void> { unwrap(await request.put<ProfitResponse<null>>(`/api/admin/profit/daily/${detailId}/adjust`, payload), '每日红包调整失败') }
-export async function resetDividendLimit(userId: string): Promise<void> { unwrap(await request.put<ProfitResponse<null>>(`/api/admin/profit/limit/${userId}/reset`), '红包额度重置失败') }
 
 export async function getWalletTestResult(token: string): Promise<WalletTestResult> {
   return normalizeWalletTest(await getUserTestData<unknown>(token, '/api/wallet/info'))
