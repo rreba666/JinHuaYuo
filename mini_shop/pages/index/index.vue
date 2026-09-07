@@ -21,6 +21,8 @@ const welfareLandingVisible = ref(false)
 const welfareAppId = ref('')
 /** 目标小程序码海报图片 URL（暂未提供，填入后即展示；为空显示「小程序码待配置」占位）。 */
 const welfareQrImage = ref('')
+/** 单独的纯小程序码图（方形、仅码），用于放大后长按识别；未配置为空时回退到整张海报。 */
+const welfareCodeImage = ref('')
 /** 保存海报到相册进行中。 */
 const welfareSaving = ref(false)
 
@@ -123,10 +125,12 @@ function handleWelfareImageTap(index: number): void {
   if (!navigationThrottle()) return
   const appId = homepageMedia.value?.bottomLinkTarget?.[0]?.trim() || ''
   const qrUrl = homepageMedia.value?.welfareMiniProgramQrUrl?.trim() || ''
+  const codeUrl = homepageMedia.value?.welfareMiniProgramQrCodeUrl?.trim() || ''
   welfareAppId.value = appId
   welfareQrImage.value = qrUrl
-  // 未配置小程序码海报图时给出提示，避免空弹窗。
-  if (!qrUrl) {
+  welfareCodeImage.value = codeUrl
+  // 海报图和纯小程序码图均未配置时给出提示，避免空弹窗。
+  if (!qrUrl && !codeUrl) {
     uni.showToast({ title: '福利海报暂未配置', icon: 'none' })
     return
   }
@@ -337,19 +341,25 @@ onShow(() => { void refreshHomepage() })
       </view>
     </view>
 
-    <!-- 「更多福利」落地中转弹窗：目标小程序非同一主体，微信禁止直接跳转，改为展示小程序码海报，让用户保存后用微信扫一扫识别进入。 -->
+    <!-- 「更多福利」落地中转弹窗：目标小程序非同一主体，微信禁止直接跳转，改为展示小程序码，让用户长按识别进入。 -->
     <view v-if="welfareLandingVisible" class="welfare-mask" @click="closeWelfareLanding">
       <view class="welfare-dialog" @click.stop>
         <text class="welfare-dialog-title">福利小程序</text>
-        <text class="welfare-dialog-tip">该福利由合作方提供，长按下方海报图片，即可识别小程序码进入。</text>
-        <view class="welfare-poster-wrap">
-          <image v-if="welfareQrImage" class="welfare-poster" :src="welfareQrImage" mode="widthFix" @click="saveWelfarePoster" />
-          <view v-if="welfareQrImage" class="welfare-poster-badge"><text class="welfare-poster-badge-text">长按识别小程序码</text></view>
-          <view v-else class="welfare-poster-placeholder">
-            <text class="welfare-poster-placeholder-text">海报待配置</text>
-          </view>
+        <text class="welfare-dialog-tip">该福利由合作方提供，长按下方小程序码即可识别进入。</text>
+        <!-- 单独的纯小程序码：放大展示，供用户长按识别（最可靠）。 -->
+        <view v-if="welfareCodeImage" class="welfare-code-wrap">
+          <image class="welfare-code" :src="welfareCodeImage" mode="aspectFit" />
+          <view class="welfare-code-badge"><text class="welfare-code-badge-text">长按识别小程序码</text></view>
         </view>
-        <button v-if="welfareQrImage" class="welfare-dialog-btn" :loading="welfareSaving" @click="saveWelfarePoster">保存海报（长按无法识别时）</button>
+        <!-- 整张海报：可欣赏/保存；无单独纯码图时兼作长按识别入口（回退兼容）。 -->
+        <view v-if="welfareQrImage" class="welfare-poster-wrap">
+          <image class="welfare-poster" :src="welfareQrImage" mode="widthFix" @click="saveWelfarePoster" />
+          <view v-if="!welfareCodeImage" class="welfare-poster-badge"><text class="welfare-poster-badge-text">长按识别小程序码</text></view>
+        </view>
+        <view v-if="!welfareQrImage && !welfareCodeImage" class="welfare-poster-placeholder">
+          <text class="welfare-poster-placeholder-text">海报待配置</text>
+        </view>
+        <button v-if="welfareQrImage" class="welfare-dialog-btn" :loading="welfareSaving" @click="saveWelfarePoster">保存海报</button>
         <button class="welfare-dialog-btn welfare-dialog-btn--plain" @click="closeWelfareLanding">我知道了</button>
       </view>
     </view>
@@ -436,6 +446,10 @@ onShow(() => { void refreshHomepage() })
 .welfare-dialog { width: 100%; max-width: 600rpx; padding: 40rpx 36rpx 32rpx; border-radius: 24rpx; background: #fff; display: flex; flex-direction: column; align-items: center; }
 .welfare-dialog-title { color: #232423; font-size: 32rpx; font-weight: 600; }
 .welfare-dialog-tip { margin-top: 16rpx; color: #666; font-size: 24rpx; line-height: 1.6; text-align: center; }
+.welfare-code-wrap { position: relative; margin-top: 28rpx; width: 420rpx; height: 420rpx; padding: 24rpx; border-radius: 16rpx; background: #fff; box-shadow: 0 2rpx 12rpx rgba(0,0,0,.08); box-sizing: border-box; }
+.welfare-code { display: block; width: 100%; height: 100%; }
+.welfare-code-badge { position: absolute; top: 10rpx; left: 50%; padding: 6rpx 20rpx; border-radius: 22rpx; background: rgba(0,0,0,.5); transform: translateX(-50%); }
+.welfare-code-badge-text { color: #fff; font-size: 22rpx; }
 .welfare-poster-wrap { position: relative; margin-top: 28rpx; width: 100%; max-height: 64vh; overflow: hidden; border-radius: 12rpx; background: #f2f2f2; }
 .welfare-poster { display: block; width: 100%; height: auto; }
 .welfare-poster-badge { position: absolute; top: 12rpx; left: 50%; padding: 6rpx 20rpx; border-radius: 24rpx; background: rgba(0,0,0,.5); transform: translateX(-50%); }
