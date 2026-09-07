@@ -1,23 +1,26 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { getCustomerServiceConfig, getDividendCap, getProfitRatesConfig, getRandomDividendConfig, getWithdrawRules, saveCustomerServiceConfig, saveDividendCap, saveProfitRatesConfig as postProfitRatesConfig, saveRandomDividendConfig, saveWithdrawRules } from '@/api/setting'
+import { getCustomerServiceConfig, getDividendCap, getProfitRatesConfig, getRandomDividendConfig, getRandomFloatConfig, getWithdrawRules, saveCustomerServiceConfig, saveDividendCap, saveProfitRatesConfig as postProfitRatesConfig, saveRandomDividendConfig, saveRandomFloatConfig, saveWithdrawRules } from '@/api/setting'
 import { setFundRates } from '@/utils/productPricing'
-import type { DividendCap, DividendCapSaveDTO, ProfitRatesConfig, ProfitRatesSaveDTO, RandomDividendConfig, SysConfig, SysConfigSaveDTO, WithdrawRulesConfig, WithdrawRulesSaveDTO } from '@/types/setting'
+import type { DividendCap, DividendCapSaveDTO, ProfitRatesConfig, ProfitRatesSaveDTO, RandomDividendConfig, RandomFloatConfig, SysConfig, SysConfigSaveDTO, WithdrawRulesConfig, WithdrawRulesSaveDTO } from '@/types/setting'
 
 export const useSettingStore = defineStore('setting', () => {
   const customerService = ref<SysConfig | null>(null)
   const dividendCap = ref<DividendCap>({ multiplier: 1.5, remark: '' })
   const randomDividend = ref<RandomDividendConfig>({ minAmount: 10, maxAmount: 50, remark: '' })
+  const randomFloat = ref<RandomFloatConfig>({ floatAmount: 10, remark: '' })
   const profitRates = ref<ProfitRatesConfig>({ promotionRate: 0.2, bonusPoolRate: 0.26, remark: '' })
   const withdrawRules = ref<WithdrawRulesConfig>({ minAmount: 0, dailyAmountLimit: 0, dailyCountLimit: 0, feeRate: 0, testUserMinAmount: 0, testUserId: null, testSkipLock: false, maxConcurrent: 0, frozenLimit: 0, remark: '' })
   const customerServiceLoading = ref(false)
   const dividendCapLoading = ref(false)
   const randomDividendLoading = ref(false)
+  const randomFloatLoading = ref(false)
   const profitRatesLoading = ref(false)
   const withdrawRulesLoading = ref(false)
   const customerServiceSaving = ref(false)
   const dividendCapSaving = ref(false)
   const randomDividendSaving = ref(false)
+  const randomFloatSaving = ref(false)
   const profitRatesSaving = ref(false)
   const withdrawRulesSaving = ref(false)
 
@@ -59,6 +62,27 @@ export const useSettingStore = defineStore('setting', () => {
       await loadRandomDividend()
     } finally {
       randomDividendSaving.value = false
+    }
+  }
+
+  /** 读取分红随机浮动幅度配置（池2起：每人金额 = 均分基准 ± 浮动，元）。 */
+  async function loadRandomFloat(): Promise<void> {
+    randomFloatLoading.value = true
+    try {
+      randomFloat.value = await getRandomFloatConfig()
+    } finally {
+      randomFloatLoading.value = false
+    }
+  }
+
+  /** 保存分红随机浮动幅度配置。 */
+  async function saveRandomFloat(payload: { floatAmount: number; remark?: string }): Promise<void> {
+    randomFloatSaving.value = true
+    try {
+      await saveRandomFloatConfig(payload)
+      await loadRandomFloat()
+    } finally {
+      randomFloatSaving.value = false
     }
   }
 
@@ -128,26 +152,31 @@ export const useSettingStore = defineStore('setting', () => {
     customerService,
     dividendCap,
     randomDividend,
+    randomFloat,
     profitRates,
     withdrawRules,
     customerServiceLoading,
     dividendCapLoading,
     randomDividendLoading,
+    randomFloatLoading,
     profitRatesLoading,
     withdrawRulesLoading,
     customerServiceSaving,
     dividendCapSaving,
     randomDividendSaving,
+    randomFloatSaving,
     profitRatesSaving,
     withdrawRulesSaving,
     loadCustomerService,
     loadDividendCap,
     loadRandomDividend,
+    loadRandomFloat,
     loadProfitRates,
     loadWithdrawRules,
     saveCustomerService,
     saveDividendCapConfig,
     saveRandomDividend,
+    saveRandomFloat,
     saveProfitRatesConfig,
     saveWithdrawRulesConfig,
   }

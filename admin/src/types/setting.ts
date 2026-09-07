@@ -35,6 +35,12 @@ export interface RandomDividendConfig {
   remark: string
 }
 
+/** 分红随机浮动幅度配置（池2起：每人分到的金额 = 均分基准 ± 浮动幅度，元）。 */
+export interface RandomFloatConfig {
+  floatAmount: number
+  remark: string
+}
+
 /** 商品资金比例配置。 */
 export interface ProfitRatesConfig {
   promotionRate: number

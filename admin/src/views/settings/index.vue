@@ -18,6 +18,7 @@ const customerServiceForm = reactive<SysConfigSaveDTO>({
 })
 const dividendCapForm = reactive<DividendCapSaveDTO>({ multiplier: 1.5, remark: '' })
 const randomDividendForm = reactive<{ minAmount: number; maxAmount: number; remark: string }>({ minAmount: 10, maxAmount: 50, remark: '' })
+const randomFloatForm = reactive<{ floatAmount: number; remark: string }>({ floatAmount: 10, remark: '' })
 const profitRatesForm = reactive<ProfitRatesSaveDTO>({ promotionRate: 20, bonusPoolRate: 26, remark: '' })
 type WithdrawRulesForm = Omit<WithdrawRulesConfig, 'feeRate'> & { feeRate: number }
 const withdrawRulesForm = reactive<WithdrawRulesForm>({ minAmount: 0, dailyAmountLimit: 0, dailyCountLimit: 0, feeRate: 0, testUserMinAmount: 0, testUserId: null, testSkipLock: false, maxConcurrent: 0, frozenLimit: 0, remark: '' })
@@ -86,6 +87,16 @@ async function loadRandomDividend(): Promise<void> {
   }
 }
 
+async function loadRandomFloat(): Promise<void> {
+  try {
+    await store.loadRandomFloat()
+    randomFloatForm.floatAmount = store.randomFloat.floatAmount
+    randomFloatForm.remark = store.randomFloat.remark
+  } catch (error) {
+    showError(error, '分红浮动幅度加载失败')
+  }
+}
+
 async function loadProfitRates(): Promise<void> {
   try {
     await store.loadProfitRates()
@@ -140,6 +151,17 @@ async function saveRandomDividend(): Promise<void> {
   }
 }
 
+async function saveRandomFloat(): Promise<void> {
+  try {
+    if (!Number.isFinite(randomFloatForm.floatAmount) || randomFloatForm.floatAmount < 0 || randomFloatForm.floatAmount > 100) { ElMessage.warning('浮动幅度必须在 0 到 100 之间'); return }
+    await ElMessageBox.confirm('保存分红随机浮动幅度吗？此配置影响池2起每人分到的金额（均分基准 ± 浮动）。', '保存确认', { type: 'warning' })
+    await store.saveRandomFloat({ ...randomFloatForm })
+    ElMessage.success('分红浮动幅度已保存')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') showError(error, '分红浮动幅度保存失败')
+  }
+}
+
 async function saveProfitRates(): Promise<void> {
   if (!(await profitRatesFormRef.value?.validate().catch(() => false))) return
   try {
@@ -170,6 +192,7 @@ function reload(): void {
   void loadCustomerService()
   void loadDividendCap()
   void loadRandomDividend()
+  void loadRandomFloat()
   void loadProfitRates()
   void loadWithdrawRules()
 }
@@ -181,7 +204,7 @@ onMounted(reload)
   <section class="page-container page-enter">
     <div class="page-heading">
       <div><h1>系统设置</h1><p>管理客服电话和红包业务参数。</p></div>
-      <el-button :icon="Refresh" :loading="store.customerServiceLoading || store.dividendCapLoading || store.randomDividendLoading || store.profitRatesLoading || store.withdrawRulesLoading" @click="reload">刷新</el-button>
+      <el-button :icon="Refresh" :loading="store.customerServiceLoading || store.dividendCapLoading || store.randomDividendLoading || store.randomFloatLoading || store.profitRatesLoading || store.withdrawRulesLoading" @click="reload">刷新</el-button>
     </div>
 
     <div class="settings-grid">
@@ -215,6 +238,18 @@ onMounted(reload)
           </el-form-item>
           <el-form-item label="备注"><el-input v-model="randomDividendForm.remark" placeholder="可选" clearable maxlength="40" show-word-limit /></el-form-item>
           <el-form-item class="form-item-full"><el-button type="primary" :loading="store.randomDividendSaving" @click="saveRandomDividend">保存随机红包配置</el-button></el-form-item>
+        </el-form>
+      </section>
+
+      <section class="content-card setting-section fund-rate-section">
+        <div class="setting-heading"><div><h2>分红随机浮动幅度</h2><p>池2起，每人分到的金额 = 均分基准 ± 浮动幅度（元）。</p></div></div>
+        <el-alert title="影响池2起每人分到的金额" description="后端按此配置在 [均分基准 − 浮动, 均分基准 + 浮动] 内随机；未配置时默认 10 元。" type="info" :closable="false" show-icon />
+        <el-form :model="randomFloatForm" label-width="110px" @submit.prevent="saveRandomFloat">
+          <el-form-item label="浮动幅度">
+            <div class="rate-control"><el-input-number v-model="randomFloatForm.floatAmount" :min="0" :max="100" :precision="2" :step="1" controls-position="right" /><span class="rate-suffix">元</span></div>
+          </el-form-item>
+          <el-form-item label="备注"><el-input v-model="randomFloatForm.remark" placeholder="可选" clearable maxlength="40" show-word-limit /></el-form-item>
+          <el-form-item class="form-item-full"><el-button type="primary" :loading="store.randomFloatSaving" @click="saveRandomFloat">保存浮动幅度</el-button></el-form-item>
         </el-form>
       </section>
 
