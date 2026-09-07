@@ -175,7 +175,7 @@ function doSaveWelfarePoster(): void {
           uni.hideLoading()
           uni.showModal({
             title: '已保存到相册',
-            content: '请打开微信「扫一扫」-「相册」，选择这张海报，识别小程序码后进入福利小程序。',
+            content: '已保存到相册。在微信中长按相册里的这张海报，即可识别小程序码进入福利小程序。',
             showCancel: false,
             confirmText: '我知道了',
           })
@@ -341,14 +341,15 @@ onShow(() => { void refreshHomepage() })
     <view v-if="welfareLandingVisible" class="welfare-mask" @click="closeWelfareLanding">
       <view class="welfare-dialog" @click.stop>
         <text class="welfare-dialog-title">福利小程序</text>
-        <text class="welfare-dialog-tip">该福利由合作方提供，请保存下方海报，用微信「扫一扫-相册」识别小程序码进入。</text>
+        <text class="welfare-dialog-tip">该福利由合作方提供，长按下方海报图片，即可识别小程序码进入。</text>
         <view class="welfare-poster-wrap">
           <image v-if="welfareQrImage" class="welfare-poster" :src="welfareQrImage" mode="widthFix" @click="saveWelfarePoster" />
+          <view v-if="welfareQrImage" class="welfare-poster-badge"><text class="welfare-poster-badge-text">长按识别小程序码</text></view>
           <view v-else class="welfare-poster-placeholder">
             <text class="welfare-poster-placeholder-text">海报待配置</text>
           </view>
         </view>
-        <button v-if="welfareQrImage" class="welfare-dialog-btn" :loading="welfareSaving" @click="saveWelfarePoster">保存到相册，去扫一扫</button>
+        <button v-if="welfareQrImage" class="welfare-dialog-btn" :loading="welfareSaving" @click="saveWelfarePoster">保存海报（长按无法识别时）</button>
         <button class="welfare-dialog-btn welfare-dialog-btn--plain" @click="closeWelfareLanding">我知道了</button>
       </view>
     </view>
@@ -435,8 +436,10 @@ onShow(() => { void refreshHomepage() })
 .welfare-dialog { width: 100%; max-width: 600rpx; padding: 40rpx 36rpx 32rpx; border-radius: 24rpx; background: #fff; display: flex; flex-direction: column; align-items: center; }
 .welfare-dialog-title { color: #232423; font-size: 32rpx; font-weight: 600; }
 .welfare-dialog-tip { margin-top: 16rpx; color: #666; font-size: 24rpx; line-height: 1.6; text-align: center; }
-.welfare-poster-wrap { margin-top: 28rpx; width: 100%; max-height: 64vh; overflow: hidden; border-radius: 12rpx; background: #f2f2f2; }
+.welfare-poster-wrap { position: relative; margin-top: 28rpx; width: 100%; max-height: 64vh; overflow: hidden; border-radius: 12rpx; background: #f2f2f2; }
 .welfare-poster { display: block; width: 100%; height: auto; }
+.welfare-poster-badge { position: absolute; top: 12rpx; left: 50%; padding: 6rpx 20rpx; border-radius: 24rpx; background: rgba(0,0,0,.5); transform: translateX(-50%); }
+.welfare-poster-badge-text { color: #fff; font-size: 22rpx; }
 .welfare-poster-placeholder { display: flex; align-items: center; justify-content: center; width: 100%; height: 320rpx; border-radius: 12rpx; background: #f2f2f2; }
 .welfare-poster-placeholder-text { color: #aaa; font-size: 26rpx; }
 .welfare-dialog-btn { height: 80rpx; margin-top: 32rpx; width: 100%; border-radius: 40rpx; background: #232423; color: #fff; font-size: 28rpx; font-weight: 500; line-height: 80rpx; }
