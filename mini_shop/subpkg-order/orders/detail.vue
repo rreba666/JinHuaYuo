@@ -534,6 +534,7 @@ onUnload(() => {
 
       <!-- 自提信息（仅自提订单） -->
       <view v-if="order?.pickupType === 1" class="card">
+        <view v-if="order?.receiverName || order?.receiverPhone" class="line"><text>取货人</text><text>{{ order.receiverName }} {{ order.receiverPhone }}</text></view>
         <view class="line"><text>自提时间</text><text>{{ pickupShop?.openTime || '--' }}</text></view>
         <view class="line"><text>店主电话</text><text>{{ pickupShop?.phone || '--' }}</text></view>
         <view class="line"><text>自提地址</text><text class="right">{{ pickupShop?.address || order?.shopName || '--' }}</text></view>
