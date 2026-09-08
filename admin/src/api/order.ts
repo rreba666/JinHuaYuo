@@ -13,6 +13,7 @@ import type {
   OrderAddressUpdateDTO,
   OrderRefundDTO,
   ExpressTrace,
+  ExpressTraceResponse,
 } from '@/types/order'
 
 /** 校验订单接口响应，并将业务数据交给 Store。 */
@@ -78,20 +79,20 @@ export async function refundOrder(orderId: string, payload: OrderRefundDTO): Pro
   unwrapResponse(response, '订单退款失败')
 }
 
-/** 查询物流轨迹；后端没有轨迹时返回 null，不在前端补造节点。 */
+/** 查询物流轨迹；后端 `data.trace` 为轨迹数据，`data.status !== AVAILABLE` 或无轨迹时返回 null。 */
 export async function getOrderTrace(orderId: string): Promise<ExpressTrace | null> {
-  const response = await request.get<OrderResponse<ExpressTrace | null>>(`/api/admin/order/trace/${orderId}`)
+  const response = await request.get<OrderResponse<ExpressTraceResponse | null>>(`/api/admin/order/trace/${orderId}`)
   const data = unwrapResponse(response, '物流轨迹查询失败')
-  if (!data) return null
+  if (!data || data.status !== 'AVAILABLE' || !data.trace) return null
+  const t = data.trace
   return {
-    ...data,
-    com: String(data.com || ''),
-    nu: String(data.nu || ''),
-    state: String(data.state || ''),
-    stateDesc: String(data.stateDesc || ''),
-    isCheck: Number(data.isCheck) === 1 ? 1 : 0,
+    com: String(t.com || ''),
+    nu: String(t.nu || ''),
+    state: String(t.state || ''),
+    stateDesc: String(t.stateDesc || ''),
+    isCheck: Number(t.isCheck) === 1 ? 1 : 0,
     // 保持后端倒序，避免前端改变物流时间线语义。
-    traces: (data.traces || []).map((item) => ({
+    traces: (t.traces || []).map((item) => ({
       time: String(item.time || ''),
       context: String(item.context || ''),
     })),

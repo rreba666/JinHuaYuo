@@ -108,6 +108,15 @@ export interface ExpressTrace {
   traces: TraceItem[]
 }
 
+/** 轨迹接口响应外层（后端 ExpressTraceResponse）：status 为 AVAILABLE 时轨迹在 trace 子对象。 */
+export interface ExpressTraceResponse {
+  /** AVAILABLE=有轨迹；MISSING_CARRIER_CODE=无快递编码；NOT_SHIPPED=未发货；NOT_APPLICABLE_PICKUP=自提；TEMPORARILY_UNAVAILABLE=查不到。 */
+  status: string
+  trace: ExpressTrace | null
+  retrievable: boolean
+  source: string
+}
+
 export interface ManualVerifyDTO {
   code: string
 }
