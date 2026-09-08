@@ -480,7 +480,7 @@ onMounted(() => { void loadList() })
       <template v-else-if="store.trace">
         <el-descriptions :column="2" border><el-descriptions-item label="快递公司">{{ store.trace.com || '暂无数据' }}</el-descriptions-item><el-descriptions-item label="物流单号">{{ store.trace.nu || '暂无数据' }}</el-descriptions-item><el-descriptions-item label="物流状态" :span="2">{{ store.trace.stateDesc || '暂无数据' }}</el-descriptions-item></el-descriptions>
         <el-empty v-if="store.trace && !store.trace.traces.length" description="暂无物流节点" />
-        <el-timeline v-else class="trace-timeline"><el-timeline-item v-for="(item, index) in store.trace.traces" :key="`${item.time}-${index}`" :timestamp="item.time">{{ item.context }}</el-timeline-item></el-timeline>
+        <el-timeline v-else class="trace-timeline"><el-timeline-item v-for="(item, index) in store.trace.traces" :key="`${item.time}-${index}`" :type="index === 0 ? 'primary' : 'info'" :hollow="index !== 0" :size="index === 0 ? 'large' : 'normal'"><div class="trace-node"><div class="trace-context">{{ item.context }}</div><div class="trace-time">{{ item.time }}</div></div></el-timeline-item></el-timeline>
       </template>
       <el-empty v-else description="暂无物流轨迹" />
     </el-dialog>
@@ -491,6 +491,13 @@ onMounted(() => { void loadList() })
 .order-product { display: flex; align-items: center; gap: 10px; }
 .order-image { width: 38px; height: 38px; border-radius: 4px; flex-shrink: 0; }
 .detail-item-image { width: 48px; height: 48px; border-radius: 4px; }
+.trace-timeline { max-height: 420px; margin-top: 18px; padding-right: 6px; overflow-y: auto; }
+.trace-timeline .el-timeline-item__node { z-index: 1; }
+.trace-node { padding: 2px 0 8px; }
+.trace-context { color: #1f2937; font-size: 13px; line-height: 20px; word-break: break-word; }
+.trace-timeline .el-timeline-item__tail { border-left: 1px dashed #e5e7eb; }
+.trace-timeline .el-timeline-item:last-child .el-timeline-item__tail { display: none; }
+.trace-time { margin-top: 4px; color: #98a2b3; font-size: 12px; }
 .detail-item-image-placeholder { display: inline-block; width: 48px; height: 48px; border-radius: 4px; background: var(--el-fill-color-light); color: var(--el-text-color-placeholder); line-height: 48px; text-align: center; }
 .order-filter-form .el-form-item { margin-bottom: 0; }
 .order-filter-form .el-date-editor { width: 280px; }
