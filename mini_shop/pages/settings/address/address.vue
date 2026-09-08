@@ -12,7 +12,9 @@ import {
 import { getCities, getProvinces, getDistricts, type Region } from '@/api/region'
 import { isLoggedIn } from '@/utils/auth'
 import { createThrottle } from '@/utils/interaction'
-import { successToast } from '@/utils/feedback'
+import SuccessToast from '@/components/SuccessToast.vue'
+
+const successToastRef = ref<InstanceType<typeof SuccessToast> | null>(null)
 import LoginGuide from '@/components/LoginGuide.vue'
 
 const menuTop = ref(0)
@@ -164,10 +166,10 @@ async function saveForm(): Promise<void> {
     }
     if (editingId.value) {
       await updateAddress(editingId.value, payload)
-      successToast('地址已更新')
+      successToastRef.value?.show('地址已更新')
     } else {
       await createAddress(payload)
-      successToast('地址已添加')
+      successToastRef.value?.show('地址已添加')
     }
     formVisible.value = false
     await loadList()
@@ -189,7 +191,7 @@ async function remove(item: Address): Promise<void> {
   actionLoading.value = true
   try {
     await deleteAddress(item.id)
-    successToast('地址已删除')
+    successToastRef.value?.show('地址已删除')
     await loadList()
   } catch (error) {
     uni.showToast({ title: error instanceof Error ? error.message : '删除失败', icon: 'none' })
@@ -201,7 +203,7 @@ async function setDefault(item: Address): Promise<void> {
   actionLoading.value = true
   try {
     await setDefaultAddress(item.id)
-    successToast('已设为默认')
+    successToastRef.value?.show('已设为默认')
     await loadList()
   } catch (error) {
     uni.showToast({ title: error instanceof Error ? error.message : '设置失败', icon: 'none' })
@@ -267,6 +269,7 @@ onShow(() => { void loadList() })
     </view>
 
     <LoginGuide v-model="loginGuideVisible" />
+    <SuccessToast ref="successToastRef" />
   </view>
 </template>
 

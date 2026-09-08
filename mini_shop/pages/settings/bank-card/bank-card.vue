@@ -12,7 +12,9 @@ import {
 import { getBankList, type Bank } from '@/api/bank'
 import { isLoggedIn } from '@/utils/auth'
 import { createThrottle } from '@/utils/interaction'
-import { successToast } from '@/utils/feedback'
+import SuccessToast from '@/components/SuccessToast.vue'
+
+const successToastRef = ref<InstanceType<typeof SuccessToast> | null>(null)
 import LoginGuide from '@/components/LoginGuide.vue'
 
 const menuTop = ref(0)
@@ -113,10 +115,10 @@ async function saveForm(): Promise<void> {
     }
     if (editingId.value) {
       await updateBankCard(editingId.value, payload)
-      successToast('银行卡已更新')
+      successToastRef.value?.show('银行卡已更新')
     } else {
       await createBankCard(payload)
-      successToast('银行卡已绑定')
+      successToastRef.value?.show('银行卡已绑定')
     }
     formVisible.value = false
     await loadList()
@@ -134,7 +136,7 @@ async function remove(item: BankCard): Promise<void> {
   actionLoading.value = true
   try {
     await deleteBankCard(item.id)
-    successToast('已解绑')
+    successToastRef.value?.show('已解绑')
     await loadList()
   } catch (error) {
     uni.showToast({ title: error instanceof Error ? error.message : '解绑失败', icon: 'none' })
@@ -210,6 +212,7 @@ onShow(() => { void loadList() })
     </view>
 
     <LoginGuide v-model="loginGuideVisible" />
+    <SuccessToast ref="successToastRef" />
   </view>
 </template>
 
