@@ -148,7 +148,7 @@ async function setDefault(item: BankCard): Promise<void> {
   actionLoading.value = true
   try {
     await setDefaultBankCard(item.id)
-    uni.showToast({ title: '已设为默认', icon: 'success' })
+    successToastRef.value?.show('已设为默认')
     await loadList()
   } catch (error) {
     uni.showToast({ title: error instanceof Error ? error.message : '设置失败', icon: 'none' })
