@@ -13,7 +13,6 @@ import PromotionCodePoster from '@/components/PromotionCodePoster.vue'
 import LoginGuide from '@/components/LoginGuide.vue'
 import PageWatermark from '@/components/PageWatermark.vue'
 import { getModules, isModuleEnabled, type ModuleConfig } from '@/utils/config'
-import { isBeforeBonusShowTime } from '@/utils/bonus-show-time'
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
@@ -147,8 +146,7 @@ async function loadData(): Promise<void> {
   }
   try {
     const [walletInfo, frozenAmount] = await Promise.all([getWalletInfo(), loadFrozenPromotionAmount()])
-    // 红包 9 点后才展示：9:00 前不检测/不展示红包，pendingBonus 按 0 对待（红点不亮、金额显示 0）。
-    wallet.value = isBeforeBonusShowTime() ? { ...walletInfo, pendingBonus: 0 } : walletInfo
+    wallet.value = walletInfo
     promotionFrozenAmount.value = frozenAmount
     if (!redPacketVisible.value) redPacketDisplayAmount.value = Number(wallet.value?.pendingBonus || 0)
   } catch {
