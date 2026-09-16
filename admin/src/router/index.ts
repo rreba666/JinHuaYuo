@@ -160,6 +160,13 @@ const router = createRouter({
           meta: { title: '提现审核', permission: ['withdraw:read'], roles: SUPER_AND_ADMIN_FINANCE, requiresAuth: true },
         },
         {
+          // 库存对账：库存台账（期初/期末/实际三值 + 自动断言）与退款应补未补核对（均为只读接口）
+          path: 'stock',
+          name: 'Stock',
+          component: () => import('@/views/stock/index.vue'),
+          meta: { title: '库存对账', permission: ['stock:read'], roles: SUPER_AND_ADMIN_FINANCE, requiresAuth: true },
+        },
+        {
           path: 'logs/verify',
           name: 'VerifyLogs',
           component: () => import('@/views/logs/verify.vue'),

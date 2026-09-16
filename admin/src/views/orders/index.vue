@@ -445,6 +445,7 @@ watch(() => route.fullPath, () => {
  * - `/orders?statuses=1&pickupType=0` 待发货订单 → `statuses` + `pickupType`
  * - `/orders?statuses=1&pickupType=1` 自提待核销 → `statuses` + `pickupType`
  * - `/orders?wxShippingStatus=2` 微信发货上报失败 → `wxShippingStatus`
+ * - `/orders?orderNo=xxx` 库存对账页台账按订单号定位 → `orderNo`
  */
 function applyQueryFilters(): void {
   const statuses = route.query.statuses
@@ -462,6 +463,12 @@ function applyQueryFilters(): void {
   }
   if (typeof wxShippingStatus === 'string' && wxShippingStatus !== '' && !Number.isNaN(Number(wxShippingStatus))) {
     store.filters.wxShippingStatus = Number(wxShippingStatus)
+  }
+  // 「库存对账」页台账的订单号可点击跳转（`/orders?orderNo=xxx`）：订单列表接口支持 orderNo 精确查询
+  const orderNo = route.query.orderNo
+  if (typeof orderNo === 'string' && orderNo.trim() !== '') {
+    store.filters.orderNo = orderNo.trim()
+    orderNoInput.value = orderNo.trim() // 同步输入框，避免出现"已按订单号筛选但输入框是空的"
   }
 }
 

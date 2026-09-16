@@ -32,6 +32,7 @@ const ROLE_ROUTES: Record<AdminRole, string[]> = {
     '/wallets',
     '/transfers',
     '/withdraw',
+    '/stock',
     '/logs/verify',
     '/logs/audit',
   ],
@@ -57,6 +58,7 @@ const ROLE_ROUTES: Record<AdminRole, string[]> = {
     '/wallets',
     '/transfers',
     '/withdraw',
+    '/stock',
     '/logs/verify',
     '/logs/audit',
   ],
@@ -81,6 +83,7 @@ const ROLE_ROUTES: Record<AdminRole, string[]> = {
     '/wallets',
     '/transfers',
     '/withdraw',
+    '/stock',
     '/logs/verify',
   ],
 }
@@ -109,6 +112,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/wallets': '钱包管理',
   '/transfers': '余额转账记录',
   '/withdraw': '提现审核',
+  '/stock': '库存对账',
   '/logs/verify': '核销日志',
   '/logs/audit': '操作追溯',
 }

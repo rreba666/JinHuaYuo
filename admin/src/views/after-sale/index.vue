@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute } from 'vue-router'
 import DataTable from '@/components/DataTable.vue'
@@ -37,6 +37,14 @@ const reasonVisible = ref(false)
 const reasonTitle = ref('')
 const reasonValue = ref('')
 const reasonAction = ref<((reason: string) => Promise<void>) | null>(null)
+/**
+ * 从「库存对账」页台账跳转过来时携带的售后单号。
+ * ⚠️ 售后列表接口（`/api/admin/after-sale/list`）目前**只支持 status/type 筛选**，没有 afterSaleNo 参数，
+ * 所以这里不做请求筛选，只在已加载的结果里定位并高亮该行，未命中时给出提示。
+ */
+const focusNo = ref('')
+/** 当前结果里是否命中了 focusNo（未命中说明该单不在本页/本次筛选结果中）。 */
+const focusMatched = computed(() => focusNo.value !== '' && store.list.some((row) => row.afterSaleNo === focusNo.value))
 
 function money(value: number): string { return `¥ ${Number(value || 0).toFixed(2)}` }
 function statusType(status: number): 'warning' | 'danger' | 'success' | 'info' {
@@ -113,6 +121,14 @@ function applyQuery(): void {
     store.statusFilter = Number(status)
     store.page = 1
   }
+  // 库存对账页台账跳转会带 afterSaleNo，仅用于定位高亮（接口不支持按单号查询，见 focusNo 注释）
+  const afterSaleNo = route.query.afterSaleNo
+  focusNo.value = typeof afterSaleNo === 'string' ? afterSaleNo.trim() : ''
+}
+
+/** 命中 focusNo 的行加高亮样式，便于从库存台账跳转后快速定位。 */
+function rowClass({ row }: { row: AdminAfterSale }): string {
+  return focusNo.value !== '' && row.afterSaleNo === focusNo.value ? 'focus-row' : ''
 }
 
 /** 重新套用 URL 筛选并刷新（待办铃铛信号；200ms 去重避免与路由变化重复请求）。 */
@@ -127,6 +143,8 @@ function applyTodoAndReload(): void {
 
 // 同一模块内点不同待办/重复点同一待办都要有反应：query 变化 + 铃铛点击信号 双保险
 watch(() => route.query.status, () => { applyTodoAndReload() })
+// 同一路径下只变 afterSaleNo（库存台账多次点不同售后单）也要重新定位
+watch(() => route.query.afterSaleNo, () => { applyTodoAndReload() })
 watch(() => todoStore.clickTick, () => { applyTodoAndReload() })
 
 onMounted(() => {
@@ -157,9 +175,19 @@ onMounted(() => {
       </div>
     </el-card>
 
+    <el-alert
+      v-if="focusNo && !focusMatched && !store.loading"
+      class="focus-alert"
+      type="info"
+      show-icon
+      :closable="false"
+      :title="`当前结果中未找到售后单 ${focusNo}`"
+      description="售后列表接口暂不支持按售后单号查询，请在列表中翻页查找；该单号可直接复制。"
+    />
+
     <el-card shadow="never" class="content-card">
       <div class="toolbar"><div><strong>售后单</strong><span class="toolbar-count">共 {{ store.total }} 条</span></div></div>
-      <DataTable :data="store.list" :loading="store.loading" :total="store.total" :page="store.page" :page-size="store.size" empty-text="暂无售后单" @page-change="pageChange" @size-change="sizeChange">
+      <DataTable :data="store.list" :loading="store.loading" :total="store.total" :page="store.page" :page-size="store.size" empty-text="暂无售后单" :row-class-name="rowClass" @page-change="pageChange" @size-change="sizeChange">
         <el-table-column prop="afterSaleNo" label="售后单号" min-width="200" />
         <el-table-column prop="orderNo" label="订单号" min-width="190" />
         <el-table-column label="用户" width="150"><template #default="{ row }"><div>{{ row.userNickname || '--' }}</div><div class="cell-sub">{{ row.userPhone || '' }}</div></template></el-table-column>
@@ -202,4 +230,7 @@ onMounted(() => {
 .operator-actions :deep(.el-icon) { margin-right: 4px; }
 .cell-sub { margin-top: 2px; color: #909399; font-size: 12px; }
 .cell-muted { color: #c0c4cc; }
+.focus-alert { margin-bottom: 12px; }
+/* 从库存台账跳转定位到的售后单行高亮（需穿透 el-table 单元格背景） */
+:deep(.focus-row) td { background: #fdf6ec !important; }
 </style>

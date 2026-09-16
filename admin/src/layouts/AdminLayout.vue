@@ -60,6 +60,8 @@ const isFinance = computed(() => authStore.role === 'FINANCE' || isPlatformOrAdm
 const isPromotion = computed(() => isFinance.value)
 /** 红包管理：仅超级管理员可见（红包贡献/结算/用户额度）。 */
 const isRedPacket = computed(() => isSuper.value)
+/** 库存对账：财务 + 超管 + 商户管理员可见（库存台账 + 退款应补未补核对，均为只读）。 */
+const isStock = computed(() => isFinance.value)
 /** 核销日志：超管 + 客服 + 财务 + 商户管理员 均可见。 */
 const isVerifyLog = computed(() => authStore.role === 'CUSTOMER_SERVICE' || authStore.role === 'FINANCE' || isPlatformOrAdmin.value)
 /** 操作追溯：仅超管 + 商户管理员 可见。 */
@@ -239,6 +241,10 @@ onUnmounted(() => {
         <el-menu-item v-if="isFinance" index="/withdraw">
           <el-icon><Tickets /></el-icon>
           <template #title>提现审核</template>
+        </el-menu-item>
+        <el-menu-item v-if="isStock" index="/stock">
+          <el-icon><Box /></el-icon>
+          <template #title>库存对账</template>
         </el-menu-item>
         <el-sub-menu v-if="isLogModule" index="/logs">
           <template #title><el-icon><Document /></el-icon><span>日志管理</span></template>
