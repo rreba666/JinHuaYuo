@@ -33,7 +33,13 @@ const ledgerSize = ref(50)
 const ledgerUnavailable = ref(false)
 
 // ===== 页签二：退款应补未补 =====
-const gapsDateRange = ref<[string, string] | null>(null)
+/**
+ * 退款**起始**时间。
+ * ⚠️ 该接口只支持 `startTime`（文档 §3.1 与 api-docs 的参数都只有
+ * `startTime` / `includeNonActionable` / `page` / `size`，**没有 `endTime`**），
+ * 所以这里只做单日期选择，不做区间，避免出现"选了结束时间但其实没生效"的假象。
+ */
+const gapsStartDate = ref('')
 /** 宽松口径：列出所有「已退款且无回补记录」的订单项（需人工判断），默认只列真问题 */
 const gapsLooseMode = ref(false)
 const gapsList = ref<RefundRestockGap[]>([])
@@ -199,9 +205,10 @@ async function loadGaps(resetPage = false): Promise<void> {
   if (resetPage) gapsPage.value = 1
   gapsLoading.value = true
   try {
-    const range = rangeToParams(gapsDateRange.value)
+    // 只传起始时间：接口无 endTime 参数（见 gapsStartDate 注释）
+    const startTime = gapsStartDate.value ? `${gapsStartDate.value} 00:00:00` : undefined
     const result = await getRefundRestockGaps({
-      ...range,
+      ...(startTime ? { startTime } : {}),
       includeNonActionable: gapsLooseMode.value || undefined,
       page: gapsPage.value,
       size: gapsSize.value,
@@ -240,7 +247,7 @@ function gapsSizeChange(size: number): void {
 
 /** 页签二：重置筛选。 */
 function resetGaps(): void {
-  gapsDateRange.value = null
+  gapsStartDate.value = ''
   gapsLooseMode.value = false
   void loadGaps(true)
 }
@@ -470,8 +477,12 @@ onMounted(() => {
                   <span v-else class="muted">{{ bizTypeText(row.bizType) }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="操作方" width="100">
-                <template #default="{ row }">{{ operatorText(row.operatorType) }}</template>
+              <el-table-column label="操作方" width="140">
+                <template #default="{ row }">
+                  <div>{{ operatorText(row.operatorType) }}</div>
+                  <!-- 文档 §5.1：人工改库存最有价值的是「前后值 + 操作人 + 原因」，所以把操作人 ID 一并显示 -->
+                  <small v-if="row.operatorId" class="muted">操作人 ID {{ row.operatorId }}</small>
+                </template>
               </el-table-column>
               <el-table-column label="原因 / 备注" min-width="240">
                 <template #default="{ row }">
@@ -498,8 +509,8 @@ onMounted(() => {
         />
         <el-card shadow="never" class="content-card">
           <el-form inline @submit.prevent="loadGaps(true)">
-            <el-form-item label="退款时间">
-              <el-date-picker v-model="gapsDateRange" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" />
+            <el-form-item label="退款起始时间">
+              <el-date-picker v-model="gapsStartDate" type="date" value-format="YYYY-MM-DD" placeholder="不选=从留痕上线起" clearable />
             </el-form-item>
             <el-form-item label="宽松口径">
               <el-switch v-model="gapsLooseMode" />
@@ -549,6 +560,15 @@ onMounted(() => {
               <template #default="{ row }">{{ money(row.refundAmount) }}</template>
             </el-table-column>
             <el-table-column prop="refundTime" label="退款时间" min-width="170" />
+            <el-table-column label="退款单号" min-width="190">
+              <template #default="{ row }">
+                <template v-if="row.refundNo">
+                  <span>{{ row.refundNo }}</span>
+                  <el-button link type="primary" :icon="CopyDocument" @click="copyField(row.refundNo, '退款单号')">复制</el-button>
+                </template>
+                <span v-else class="muted">退款处理中</span>
+              </template>
+            </el-table-column>
             <el-table-column label="配送方式" width="100">
               <template #default="{ row }">{{ pickupTypeText(row.pickupType) }}</template>
             </el-table-column>

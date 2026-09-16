@@ -175,6 +175,7 @@ export interface RefundRestockGap {
 export interface RefundRestockGapQuery {
   /** 起始时间；不传=后端自动取留痕上线时间 */
   startTime?: string
+  /** ⚠️ 接口**暂不支持**结束时间（文档 §3.1 与 api-docs 都只有 startTime），传了会被后端忽略；后端补充后再启用 */
   endTime?: string
   /** 默认 false=只有"应补未补"的真问题；true=宽松口径（需前端自行判断） */
   includeNonActionable?: boolean
