@@ -108,7 +108,7 @@ onMounted(() => { void load() })
 
     <el-dialog v-model="editorVisible" :title="editorId ? '编辑公告' : '新增公告'" width="520px" append-to-body @closed="editorFormRef?.resetFields()">
       <el-form ref="editorFormRef" :model="editorForm" :rules="editorRules" label-width="80px">
-        <el-form-item label="公告文案" prop="content"><el-input v-model="editorForm.content" type="textarea" :rows="3" maxlength="100" show-word-limit placeholder="请输入滚动展示的公告文案" /></el-form-item>
+        <el-form-item label="公告文案" prop="content"><el-input v-model="editorForm.content" type="textarea" :rows="6" maxlength="1000" show-word-limit placeholder="请输入滚动展示的公告文案" /></el-form-item>
         <el-form-item label="启用状态"><el-switch v-model="editorForm.enabled" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="停用" /></el-form-item>
         <el-form-item label="排序权重"><el-input-number v-model="editorForm.sortOrder" :min="0" :step="1" controls-position="right" /><span class="form-tip">数值越大越靠前</span></el-form-item>
       </el-form>

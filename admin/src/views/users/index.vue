@@ -3,16 +3,17 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import DataTable from '@/components/DataTable.vue'
 import { useUserStore } from '@/stores/user'
+import { useAuthStore } from '@/stores/auth'
 import type { AdminWalletUpsertDTO, User, UserBanStatus, UserBanStatusValue, UserDetail } from '@/types/user'
 import { Delete, Lock, RefreshLeft, Unlock, View } from '@element-plus/icons-vue'
 
 const store = useUserStore()
+const authStore = useAuthStore()
 const selected = ref<User[]>([])
 type UserStatusTab = 'normal' | 'deleted' | 'banned'
-const statusTab = ref<UserStatusTab>('normal')
+const statusTab = ref<UserStatusTab>(store.statusFilter as UserStatusTab)
 const hasSelection = computed(() => selected.value.length > 0)
 const activeSelected = computed(() => selected.value.filter((user) => user.delFlag !== 1))
-const visibleUsers = computed(() => store.list.filter((user) => getUserStatus(user) === statusTab.value))
 const detailVisible = ref(false)
 const detailUserId = ref('')
 type WalletForm = Pick<UserDetail, 'pendingPromotion' | 'pendingBonus' | 'balance'>
@@ -21,11 +22,6 @@ const walletOriginal = ref<WalletForm | null>(null)
 
 function normalizeBanStatus(value: UserBanStatusValue): 0 | 1 {
   return value === 1 || value === '1' ? 1 : 0
-}
-
-function getUserStatus(user: User): UserStatusTab {
-  if (user.delFlag === 1) return 'deleted'
-  return normalizeBanStatus(user.banStatus) === 1 ? 'banned' : 'normal'
 }
 
 /** 将详情中的当前余额复制到独立表单，避免直接修改响应数据。 */
@@ -88,9 +84,13 @@ async function saveWallet(): Promise<void> {
   }
 }
 
+/** 切换状态页签：作为后端筛选条件重新请求，并重置页码。 */
 function handleStatusTabChange(value: string | number): void {
-  statusTab.value = String(value) as UserStatusTab
+  const tab = String(value) as UserStatusTab
+  statusTab.value = tab
+  store.setStatusFilter(tab)
   selected.value = []
+  void loadList()
 }
 
 async function loadList(): Promise<void> {
@@ -213,9 +213,9 @@ onMounted(() => { void loadList() })
         </div>
       </div>
       <DataTable
-        :data="visibleUsers"
+        :data="store.list"
         :loading="store.loading"
-        :total="visibleUsers.length"
+        :total="store.total"
         :page="store.page"
         :page-size="store.pageSize"
         empty-text="暂无用户数据"
@@ -258,9 +258,9 @@ onMounted(() => { void loadList() })
           <el-descriptions-item label="待提现红包">¥ {{ store.detail.pendingBonus.toFixed(2) }}</el-descriptions-item>
           <el-descriptions-item label="余额">¥ {{ store.detail.balance.toFixed(2) }}</el-descriptions-item>
         </el-descriptions>
-        <el-divider>钱包余额编辑</el-divider>
-        <el-alert type="warning" :closable="false" show-icon title="手工调账" description="保存会直接覆盖用户可提现余额，请确认业务影响。" />
-        <el-form label-width="130px" class="wallet-form">
+        <el-divider v-if="authStore.role !== 'ADMIN'">钱包余额编辑</el-divider>
+        <el-alert v-if="authStore.role !== 'ADMIN'" type="warning" :closable="false" show-icon title="手工调账" description="保存会直接覆盖用户可提现余额，请确认业务影响。" />
+        <el-form v-if="authStore.role !== 'ADMIN'" label-width="130px" class="wallet-form">
           <el-form-item label="待提现推广金">
             <el-input-number v-model="walletForm.pendingPromotion" :min="0" :precision="2" :step="0.01" controls-position="right" />
           </el-form-item>
@@ -274,7 +274,7 @@ onMounted(() => { void loadList() })
       </template>
       <el-empty v-else description="暂无用户详情" />
       <template #footer>
-        <div class="drawer-footer"><el-button @click="detailVisible = false">取消</el-button><el-button type="primary" :loading="store.walletLoading" :disabled="store.detailLoading || !walletOriginal" @click="saveWallet">保存余额</el-button></div>
+        <div class="drawer-footer"><el-button @click="detailVisible = false">取消</el-button><el-button v-if="authStore.role !== 'ADMIN'" type="primary" :loading="store.walletLoading" :disabled="store.detailLoading || !walletOriginal" @click="saveWallet">保存余额</el-button></div>
       </template>
     </el-drawer>
   </section>

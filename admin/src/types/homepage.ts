@@ -9,6 +9,8 @@ export interface HomepageConfigSaveDTO {
   linkTarget: string[]
   bottomImageUrl: string[]
   bottomLinkTarget: string[]
+  /** 「更多福利」目标小程序码海报图 URL。 */
+  welfareMiniProgramQrUrl?: string
   bottomTitle: string
   isEnabled: HomepageEnabled
 }
@@ -24,6 +26,8 @@ export interface HomepageMediaItem {
   linkTarget: string[]
   bottomImageUrl: string[]
   bottomLinkTarget: string[]
+  /** 「更多福利」目标小程序码海报图 URL。 */
+  welfareMiniProgramQrUrl?: string
   bottomTitle: string
   isEnabled?: HomepageEnabledValue
 }

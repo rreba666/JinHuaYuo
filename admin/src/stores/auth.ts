@@ -7,7 +7,7 @@ import type { AdminLoginVO } from '@/types/auth'
 const TOKEN_KEY = 'admin_token'
 const ADMIN_INFO_KEY = 'admin_login_info'
 
-/** 管理商户管理员认证状态及本地持久化数据（单商户系统，无多品牌/平台区分）。 */
+/** 管理管理员认证状态及本地持久化数据。 */
 export const useAuthStore = defineStore('auth', () => {
   const token = ref('')
   const adminUserId = ref<string | null>(null)

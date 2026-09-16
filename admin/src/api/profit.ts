@@ -1,5 +1,5 @@
 import { request } from './request'
-import type { BonusInjectDTO, DividendContribution, DividendContributionPage, DividendRecordTestItem, DividendRecordTestResult, DividendSlotTestItem, DividendSlotTestResult, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, ProfitResponse, PromotionBinding, PromotionBindingPage, PromotionBindingQuery, PromotionPage, PendingPromotionRecord, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
+import type { AdminDividendSlot, BonusInjectDTO, DailyContributionUser, DividendContribution, DividendContributionPage, DividendRecordTestItem, DividendRecordTestResult, DividendSlotTestItem, DividendSlotTestResult, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, ProfitResponse, PromotionBinding, PromotionBindingPage, PromotionBindingQuery, PromotionPage, PendingPromotionRecord, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
 
 function unwrap<T>(response: { data: ProfitResponse<T> }, fallback: string): T {
   const result = response.data
@@ -37,7 +37,7 @@ function normalizePool(value: unknown): SevenDayBonusPool {
 
 function normalizeDetail(value: unknown): SevenDayBonusDetail {
   const row = (value || {}) as Partial<SevenDayBonusDetail>
-  return { ...row, id: String(row.id ?? ''), poolId: String(row.poolId ?? ''), poolDate: String(row.poolDate ?? ''), dailyAmount: Number(row.dailyAmount ?? 0), dailyUserCount: Number(row.dailyUserCount ?? 0), createTime: String(row.createTime ?? ''), updateTime: String(row.updateTime ?? '') }
+  return { ...row, id: String(row.id ?? ''), poolId: String(row.poolId ?? ''), poolDate: String(row.poolDate ?? ''), dailyAmount: Number(row.dailyAmount ?? 0), dailyUserCount: Number(row.dailyUserCount ?? 0), cumulativeUserCount: row.cumulativeUserCount == null ? undefined : Number(row.cumulativeUserCount), settledFlag: row.settledFlag == null ? undefined : Number(row.settledFlag), settledAmount: row.settledAmount == null ? null : Number(row.settledAmount), settlementVersion: row.settlementVersion ? String(row.settlementVersion) : '', createTime: String(row.createTime ?? ''), updateTime: String(row.updateTime ?? '') }
 }
 
 function normalizeContribution(value: unknown): DividendContribution {
@@ -50,7 +50,7 @@ function normalizeContribution(value: unknown): DividendContribution {
     userName: String(row.userName ?? row.buyerName ?? row.nickname ?? user.nickname ?? ''),
     amount: Number(row.amount ?? row.contributionAmount ?? 0),
     paidAt: String(row.paidAt ?? row.paymentTime ?? row.payTime ?? ''),
-    matureAt: String(row.matureAt ?? row.expectedMatureTime ?? row.maturityTime ?? ''),
+    matureAt: String(row.maturityAt ?? row.expectedMatureTime ?? ''),
     status: String(row.status ?? ''),
     statusDesc: String(row.statusDesc ?? row.statusName ?? ''),
     confirmedAt: String(row.confirmedAt ?? row.confirmTime ?? ''),
@@ -151,6 +151,15 @@ export async function getPromotionRelations(query: PromotionBindingQuery): Promi
   return normalizeBindingPage(unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/relations', { params: query }), '推广关系查询失败'), query.page, query.size)
 }
 
+/**
+ * 后台「直接绑定」：给**尚未绑定**推广关系的买家指定推广员（POST /api/admin/profit/relations）。
+ * 买家已有推广关系时后端返回业务错误，此时应改用列表里的「重新绑定」。
+ * 该接口为后端新增能力（见 docs/后端文档/推广模块接口角色放开-后端需求-2026-09-16.md），未上线时返回 404。
+ */
+export async function createPromotionRelation(buyerUserId: string, promoterId: string): Promise<void> {
+  unwrap(await request.post<ProfitResponse<null>>('/api/admin/profit/relations', { buyerUserId, promoterId }), '新增推广绑定失败')
+}
+
 export async function rebindPromotionRelation(buyerUserId: string, promoterId: string): Promise<void> {
   unwrap(await request.put<ProfitResponse<null>>(getRelationDetailPath(buyerUserId), null, { params: { promoterId } }), '推广关系重绑失败')
 }
@@ -174,6 +183,60 @@ export async function getUnsettledDailyDetails(): Promise<SevenDayBonusDetail[]>
   return Array.isArray(data) ? data.map(normalizeDetail) : []
 }
 
+export async function getSettledDailyDetails(): Promise<SevenDayBonusDetail[]> {
+  const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/daily/settled'), '已结算红包查询失败')
+  return Array.isArray(data) ? data.map(normalizeDetail) : []
+}
+
+/** 后台「用户红包资格」槽位列表（GET /api/admin/profit/slots，按 userId 过滤，只读）。 */
+export async function getAdminDividendSlots(userId?: string): Promise<AdminDividendSlot[]> {
+  const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/slots', { params: userId ? { userId } : {} }), '用户红包槽位查询失败')
+  return Array.isArray(data) ? data.map(normalizeSlot) : []
+}
+
+/** 某支付日的累计用户贡献明细（GET /api/admin/profit/daily/users/{asOfDate}，pool_date<=asOfDate 去重贡献）。 */
+export async function getDailyUsers(asOfDate: string): Promise<DailyContributionUser[]> {
+  const data = unwrap(await request.get<ProfitResponse<unknown>>(`/api/admin/profit/daily/users/${encodeURIComponent(asOfDate)}`), '累计用户明细查询失败')
+  return Array.isArray(data) ? data.map(normalizeDailyUser) : []
+}
+
+/** 归一化累计用户贡献：BIGINT 字段转字符串，金额落地。 */
+function normalizeDailyUser(value: unknown): DailyContributionUser {
+  const row = (value || {}) as Partial<DailyContributionUser>
+  return {
+    id: String(row.id ?? ''),
+    orderId: String(row.orderId ?? ''),
+    orderNo: String(row.orderNo ?? ''),
+    userId: String(row.userId ?? ''),
+    poolDate: String(row.poolDate ?? ''),
+    amount: Number(row.amount ?? 0),
+    emergencyAmount: row.emergencyAmount == null ? null : Number(row.emergencyAmount),
+    status: String(row.status ?? ''),
+    statusDesc: String(row.statusDesc ?? ''),
+    poolId: String(row.poolId ?? ''),
+  }
+}
+
+/** 归一化后台槽位：BIGINT 字段转字符串，数值字段落地。 */
+function normalizeSlot(value: unknown): AdminDividendSlot {
+  const row = (value || {}) as Partial<AdminDividendSlot>
+  return {
+    id: String(row.id ?? ''),
+    userId: String(row.userId ?? ''),
+    orderId: String(row.orderId ?? ''),
+    orderNo: String(row.orderNo ?? ''),
+    productId: String(row.productId ?? ''),
+    productName: String(row.productName ?? ''),
+    productPrice: Number(row.productPrice ?? 0),
+    capAmount: Number(row.capAmount ?? 0),
+    totalReceived: Number(row.totalReceived ?? 0),
+    locked: Number(row.locked ?? 0),
+    invalidFlag: Number(row.invalidFlag ?? 0),
+    invalidReason: row.invalidReason == null ? null : String(row.invalidReason),
+    lockedAt: row.lockedAt == null ? null : String(row.lockedAt),
+  }
+}
+
 export async function getProfitContributions(query: { status?: string; page: number; size: number }): Promise<DividendContributionPage> {
   return normalizeContributionPage(unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/contributions', { params: query }), '红包贡献查询失败'), query.page, query.size)
 }
@@ -193,7 +256,6 @@ export async function settleProfit(startDate: string, endDate: string): Promise<
 export async function confirmPool(poolId: string): Promise<void> { unwrap(await request.post<ProfitResponse<null>>(`/api/admin/profit/pool/${poolId}/confirm`), '红包确认失败') }
 export async function adjustPool(poolId: string, payload: ProfitAdjustPoolDTO): Promise<void> { unwrap(await request.put<ProfitResponse<null>>(`/api/admin/profit/pool/${poolId}/adjust`, payload), '红包调整失败') }
 export async function adjustDaily(detailId: string, payload: ProfitAdjustDailyDTO): Promise<void> { unwrap(await request.put<ProfitResponse<null>>(`/api/admin/profit/daily/${detailId}/adjust`, payload), '每日红包调整失败') }
-export async function resetDividendLimit(userId: string): Promise<void> { unwrap(await request.put<ProfitResponse<null>>(`/api/admin/profit/limit/${userId}/reset`), '红包额度重置失败') }
 
 export async function getWalletTestResult(token: string): Promise<WalletTestResult> {
   return normalizeWalletTest(await getUserTestData<unknown>(token, '/api/wallet/info'))

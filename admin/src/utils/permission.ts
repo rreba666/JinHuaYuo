@@ -3,6 +3,7 @@ import type { AdminRole } from '@/types/auth'
 /** 角色中文名称。 */
 export const ROLE_LABELS: Record<AdminRole, string> = {
   SUPER_ADMIN: '超级管理员',
+  ADMIN: '商户管理员',
   CUSTOMER_SERVICE: '客服',
   FINANCE: '财务',
 }
@@ -25,7 +26,34 @@ const ROLE_ROUTES: Record<AdminRole, string[]> = {
     '/orders/address-audit',
     '/after-sale',
     '/invoices',
-    '/profit',
+    '/health-survey',
+    '/promotion',
+    '/redpacket',
+    '/wallets',
+    '/transfers',
+    '/withdraw',
+    '/logs/verify',
+    '/logs/audit',
+  ],
+  /** ADMIN（商户管理员）：业务模块可见；可看 核销日志 + 操作追溯；仅隐藏 系统设置/推广资金。 */
+  ADMIN: [
+    '/dashboard',
+    '/homepage',
+    '/homepage/bottom-recommendation',
+    '/announcement',
+    '/users',
+    '/products',
+    '/categories',
+    '/shops',
+    '/staff',
+    '/admins',
+    '/orders',
+    '/orders/pickup',
+    '/orders/address-audit',
+    '/after-sale',
+    '/invoices',
+    '/health-survey',
+    '/promotion',
     '/wallets',
     '/transfers',
     '/withdraw',
@@ -42,16 +70,18 @@ const ROLE_ROUTES: Record<AdminRole, string[]> = {
     '/orders/address-audit',
     '/after-sale',
     '/invoices',
+    '/health-survey',
     '/logs/verify',
   ],
   FINANCE: [
     '/dashboard',
     '/invoices',
-    '/profit',
+    '/health-survey',
+    '/promotion',
     '/wallets',
     '/transfers',
     '/withdraw',
-    '/logs/audit',
+    '/logs/verify',
   ],
 }
 
@@ -73,7 +103,9 @@ const ROUTE_LABELS: Record<string, string> = {
   '/orders/address-audit': '地址变更审核',
   '/after-sale': '售后管理',
   '/invoices': '发票管理',
-  '/profit': '推广资金',
+  '/health-survey': '健康问卷',
+  '/promotion': '推广管理',
+  '/redpacket': '红包管理',
   '/wallets': '钱包管理',
   '/transfers': '余额转账记录',
   '/withdraw': '提现审核',
@@ -84,6 +116,7 @@ const ROUTE_LABELS: Record<string, string> = {
 /** 各角色可访问功能的权限中文名（由 ROLE_ROUTES 映射而来，供后台展示）。 */
 export const ROLE_PERMISSIONS: Record<AdminRole, string[]> = {
   SUPER_ADMIN: ROLE_ROUTES.SUPER_ADMIN.map((path) => ROUTE_LABELS[path] ?? path),
+  ADMIN: ROLE_ROUTES.ADMIN.map((path) => ROUTE_LABELS[path] ?? path),
   CUSTOMER_SERVICE: ROLE_ROUTES.CUSTOMER_SERVICE.map((path) => ROUTE_LABELS[path] ?? path),
   FINANCE: ROLE_ROUTES.FINANCE.map((path) => ROUTE_LABELS[path] ?? path),
 }
@@ -91,6 +124,7 @@ export const ROLE_PERMISSIONS: Record<AdminRole, string[]> = {
 /** 各角色登录后的默认落地页。 */
 const ROLE_HOME: Record<AdminRole, string> = {
   SUPER_ADMIN: '/dashboard',
+  ADMIN: '/dashboard',
   CUSTOMER_SERVICE: '/dashboard',
   FINANCE: '/dashboard',
 }
