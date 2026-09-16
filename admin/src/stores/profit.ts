@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
-import { adjustDaily, adjustPool, confirmPool, getAdminDividendSlots, getBonusDetails, getBonusPools, getDailyUsers, getDividendLimits, getPendingPromotion, getProfitContributions, getPromotionRelations, getUnsettledDailyDetails, getSettledDailyDetails, injectBonusPool, rebindPromotionRelation, settleProfit, unbindPromotionRelation } from '@/api/profit'
+import { adjustDaily, adjustPool, confirmPool, createPromotionRelation, getAdminDividendSlots, getBonusDetails, getBonusPools, getDailyUsers, getDividendLimits, getPendingPromotion, getProfitContributions, getPromotionRelations, getUnsettledDailyDetails, getSettledDailyDetails, injectBonusPool, rebindPromotionRelation, settleProfit, unbindPromotionRelation } from '@/api/profit'
 import type { AdminDividendSlot, BonusInjectDTO, DailyContributionUser, DividendContribution, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, PromotionBinding, PromotionBindingSource, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit } from '@/types/profit'
 
 export const useProfitStore = defineStore('profit', () => {
@@ -45,6 +45,28 @@ export const useProfitStore = defineStore('profit', () => {
     } finally { loading.value = false }
   }
 
+  /** 仅加载待推广金列表（推广模块使用，避免附带拉取红包数据）。 */
+  async function fetchPendingPromotion(): Promise<void> {
+    loading.value = true
+    try {
+      const pending = await getPendingPromotion({ page: pendingPage.value, size: pendingSize.value })
+      pendingPromotion.value = pending.list
+      pendingTotal.value = pending.total
+    } finally { loading.value = false }
+  }
+
+  /** 加载红包模块数据（红包池 / 每日明细 / 用户购买机会 / 红包槽位，不含推广金）。 */
+  async function fetchRedPacketData(): Promise<void> {
+    loading.value = true
+    try {
+      const [pools, daily, limits, settled] = await Promise.all([getBonusPools(), getUnsettledDailyDetails(), getDividendLimits(), getSettledDailyDetails()])
+      sevenDayPools.value = pools
+      unsettledDaily.value = daily
+      dividendLimits.value = limits
+      settledDaily.value = settled
+    } finally { loading.value = false }
+  }
+
   async function fetchRelations(): Promise<void> {
     relationLoading.value = true
     try {
@@ -65,6 +87,8 @@ export const useProfitStore = defineStore('profit', () => {
 
   async function fetchPoolDetails(poolId: string): Promise<void> { poolDetails.value = await getBonusDetails(poolId) }
   async function runAction(action: () => Promise<void>): Promise<void> { actionLoading.value = true; try { await action(); await fetchAll() } finally { actionLoading.value = false } }
+  /** 后台「直接绑定」：给尚未绑定推广关系的买家指定推广员（成功后刷新列表）。 */
+  async function createRelation(buyerUserId: string, promoterId: string): Promise<void> { relationActionLoading.value = true; try { await createPromotionRelation(buyerUserId, promoterId); await fetchRelations() } finally { relationActionLoading.value = false } }
   async function rebindRelation(buyerUserId: string, promoterId: string): Promise<void> { relationActionLoading.value = true; try { await rebindPromotionRelation(buyerUserId, promoterId); await fetchRelations() } finally { relationActionLoading.value = false } }
   async function unbindRelation(buyerUserId: string): Promise<void> {
     relationActionLoading.value = true
@@ -80,7 +104,7 @@ export const useProfitStore = defineStore('profit', () => {
   async function adjust(poolId: string, payload: ProfitAdjustPoolDTO): Promise<void> { await runAction(() => adjustPool(poolId, payload)) }
   async function adjustDetail(detailId: string, payload: ProfitAdjustDailyDTO): Promise<void> { await runAction(() => adjustDaily(detailId, payload)) }
 
-  /** 查询后台「用户分红资格」槽位（按 userId 过滤，留空查全部；只读）。 */
+  /** 查询后台「用户红包资格」槽位（按 userId 过滤，留空查全部；只读）。 */
   async function fetchAdminSlots(userId?: string): Promise<void> {
     loading.value = true
     try {
@@ -100,5 +124,5 @@ export const useProfitStore = defineStore('profit', () => {
     }
   }
 
-  return { pendingPromotion, pendingTotal, pendingPage, pendingSize, relations, relationTotal, relationPage, relationSize, relationLoading, relationActionLoading, relationFilters, sevenDayPools, poolDetails, unsettledDaily, settledDaily, dividendLimits, adminSlots, dailyUsers, contributions, contributionTotal, contributionPage, contributionSize, contributionStatus, contributionLoading, loading, actionLoading, fetchAll, fetchRelations, fetchContributions, fetchPoolDetails, fetchAdminSlots, fetchDailyUsers, rebindRelation, unbindRelation, inject, settle, confirm, adjust, adjustDetail }
+  return { pendingPromotion, pendingTotal, pendingPage, pendingSize, relations, relationTotal, relationPage, relationSize, relationLoading, relationActionLoading, relationFilters, sevenDayPools, poolDetails, unsettledDaily, settledDaily, dividendLimits, adminSlots, dailyUsers, contributions, contributionTotal, contributionPage, contributionSize, contributionStatus, contributionLoading, loading, actionLoading, fetchAll, fetchPendingPromotion, fetchRedPacketData, fetchRelations, fetchContributions, fetchPoolDetails, fetchAdminSlots, fetchDailyUsers, rebindRelation, createRelation, unbindRelation, inject, settle, confirm, adjust, adjustDetail }
 })

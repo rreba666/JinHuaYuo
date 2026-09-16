@@ -48,6 +48,14 @@ request.interceptors.response.use(
     if (error.response?.status === 403) {
       return Promise.reject(new Error(error.response?.data?.message || '当前账号无权执行此操作'))
     }
+    // 404=接口不存在（常见于后端尚未上线的接口）：给出明确文案，避免被误报成"网络异常"。
+    if (error.response?.status === 404) {
+      return Promise.reject(new Error(error.response?.data?.message || '接口不存在或尚未上线，请联系后端确认'))
+    }
+    // 405=路径存在但后端未实现该方法（例如「新增绑定」的 POST 尚未上线）：使用业务可读文案，屏蔽技术报错原文。
+    if (error.response?.status === 405) {
+      return Promise.reject(new Error('该功能所需的后端接口尚未上线，暂无法使用，请联系后端确认'))
+    }
     if (error.response?.data?.message) {
       return Promise.reject(new Error(error.response.data.message))
     }

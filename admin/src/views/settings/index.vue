@@ -22,7 +22,7 @@ const randomFloatForm = reactive<{ floatAmount: number; remark: string }>({ floa
 const slotCountForm = reactive<{ slotCount: number; remark: string }>({ slotCount: 3, remark: '' })
 const profitRatesForm = reactive<ProfitRatesSaveDTO>({ promotionRate: 20, bonusPoolRate: 26, remark: '' })
 type WithdrawRulesForm = Omit<WithdrawRulesConfig, 'feeRate'> & { feeRate: number }
-const withdrawRulesForm = reactive<WithdrawRulesForm>({ minAmount: 0, dailyAmountLimit: 0, dailyCountLimit: 0, feeRate: 0, testUserMinAmount: 0, testUserId: null, testSkipLock: false, maxConcurrent: 0, frozenLimit: 0, remark: '' })
+const withdrawRulesForm = reactive<WithdrawRulesForm>({ minAmount: 0, dailyAmountLimit: 0, dailyCountLimit: 0, feeRate: 0, testUserMinAmount: 0, testUserId: null, testSkipLock: false, maxConcurrent: 0, frozenLimit: 0, remark: '', payLockDays: 0 })
 
 const customerServiceRules: FormRules = {
   configValue: [{ required: true, message: '请输入客服电话', trigger: 'blur' }],
@@ -94,7 +94,7 @@ async function loadRandomFloat(): Promise<void> {
     randomFloatForm.floatAmount = store.randomFloat.floatAmount
     randomFloatForm.remark = store.randomFloat.remark
   } catch (error) {
-    showError(error, '分红浮动幅度加载失败')
+    showError(error, '红包浮动幅度加载失败')
   }
 }
 
@@ -165,18 +165,18 @@ async function saveRandomDividend(): Promise<void> {
 async function saveRandomFloat(): Promise<void> {
   try {
     if (!Number.isFinite(randomFloatForm.floatAmount) || randomFloatForm.floatAmount < 0 || randomFloatForm.floatAmount > 100) { ElMessage.warning('浮动幅度必须在 0 到 100 之间'); return }
-    await ElMessageBox.confirm('保存分红随机浮动幅度吗？此配置影响池2起每人分到的金额（均分基准 ± 浮动）。', '保存确认', { type: 'warning' })
+    await ElMessageBox.confirm('保存红包随机浮动幅度吗？此配置影响池2起每人分到的金额（均分基准 ± 浮动）。', '保存确认', { type: 'warning' })
     await store.saveRandomFloat({ ...randomFloatForm })
-    ElMessage.success('分红浮动幅度已保存')
+    ElMessage.success('红包浮动幅度已保存')
   } catch (error) {
-    if (error !== 'cancel' && error !== 'close') showError(error, '分红浮动幅度保存失败')
+    if (error !== 'cancel' && error !== 'close') showError(error, '红包浮动幅度保存失败')
   }
 }
 
 async function saveSlotCount(): Promise<void> {
   try {
     if (!Number.isInteger(slotCountForm.slotCount) || slotCountForm.slotCount < 1) { ElMessage.warning('槽位数量必须为不小于 1 的整数'); return }
-    await ElMessageBox.confirm('保存分红槽位数量上限吗？改小仅停新开、不影响已有槽位，对所有用户立即生效。', '保存确认', { type: 'warning' })
+    await ElMessageBox.confirm('保存红包槽位数量上限吗？改小仅停新开、不影响已有槽位，对所有用户立即生效。', '保存确认', { type: 'warning' })
     await store.saveSlotCount({ ...slotCountForm })
     ElMessage.success('槽位数量已保存')
   } catch (error) {
@@ -203,7 +203,9 @@ async function saveWithdrawRules(): Promise<void> {
   if (!(await withdrawRulesFormRef.value?.validate().catch(() => false))) return
   try {
     await ElMessageBox.confirm('保存后会影响后续新提交的提现申请，确认继续吗？', '保存提现规则', { type: 'warning' })
-    await store.saveWithdrawRulesConfig({ ...withdrawRulesForm, feeRate: withdrawRulesForm.feeRate / 100 })
+    // payLockDays 是后端只读字段（保存 DTO 里没有），提交时剔除，避免后端严格校验未知字段报错
+    const { payLockDays: _payLockDays, ...rest } = withdrawRulesForm
+    await store.saveWithdrawRulesConfig({ ...rest, feeRate: withdrawRulesForm.feeRate / 100 })
     ElMessage.success('提现规则已保存')
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') showError(error, '提现规则保存失败')
@@ -265,7 +267,7 @@ onMounted(reload)
       </section>
 
       <section class="content-card setting-section fund-rate-section">
-        <div class="setting-heading"><div><h2>分红随机浮动幅度</h2><p>池2起，每人分到的金额 = 均分基准 ± 浮动幅度（元）。</p></div></div>
+        <div class="setting-heading"><div><h2>红包随机浮动幅度</h2><p>池2起，每人分到的金额 = 均分基准 ± 浮动幅度（元）。</p></div></div>
         <el-alert title="影响池2起每人分到的金额" description="后端按此配置在 [均分基准 − 浮动, 均分基准 + 浮动] 内随机；未配置时默认 10 元。" type="info" :closable="false" show-icon />
         <el-form :model="randomFloatForm" label-width="110px" @submit.prevent="saveRandomFloat">
           <el-form-item label="浮动幅度">
@@ -277,8 +279,8 @@ onMounted(reload)
       </section>
 
       <section class="content-card setting-section fund-rate-section">
-        <div class="setting-heading"><div><h2>分红槽位数量</h2><p>每用户最多可同时拥有的活跃槽位数（默认 3）。</p></div></div>
-        <el-alert title="对所有用户立即生效" description="每个槽位=一件分红商品；改小仅停新开、不影响已开旧槽。达到上限后购买分红商品将无法开新槽。" type="info" :closable="false" show-icon />
+        <div class="setting-heading"><div><h2>红包槽位数量</h2><p>每用户最多可同时拥有的活跃槽位数（默认 3）。</p></div></div>
+        <el-alert title="对所有用户立即生效" description="每个槽位=一件红包商品；改小仅停新开、不影响已开旧槽。达到上限后购买红包商品将无法开新槽。" type="info" :closable="false" show-icon />
         <el-form :model="slotCountForm" label-width="110px" @submit.prevent="saveSlotCount">
           <el-form-item label="槽位数上限">
             <div class="rate-control"><el-input-number v-model="slotCountForm.slotCount" :min="1" :max="20" :precision="0" :step="1" controls-position="right" /><span class="rate-suffix">个</span></div>
@@ -326,6 +328,10 @@ onMounted(reload)
           <el-form-item label="手续费率" prop="feeRate"><div class="rate-control"><el-input-number v-model="withdrawRulesForm.feeRate" :min="0" :max="100" :precision="2" :step="0.1" controls-position="right" class="rule-number" /><span class="rate-suffix">%</span></div></el-form-item>
           <el-form-item label="测试用户 ID"><el-input-number v-model="withdrawRulesForm.testUserId" :min="1" :precision="0" controls-position="right" class="rule-number" placeholder="可选" /></el-form-item>
           <el-form-item label="测试用户跳过提现锁"><el-switch v-model="withdrawRulesForm.testSkipLock" active-text="开启" inactive-text="关闭" /></el-form-item>
+          <!-- 支付后锁定期：后端只读字段（WithdrawRuleVO.payLockDays），保存 DTO 里没有，因此这里仅展示 -->
+          <el-form-item label="支付后锁定期">
+            <span class="readonly-value">{{ withdrawRulesForm.payLockDays > 0 ? `最近 ${withdrawRulesForm.payLockDays} 天内有订单支付的用户不可提现` : '（后端未返回）' }}</span>
+          </el-form-item>
           <el-form-item label="备注" class="rule-remark-item"><el-input v-model="withdrawRulesForm.remark" placeholder="可选" clearable maxlength="100" show-word-limit /></el-form-item>
           <el-form-item class="form-item-full"><el-button type="primary" :loading="store.withdrawRulesSaving" @click="saveWithdrawRules">保存提现规则</el-button></el-form-item>
         </el-form>
@@ -340,6 +346,8 @@ onMounted(reload)
 .setting-heading { margin-bottom: 20px; }
 .setting-heading h2 { margin: 0 0 6px; color: var(--vben-text); font-size: 17px; }
 .setting-heading p { margin: 0; color: var(--vben-muted); font-size: 13px; }
+/* 只读展示值（如后端返回、但保存 DTO 不含的字段） */
+.readonly-value { color: var(--el-text-color-secondary); font-size: 13px; }
 .setting-section :deep(.el-alert) { margin-bottom: 20px; }
 .fund-rate-section { grid-column: 1 / -1; }
 .withdraw-rules-section { grid-column: 1 / -1; }

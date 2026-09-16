@@ -11,7 +11,7 @@ export const useSettingStore = defineStore('setting', () => {
   const randomFloat = ref<RandomFloatConfig>({ floatAmount: 10, remark: '' })
   const slotCount = ref<SlotCountConfig>({ slotCount: 3, remark: '' })
   const profitRates = ref<ProfitRatesConfig>({ promotionRate: 0.2, bonusPoolRate: 0.26, remark: '' })
-  const withdrawRules = ref<WithdrawRulesConfig>({ minAmount: 0, dailyAmountLimit: 0, dailyCountLimit: 0, feeRate: 0, testUserMinAmount: 0, testUserId: null, testSkipLock: false, maxConcurrent: 0, frozenLimit: 0, remark: '' })
+  const withdrawRules = ref<WithdrawRulesConfig>({ minAmount: 0, dailyAmountLimit: 0, dailyCountLimit: 0, feeRate: 0, testUserMinAmount: 0, testUserId: null, testSkipLock: false, maxConcurrent: 0, frozenLimit: 0, remark: '', payLockDays: 0 })
   const customerServiceLoading = ref(false)
   const dividendCapLoading = ref(false)
   const randomDividendLoading = ref(false)
@@ -68,7 +68,7 @@ export const useSettingStore = defineStore('setting', () => {
     }
   }
 
-  /** 读取分红随机浮动幅度配置（池2起：每人金额 = 均分基准 ± 浮动，元）。 */
+  /** 读取红包随机浮动幅度配置（池2起：每人金额 = 均分基准 ± 浮动，元）。 */
   async function loadRandomFloat(): Promise<void> {
     randomFloatLoading.value = true
     try {
@@ -78,7 +78,7 @@ export const useSettingStore = defineStore('setting', () => {
     }
   }
 
-  /** 保存分红随机浮动幅度配置。 */
+  /** 保存红包随机浮动幅度配置。 */
   async function saveRandomFloat(payload: { floatAmount: number; remark?: string }): Promise<void> {
     randomFloatSaving.value = true
     try {
@@ -89,7 +89,7 @@ export const useSettingStore = defineStore('setting', () => {
     }
   }
 
-  /** 读取分红槽位数量上限配置（每用户最多活跃槽位数，默认 3）。 */
+  /** 读取红包槽位数量上限配置（每用户最多活跃槽位数，默认 3）。 */
   async function loadSlotCount(): Promise<void> {
     slotCountLoading.value = true
     try {
@@ -99,7 +99,7 @@ export const useSettingStore = defineStore('setting', () => {
     }
   }
 
-  /** 保存分红槽位数量上限配置。 */
+  /** 保存红包槽位数量上限配置。 */
   async function saveSlotCount(payload: { slotCount: number; remark?: string }): Promise<void> {
     slotCountSaving.value = true
     try {

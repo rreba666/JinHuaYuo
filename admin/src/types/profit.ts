@@ -109,7 +109,7 @@ export interface UserDividendLimit {
   updateTime: string
 }
 
-/** 后台「用户分红资格」槽位（对应 DividendSlotEntity，GET /api/admin/profit/slots）。 */
+/** 后台「用户红包资格」槽位（对应 DividendSlotEntity，GET /api/admin/profit/slots）。 */
 export interface AdminDividendSlot {
   id: string
   userId: string
@@ -118,9 +118,9 @@ export interface AdminDividendSlot {
   productId: string
   productName: string
   productPrice: number
-  /** 分红上限（元）= 商品价格 × 1.5。 */
+  /** 红包上限（元）= 商品价格 × 1.5。 */
   capAmount: number
-  /** 本槽位累计已领分红（元）。 */
+  /** 本槽位累计已领红包（元）。 */
   totalReceived: number
   /** 是否满额锁死：0=活跃 / 1=满额锁死（赚够 1.5 倍）。 */
   locked: number

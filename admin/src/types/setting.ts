@@ -35,13 +35,13 @@ export interface RandomDividendConfig {
   remark: string
 }
 
-/** 分红随机浮动幅度配置（池2起：每人分到的金额 = 均分基准 ± 浮动幅度，元）。 */
+/** 红包随机浮动幅度配置（池2起：每人分到的金额 = 均分基准 ± 浮动幅度，元）。 */
 export interface RandomFloatConfig {
   floatAmount: number
   remark: string
 }
 
-/** 分红槽位数量上限配置（每用户最多活跃槽位数，默认 3）。 */
+/** 红包槽位数量上限配置（每用户最多活跃槽位数，默认 3）。 */
 export interface SlotCountConfig {
   slotCount: number
   remark: string
@@ -72,9 +72,16 @@ export interface WithdrawRulesConfig {
   maxConcurrent: number
   frozenLimit: number
   remark: string
+  /**
+   * 支付后锁定期天数（`WithdrawRuleVO.payLockDays`）：最近 N 天有订单支付的用户不可提现。
+   * ⚠️ **只读** —— 保存用的 `WithdrawRuleSaveDTO` 里没有这个字段（2026-09-16 api-docs 确认），
+   * 所以界面上只展示、提交时不带它（避免后端严格校验未知字段时报错）。
+   */
+  payLockDays: number
 }
 
-export type WithdrawRulesSaveDTO = WithdrawRulesConfig
+/** 保存用 DTO：不含只读的 `payLockDays`。 */
+export type WithdrawRulesSaveDTO = Omit<WithdrawRulesConfig, 'payLockDays'>
 
 /** 兼容旧版单项比例类型。 */
 export interface FundRateConfig {

@@ -71,6 +71,16 @@ button, input { font-family: inherit; }
 .profile-trigger { cursor: pointer; gap: 8px; color: var(--vben-text); }
 .theme-toggle, .header-icon-button { color: var(--vben-muted); }
 .theme-toggle:hover, .header-icon-button:hover { color: var(--vben-primary); background: var(--vben-bg); }
+/* 待办铃铛下拉（AdminLayout） */
+.todo-badge { margin-right: 10px; }
+.todo-panel { padding: 4px 2px; }
+.todo-panel-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 8px; border-bottom: 1px solid var(--vben-border); font-size: 14px; font-weight: 600; }
+.todo-refresh { color: var(--vben-primary); font-size: 12px; font-weight: 400; cursor: pointer; }
+.todo-empty { padding: 24px 0; color: var(--vben-muted); font-size: 13px; text-align: center; }
+.todo-list { max-height: 320px; overflow-y: auto; }
+.todo-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 4px; border-bottom: 1px solid var(--vben-border); cursor: pointer; }
+.todo-item:last-child { border-bottom: none; }
+.todo-label { color: var(--vben-text); font-size: 13px; }
 .header-collapse { color: var(--vben-muted); }
 .header-collapse:hover { color: var(--vben-primary); background: var(--vben-bg); }
 

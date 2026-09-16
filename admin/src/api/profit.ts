@@ -151,6 +151,15 @@ export async function getPromotionRelations(query: PromotionBindingQuery): Promi
   return normalizeBindingPage(unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/relations', { params: query }), '推广关系查询失败'), query.page, query.size)
 }
 
+/**
+ * 后台「直接绑定」：给**尚未绑定**推广关系的买家指定推广员（POST /api/admin/profit/relations）。
+ * 买家已有推广关系时后端返回业务错误，此时应改用列表里的「重新绑定」。
+ * 该接口为后端新增能力（见 docs/后端文档/推广模块接口角色放开-后端需求-2026-09-16.md），未上线时返回 404。
+ */
+export async function createPromotionRelation(buyerUserId: string, promoterId: string): Promise<void> {
+  unwrap(await request.post<ProfitResponse<null>>('/api/admin/profit/relations', { buyerUserId, promoterId }), '新增推广绑定失败')
+}
+
 export async function rebindPromotionRelation(buyerUserId: string, promoterId: string): Promise<void> {
   unwrap(await request.put<ProfitResponse<null>>(getRelationDetailPath(buyerUserId), null, { params: { promoterId } }), '推广关系重绑失败')
 }
@@ -179,9 +188,9 @@ export async function getSettledDailyDetails(): Promise<SevenDayBonusDetail[]> {
   return Array.isArray(data) ? data.map(normalizeDetail) : []
 }
 
-/** 后台「用户分红资格」槽位列表（GET /api/admin/profit/slots，按 userId 过滤，只读）。 */
+/** 后台「用户红包资格」槽位列表（GET /api/admin/profit/slots，按 userId 过滤，只读）。 */
 export async function getAdminDividendSlots(userId?: string): Promise<AdminDividendSlot[]> {
-  const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/slots', { params: userId ? { userId } : {} }), '用户分红槽位查询失败')
+  const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/slots', { params: userId ? { userId } : {} }), '用户红包槽位查询失败')
   return Array.isArray(data) ? data.map(normalizeSlot) : []
 }
 

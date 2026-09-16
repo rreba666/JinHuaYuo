@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useRoute } from 'vue-router'
 import DataTable from '@/components/DataTable.vue'
 import { useAfterSaleStore } from '@/stores/after-sale'
+import { useTodoStore } from '@/stores/todo'
 import type { AdminAfterSale } from '@/types/after-sale'
 import { AFTER_SALE_STATUS, AFTER_SALE_TYPE } from '@/types/after-sale'
 import { Box, CircleCheck, CircleClose, Refresh } from '@element-plus/icons-vue'
 
 const store = useAfterSaleStore()
+const route = useRoute()
+const todoStore = useTodoStore()
 
 /** 状态筛选选项（undefined=全部）。 */
 const statusOptions: Array<{ label: string; value: number | undefined }> = [
@@ -102,7 +106,33 @@ function handleTypeChange(value: number | undefined): void { store.typeFilter = 
 function pageChange(value: number): void { store.page = value; void load() }
 function sizeChange(value: number): void { store.size = value; store.page = 1; void load() }
 
-onMounted(() => { void load() })
+/** 按 URL query 初始化状态筛选（待办铃铛跳 `/after-sale?status=0`）。 */
+function applyQuery(): void {
+  const status = route.query.status
+  if (typeof status === 'string' && status !== '' && !Number.isNaN(Number(status))) {
+    store.statusFilter = Number(status)
+    store.page = 1
+  }
+}
+
+/** 重新套用 URL 筛选并刷新（待办铃铛信号；200ms 去重避免与路由变化重复请求）。 */
+let lastTodoApply = 0
+function applyTodoAndReload(): void {
+  const now = Date.now()
+  if (now - lastTodoApply < 200) return
+  lastTodoApply = now
+  applyQuery()
+  void load()
+}
+
+// 同一模块内点不同待办/重复点同一待办都要有反应：query 变化 + 铃铛点击信号 双保险
+watch(() => route.query.status, () => { applyTodoAndReload() })
+watch(() => todoStore.clickTick, () => { applyTodoAndReload() })
+
+onMounted(() => {
+  applyQuery()
+  void load()
+})
 </script>
 
 <template>

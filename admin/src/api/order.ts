@@ -14,6 +14,7 @@ import type {
   OrderRefundDTO,
   ExpressTrace,
   ExpressTraceResponse,
+  WxShippingRetryResult,
 } from '@/types/order'
 
 /** 校验订单接口响应，并将业务数据交给 Store。 */
@@ -71,6 +72,16 @@ export async function updateOrderAddress(orderId: string, payload: OrderAddressU
 export async function shipOrder(orderId: string, payload: OrderShipDTO): Promise<void> {
   const response = await request.post<OrderResponse<null>>(`/api/admin/order/ship/${orderId}`, payload)
   unwrapResponse(response, '订单发货失败')
+}
+
+/**
+ * 手动重试「微信发货信息上报」。
+ * 后端幂等：已上报成功（status=1）会直接返回、不再调微信；
+ * 返回 `message` 说明结果（已上报微信 / 该订单已上报过，未重复调用微信 / 失败原因 / 跳过原因）。
+ */
+export async function retryWxShipping(orderId: string): Promise<WxShippingRetryResult> {
+  const response = await request.post<OrderResponse<WxShippingRetryResult>>(`/api/admin/order/${orderId}/wx-shipping-retry`)
+  return unwrapResponse(response, '微信发货信息重试失败')
 }
 
 /** 提交客服人工全额退款申请。 */

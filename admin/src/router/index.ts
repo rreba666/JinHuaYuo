@@ -126,11 +126,21 @@ const router = createRouter({
           meta: { title: '健康问卷', permission: ['health-survey:read'], roles: ALL, requiresAuth: true },
         },
         {
-          path: 'profit',
-          name: 'Profit',
-          component: () => import('@/views/profit/index.vue'),
-          meta: { title: '推广资金', permission: ['profit:read'], roles: SUPER_AND_FINANCE, requiresAuth: true },
+          // 推广管理：待推广金 + 推广关系（超管 / 商户管理员 / 财务可见）
+          path: 'promotion',
+          name: 'Promotion',
+          component: () => import('@/views/promotion/index.vue'),
+          meta: { title: '推广管理', permission: ['profit:read'], roles: SUPER_AND_ADMIN_FINANCE, requiresAuth: true },
         },
+        {
+          // 红包管理：红包贡献 / 结算 / 用户额度（仅超级管理员可见）
+          path: 'redpacket',
+          name: 'RedPacket',
+          component: () => import('@/views/redpacket/index.vue'),
+          meta: { title: '红包管理', permission: ['profit:read'], roles: SUPER_ADMIN, requiresAuth: true },
+        },
+        // 旧的「推广资金」地址兼容：统一跳转到推广管理
+        { path: 'profit', redirect: '/promotion' },
         {
           path: 'wallets',
           name: 'Wallets',

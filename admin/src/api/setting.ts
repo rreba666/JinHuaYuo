@@ -87,15 +87,15 @@ export async function saveRandomDividendConfig(payload: { minAmount: number; max
   ensureSuccess(results[1].data, '红包上限保存失败')
 }
 
-/** 分红随机浮动幅度配置键与默认值（池2起：每人金额 = 均分基准 ± 浮动幅度，元）。 */
+/** 红包随机浮动幅度配置键与默认值（池2起：每人金额 = 均分基准 ± 浮动幅度，元）。 */
 const RANDOM_FLOAT_KEY = 'dividend_random_float'
 const DEFAULT_RANDOM_FLOAT = 10
 
-/** 读取分红随机浮动幅度配置；未配置或返回非有限值时使用约定默认值 10。 */
+/** 读取红包随机浮动幅度配置；未配置或返回非有限值时使用约定默认值 10。 */
 export async function getRandomFloatConfig(): Promise<RandomFloatConfig> {
   const response = await request.get<ApiResponse<SysConfig | null>>(`/api/admin/setting/${RANDOM_FLOAT_KEY}`, { skipAuthRedirect: true })
   const result = response.data
-  try { ensureSuccess(result, '分红浮动幅度查询失败') } catch { /* 未配置时用默认 */ }
+  try { ensureSuccess(result, '红包浮动幅度查询失败') } catch { /* 未配置时用默认 */ }
   const value = Number(result?.data?.configValue)
   return {
     floatAmount: Number.isFinite(value) && value >= 0 ? value : DEFAULT_RANDOM_FLOAT,
@@ -103,7 +103,7 @@ export async function getRandomFloatConfig(): Promise<RandomFloatConfig> {
   }
 }
 
-/** 保存分红随机浮动幅度配置（通用配置接口 POST /api/admin/setting/{configKey}），避免无效值绕过页面控件提交。 */
+/** 保存红包随机浮动幅度配置（通用配置接口 POST /api/admin/setting/{configKey}），避免无效值绕过页面控件提交。 */
 export async function saveRandomFloatConfig(payload: { floatAmount: number; remark?: string }): Promise<void> {
   const floatAmount = Number(payload.floatAmount)
   if (!Number.isFinite(floatAmount) || floatAmount < 0 || floatAmount > 100) throw new Error('浮动幅度必须在 0 到 100 之间')
@@ -111,14 +111,14 @@ export async function saveRandomFloatConfig(payload: { floatAmount: number; rema
     configValue: String(floatAmount),
     remark: payload.remark,
   })
-  ensureSuccess(response.data, '分红浮动幅度保存失败')
+  ensureSuccess(response.data, '红包浮动幅度保存失败')
 }
 
-/** 分红槽位数量上限配置键与默认值（每用户最多活跃槽位数，默认 3）。 */
+/** 红包槽位数量上限配置键与默认值（每用户最多活跃槽位数，默认 3）。 */
 const SLOT_COUNT_KEY = 'dividend_slot_count'
 const DEFAULT_SLOT_COUNT = 3
 
-/** 读取分红槽位数量上限配置；未配置或返回非正整数时使用约定默认值 3。 */
+/** 读取红包槽位数量上限配置；未配置或返回非正整数时使用约定默认值 3。 */
 export async function getSlotCountConfig(): Promise<SlotCountConfig> {
   const response = await request.get<ApiResponse<SysConfig | null>>(`/api/admin/setting/${SLOT_COUNT_KEY}`, { skipAuthRedirect: true })
   const result = response.data
@@ -130,7 +130,7 @@ export async function getSlotCountConfig(): Promise<SlotCountConfig> {
   }
 }
 
-/** 保存分红槽位数量上限配置（通用配置接口 POST /api/admin/setting/{configKey}）。 */
+/** 保存红包槽位数量上限配置（通用配置接口 POST /api/admin/setting/{configKey}）。 */
 export async function saveSlotCountConfig(payload: { slotCount: number; remark?: string }): Promise<void> {
   const slotCount = Number(payload.slotCount)
   if (!Number.isInteger(slotCount) || slotCount < 1) throw new Error('槽位数量必须为不小于 1 的整数')
@@ -220,6 +220,8 @@ function normalizeWithdrawRules(value: Partial<WithdrawRulesConfig> | null): Wit
     maxConcurrent: toFiniteNumber(row.maxConcurrent),
     frozenLimit: toFiniteNumber(row.frozenLimit),
     remark: String(row.remark ?? ''),
+    // 只读字段：后端 VO 有、保存 DTO 没有（缺省 0 表示后端未返回）
+    payLockDays: toFiniteNumber(row.payLockDays),
   }
 }
 
