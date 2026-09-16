@@ -78,7 +78,7 @@ export interface UserDividendLimit {
   userId: string
   /** 当前可用购买机会数（初始 3，槽位锁死返还 1）。 */
   availablePurchase: number
-  /** 累计购买分红商品件数。 */
+  /** 累计购买红包商品件数。 */
   totalPurchases: number
   createTime: string
   updateTime: string

@@ -10,6 +10,7 @@ import { createThrottle } from '@/utils/interaction'
 import { isLoggedIn } from '@/utils/auth'
 import RequestState from '@/components/RequestState.vue'
 import LoginGuide from '@/components/LoginGuide.vue'
+import PageWatermark from '@/components/PageWatermark.vue'
 
 const menuTop = ref(0)
 const menuLeft = ref(0)
@@ -43,9 +44,11 @@ const loginGuideVisible = ref(false)
 const navigationThrottle = createThrottle(500)
 const categorySwitchThrottle = createThrottle(250)
 const bodyTop = computed(() => menuTop.value + menuH.value + 12)
+const WATERMARK_HEIGHT_RPX = 76
+const watermarkHeight = computed(() => uni.upx2px(WATERMARK_HEIGHT_RPX))
 /** 为左右内容区计算固定可视高度，避免页面整体滚动造成顶部导航穿透。 */
 const scrollHeightStyle = computed(() => ({
-  height: `calc(100vh - ${bodyTop.value + 64}px)`,
+  height: `calc(100vh - ${bodyTop.value + 64}px - ${watermarkHeight.value}px)`,
 }))
 
 /** 请求 GET /api/category/list 获取2级分类树，展示所有一级分类 */
@@ -206,6 +209,9 @@ onShow(() => { void refreshCategories() })
           <view v-show="loading" class="ld"><text class="ld-t">加载中...</text></view>
         </scroll-view>
       </view>
+      <view class="category-watermark">
+        <PageWatermark />
+      </view>
     </view>
     <LoginGuide v-model="loginGuideVisible" />
   </view>
@@ -221,8 +227,9 @@ onShow(() => { void refreshCategories() })
 .nav-sch-txt { color: #999; font-size: 26rpx; }
 
 /* ===== 主体 ===== */
-.bd { flex: 1; padding: 16rpx 14rpx 6rpx 0; }
-.bd-row { display: flex; }
+.bd { display: flex; flex: 1; flex-direction: column; min-height: 0; padding: 16rpx 14rpx 0 0; }
+.bd-row { display: flex; flex: 1; min-height: 0; }
+.category-watermark { flex: 0 0 76rpx; background: #fff; }
 
 /* 侧边栏 */
 .side { width: 180rpx; flex-shrink: 0; background: #f9f9f9; }

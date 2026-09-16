@@ -104,7 +104,6 @@ onShow(() => { if (loaded.value) void load(true) })
           <text class="fav-name">{{ item.name }}</text>
           <view class="fav-bottom">
             <view class="fav-price"><text class="currency">¥</text><text class="amount">{{ formatAmount(item.originalPrice ?? item.minOriginalPrice ?? item.price) }}</text></view>
-            <text class="fav-sold">已售 {{ item.soldCount || 0 }}</text>
           </view>
           <text class="fav-time">{{ item.favoriteTime }}</text>
         </view>
@@ -130,11 +129,10 @@ onShow(() => { if (loaded.value) void load(true) })
 .fav-image.placeholder { background: #d8d8d8; }
 .fav-info { display: flex; flex: 1; min-width: 0; flex-direction: column; align-self: stretch; margin-left: 24rpx; }
 .fav-name { color: #0a0a0a; font-size: 28rpx; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.fav-bottom { display: flex; align-items: baseline; justify-content: space-between; margin-top: 16rpx; }
+.fav-bottom { display: flex; align-items: baseline; justify-content: flex-start; margin-top: 16rpx; }
 .fav-price { color: #d40000; }
 .fav-price .currency { font-size: 24rpx; font-weight: 700; }
 .fav-price .amount { font-size: 34rpx; font-weight: 700; }
-.fav-sold { color: #999; font-size: 22rpx; }
 .fav-time { margin-top: auto; color: #bbb; font-size: 22rpx; }
 .fav-remove { flex-shrink: 0; margin-left: 20rpx; padding: 12rpx 22rpx; color: #666; font-size: 24rpx; border: 2rpx solid #ccc; border-radius: 8rpx; }
 .state, .more { padding: 160rpx 0; color: #999; text-align: center; font-size: 26rpx; }

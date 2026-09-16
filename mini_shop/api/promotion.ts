@@ -4,7 +4,13 @@ import { request } from '@/utils/request'
 export interface PromotionSummary {
   totalPromotion: number
   boundUserCount: number
+  /** 待提现推广金（元）：已入账、可转余额或提现的部分。 */
   pendingPromotion: number
+  /**
+   * 待到账推广金（元）：已产生但未过 7 天退款窗口、尚未入账的部分（2026-09-16 后端新增）。
+   * **展示合计 = pendingPromotion + unsettledPromotion**，无需前端再拉明细汇总。
+   */
+  unsettledPromotion?: number
   withdrawnPromotion: number
 }
 
@@ -17,6 +23,14 @@ export interface PromotionRecord {
   status: number
   statusDesc: string
   createTime: string
+  /**
+   * 推广金状态：
+   * - `PENDING`：待到账（未过 7 天退款窗口，金额不在钱包 `pendingPromotion` 内）；
+   * - `PROCESSING`：入账占坑中间态（毫秒级，**同样算待到账**）；
+   * - `CONFIRMED`：已入账推广人钱包。
+   * 后端 2026-09-16 起还会在钱包/汇总接口直接下发 `unsettledPromotion`，这里是兜底口径。
+   */
+  promotionStatus?: string
 }
 
 /** 推广明细分页结果。 */
@@ -30,6 +44,8 @@ export interface PromotionPageResult {
 export interface PromotionRecordQuery {
   startTime?: string
   endTime?: string
+  /** 推广金状态过滤：`PENDING` / `PROCESSING` / `CONFIRMED`（2026-09-16 后端新增，可不传）。 */
+  promotionStatus?: string
   page?: number
   pageSize?: number
 }

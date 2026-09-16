@@ -72,6 +72,16 @@ export async function shipOrder(orderId: string, payload: OrderShipDTO): Promise
   unwrapResponse(response, '订单发货失败')
 }
 
+/**
+ * 手动重试「微信发货信息上报」。
+ * 说明：微信「发货信息管理」要求商家在支付后上传发货信息（否则会被微信持续提醒）。
+ * 后端自动上报失败时，运营可在此手动重试；接口未就绪时后端会返回 1002，前端据此提示。
+ */
+export async function retryWxShipping(orderId: string): Promise<void> {
+  const response = await request.post<OrderResponse<null>>(`/api/admin/order/${orderId}/wx-shipping-retry`)
+  unwrapResponse(response, '微信发货信息重试失败')
+}
+
 /** 提交客服人工全额退款申请。 */
 export async function refundOrder(orderId: string, payload: OrderRefundDTO): Promise<void> {
   const response = await request.post<OrderResponse<null>>(`/api/admin/order/${orderId}/refund`, payload)

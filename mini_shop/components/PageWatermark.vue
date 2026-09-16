@@ -19,7 +19,7 @@
 
 .page-watermark-text {
   color: rgba(118, 118, 118, .42);
-  font-size: 20rpx;
+  font-size: 22rpx;
   line-height: 1.4;
   letter-spacing: 1rpx;
   white-space: nowrap;

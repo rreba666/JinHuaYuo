@@ -1,11 +1,9 @@
-import { request } from '@/api/request'
-
 /**
  * 多品牌配置拉取层（staff-h5 核销端）
  * ------------------------------------------------------------
  * 依据：docs/plan/frontend-types.ts（契约）+ api-integration.md
  * 职责：
- *  1. 拉取当前品牌模块开关（GET /api/v2/modules）
+ *  1. 拉取当前品牌模块开关（单商户下恒全启用，见 getModules 注释）
  *  2. 提供 isModuleEnabled 兜底（配置为空/异常 → 全功能开启，兼容线上）
  */
 
@@ -17,11 +15,14 @@ export interface ModuleConfig {
   sort: number
 }
 
-/** 拉取当前品牌模块启停；失败返回 null，调用方按全部启用兜底。 */
+/**
+ * 拉取当前品牌模块启停；失败返回 null，调用方按全部启用兜底。
+ * ------------------------------------------------------------
+ * 单商户独立部署：无多品牌模块开关接口，恒返回 null（全部功能启用），
+ * 避免对不存在的后端接口 /api/v2/modules 发请求造成 404 噪音。
+ */
 export function getModules(): Promise<ModuleConfig[] | null> {
-  return request<ModuleConfig[]>('/api/v2/modules', { method: 'GET' })
-    .then((data) => (Array.isArray(data) ? data : null))
-    .catch(() => null)
+  return Promise.resolve(null)
 }
 
 /** 模块是否启用；配置缺失/为空时兜底 true（默认全部启用，兼容线上）。 */

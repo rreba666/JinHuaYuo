@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import { computed, reactive, ref, watch } from 'vue'
-import { cancelOrder, getAddressChangeRequest, getOrderDetail, getPickupCode, receiveOrder, refundOrder, refundOrderFast, submitAddressChangeRequest, type AddressChangeRequestDTO, type OrderAddressChangeRequest, type OrderDetail, type PickupCodeVO } from '@/api/order'
+import { cancelOrder, getAddressChangeRequest, getOrderDetail, getOrderDetailByNo, getPickupCode, receiveOrder, refundOrder, refundOrderFast, submitAddressChangeRequest, type AddressChangeRequestDTO, type OrderAddressChangeRequest, type OrderDetail, type PickupCodeVO } from '@/api/order'
 import { getEnabledShops, type EnabledShop } from '@/api/shop'
 import { getAfterSaleList } from '@/api/after-sale'
 import { getAuth, isLoggedIn } from '@/utils/auth'
@@ -325,6 +325,27 @@ async function load(orderId: string, silent = false): Promise<void> {
   }
 }
 
+/**
+ * 按订单号加载订单详情（微信「订单信息录入 → 小程序商品订单详情 path」入口）。
+ * 该入口只带 `orderNo`（= 支付预下单的 out_trade_no），先按号取到订单（含 id），
+ * 之后的取码/门店/售后/地址变更/轮询等流程与 `load(orderId)` 完全一致。
+ */
+async function loadByOrderNo(orderNo: string): Promise<void> {
+  loading.value = true
+  try {
+    const detail = await getOrderDetailByNo(orderNo)
+    order.value = detail
+    const orderId = String(detail?.id || '')
+    if (!orderId) throw new Error('订单不存在或无权查看')
+    await Promise.all([loadPickupCode(orderId), loadPickupShop(), loadAfterSaleFlag(orderId), loadAddressChangeRequest(orderId)])
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '订单详情加载失败'
+  } finally {
+    loading.value = false
+    if (pageVisible.value && order.value?.id) startPickupStatusPolling(String(order.value.id))
+  }
+}
+
 /** 查询当前订单是否存在处理中的售后单（0待审核/2退款中/4待寄回/5待收货）。 */
 async function loadAfterSaleFlag(orderId: string): Promise<void> {
   try {
@@ -490,6 +511,17 @@ async function action(type: 'cancel' | 'receive' | 'refund' | 'refundFast'): Pro
   } finally { actionLoading.value = false }
 }
 onLoad((options?: Record<string, string | undefined>) => {
+  // 微信「订单信息录入 → 小程序商品订单详情 path」入口：只带订单号（out_trade_no = orderNo）
+  const orderNo = options?.orderNo
+  if (orderNo) {
+    if (!isLoggedIn()) {
+      loading.value = false
+      loginGuideVisible.value = true
+      return
+    }
+    void loadByOrderNo(orderNo)
+    return
+  }
   if (!options?.orderId) { errorMessage.value = '订单参数缺失'; loading.value = false; return }
   if (!isLoggedIn()) {
     loading.value = false

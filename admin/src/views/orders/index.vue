@@ -6,6 +6,7 @@ import { useOrderStore } from '@/stores/order'
 import DataTable from '@/components/DataTable.vue'
 import type { Order, OrderAddressUpdateDTO, OrderRefundDTO, OrderStatus } from '@/types/order'
 import { isVerifiedStatus } from '@/utils/orderRules'
+import { retryWxShipping } from '@/api/order'
 import { Box, CircleCheck, Delete, RefreshLeft, View } from '@element-plus/icons-vue'
 
 const store = useOrderStore()
@@ -86,6 +87,41 @@ function statusType(status: OrderStatus): 'info' | 'warning' | 'primary' | 'succ
 /** 判断订单是否为后端标记的软删除记录。 */
 function isDeleted(order: Order): boolean {
   return order.delFlag === 1
+}
+
+// ===== 微信「发货信息管理」上报状态（后端返回字段后自动展示，未返回则不显示） =====
+/** 手动重试上报进行中。 */
+const wxRetrying = ref(false)
+
+/** 上报状态文案。 */
+function wxShippingText(status?: number): string {
+  if (status === 1) return '已上报'
+  if (status === 2) return '上报失败'
+  return '未上报'
+}
+
+/** 上报状态标签颜色。 */
+function wxShippingTagType(status?: number): 'success' | 'danger' | 'info' {
+  if (status === 1) return 'success'
+  if (status === 2) return 'danger'
+  return 'info'
+}
+
+/**
+ * 手动重试微信发货信息上报（自动上报失败时使用）。
+ * 后端接口未就绪时会返回 1002，这里按普通错误提示即可。
+ */
+async function doRetryWxShipping(order: Order): Promise<void> {
+  wxRetrying.value = true
+  try {
+    await retryWxShipping(order.id)
+    ElMessage.success('已重新提交，请稍后刷新查看结果')
+    await store.fetchDetail(order.id)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '重试失败（该功能可能待后端上线）')
+  } finally {
+    wxRetrying.value = false
+  }
 }
 
 /** 仅已发货或已收货且未软删除的订单允许客服人工退款。 */
@@ -436,7 +472,7 @@ onMounted(() => { void loadList() })
       <template v-else-if="store.detail">
         <el-steps :active="Math.min(store.detail.status, 3)" finish-status="success" align-center><el-step title="提交订单" /><el-step title="支付" /><el-step title="发货" /><el-step title="完成" /></el-steps>
         <el-divider />
-        <el-descriptions :column="2" border><el-descriptions-item label="订单号">{{ store.detail.orderNo }}</el-descriptions-item><el-descriptions-item label="订单状态"><span class="order-status"><el-tag :type="statusType(store.detail.status)">{{ store.detail.statusDesc }}</el-tag><el-tag v-if="isDeleted(store.detail)" type="danger" effect="plain">已删除</el-tag></span></el-descriptions-item><el-descriptions-item label="配送方式">{{ store.detail.pickupType === 1 ? '线下自提' : '物流配送' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 1" label="核销状态">{{ isVerifiedStatus(store.detail.status) ? '已核销' : '待核销' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 1" label="自提门店">{{ store.detail.shopName || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 1" label="自提码">{{ store.detail.pickupCode || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 1" label="物流轨迹"><el-empty :image-size="48" description="暂无物流轨迹" /></el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="收货人">{{ store.detail.receiverName || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="联系电话">{{ store.detail.receiverPhone || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="收货地址" :span="2"><div class="address-detail-row"><span>{{ store.detail.receiverAddress || '暂无数据' }}</span><el-button v-if="store.detail.status === 1 && !isDeleted(store.detail)" link type="primary" @click="openAddressEditor">修改地址</el-button></div></el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="快递公司">{{ store.detail.expressCompany || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="物流单号">{{ store.detail.expressNo || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="物流轨迹"><el-button v-if="isTraceable(store.detail)" link type="primary" :disabled="!isTraceable(store.detail) || store.traceLoading" :loading="store.traceLoading" @click="openTrace">物流轨迹</el-button><el-empty v-else :image-size="48" description="暂无物流轨迹" /></el-descriptions-item><el-descriptions-item label="商品总额">¥ {{ Number(store.detail.totalAmount || 0).toFixed(2) }}</el-descriptions-item><el-descriptions-item label="实付金额">¥ {{ Number(store.detail.payAmount || 0).toFixed(2) }}</el-descriptions-item></el-descriptions>
+        <el-descriptions :column="2" border><el-descriptions-item label="订单号">{{ store.detail.orderNo }}</el-descriptions-item><el-descriptions-item label="订单状态"><span class="order-status"><el-tag :type="statusType(store.detail.status)">{{ store.detail.statusDesc }}</el-tag><el-tag v-if="isDeleted(store.detail)" type="danger" effect="plain">已删除</el-tag></span></el-descriptions-item><el-descriptions-item label="配送方式">{{ store.detail.pickupType === 1 ? '线下自提' : '物流配送' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 1" label="核销状态">{{ isVerifiedStatus(store.detail.status) ? '已核销' : '待核销' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 1" label="自提门店">{{ store.detail.shopName || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 1" label="自提码">{{ store.detail.pickupCode || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 1" label="物流轨迹"><el-empty :image-size="48" description="暂无物流轨迹" /></el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="收货人">{{ store.detail.receiverName || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="联系电话">{{ store.detail.receiverPhone || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="收货地址" :span="2"><div class="address-detail-row"><span>{{ store.detail.receiverAddress || '暂无数据' }}</span><el-button v-if="store.detail.status === 1 && !isDeleted(store.detail)" link type="primary" @click="openAddressEditor">修改地址</el-button></div></el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="快递公司">{{ store.detail.expressCompany || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="物流单号">{{ store.detail.expressNo || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0 && store.detail.wxShippingStatus != null" label="微信发货信息"><span class="order-status"><el-tag :type="wxShippingTagType(store.detail.wxShippingStatus)" size="small">{{ wxShippingText(store.detail.wxShippingStatus) }}</el-tag><el-button v-if="store.detail.wxShippingStatus === 2" link type="primary" :loading="wxRetrying" @click="doRetryWxShipping(store.detail)">重试上报</el-button></span><div v-if="store.detail.wxShippingErrmsg" class="cell-sub">{{ store.detail.wxShippingErrmsg }}</div><div v-if="store.detail.wxShippingUploadTime" class="cell-sub">上报时间：{{ store.detail.wxShippingUploadTime }}</div></el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="物流轨迹"><el-button v-if="isTraceable(store.detail)" link type="primary" :disabled="!isTraceable(store.detail) || store.traceLoading" :loading="store.traceLoading" @click="openTrace">物流轨迹</el-button><el-empty v-else :image-size="48" description="暂无物流轨迹" /></el-descriptions-item><el-descriptions-item label="商品总额">¥ {{ Number(store.detail.totalAmount || 0).toFixed(2) }}</el-descriptions-item><el-descriptions-item label="实付金额">¥ {{ Number(store.detail.payAmount || 0).toFixed(2) }}</el-descriptions-item></el-descriptions>
         <el-divider>商品明细</el-divider>
         <el-table :data="store.detail.items" border><el-table-column prop="productName" label="商品名称" min-width="220" /><el-table-column prop="skuName" label="规格" min-width="150" /><el-table-column prop="price" label="单价" width="110" /><el-table-column prop="quantity" label="数量" width="90" /><el-table-column prop="subtotal" label="小计" width="110" /></el-table>
       </template>

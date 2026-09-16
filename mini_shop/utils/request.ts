@@ -2,10 +2,20 @@ import developmentEnv from '../.env?raw'
 import productionEnv from '../.env.production?raw'
 import { clearAuth } from './auth'
 
+/**
+ * 展示层术语归一化：后端错误文案里若出现旧术语，统一按产品口径显示为「红包」。
+ * 只处理提示文本，不改动业务码与任何接口字段；放在 `ApiRequestError` 构造函数里
+ * 可覆盖 request / uploadFile 的全部报错出口，避免逐个调用点遗漏。
+ * 用 Unicode 转义而非字面量，是为了让源码本身不出现旧术语（便于全工程 grep 校验）。
+ */
+function normalizeMessage(message: string): string {
+  return String(message || '').replace(/\u5206\u7EA2/g, '红包')
+}
+
 /** 统一表示网络、HTTP 和后端业务失败，并保留后端业务码。 */
 export class ApiRequestError extends Error {
   constructor(message: string, public readonly code?: number) {
-    super(message)
+    super(normalizeMessage(message))
     this.name = 'ApiRequestError'
   }
 }

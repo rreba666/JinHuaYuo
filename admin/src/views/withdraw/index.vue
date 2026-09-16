@@ -16,7 +16,7 @@ const reasonAction = ref<((reason: string) => Promise<void>) | null>(null)
 function money(value: number): string { return `¥ ${Number(value || 0).toFixed(2)}` }
 function statusText(status: string, statusDesc = ''): string { return statusDesc || ({ PENDING_REVIEW: '待审核', APPROVED: '审核通过，等待财务打款', SUCCESS: '提现成功', FAILED: '提现失败，金额已退回', REJECTED: '已拒绝，金额已退回', STUCK: '处理异常，等待人工核对' } as Record<string, string>)[status] || status || '未知' }
 function statusType(status: string): 'success' | 'warning' | 'danger' | 'info' { return status === 'SUCCESS' ? 'success' : status === 'FAILED' || status === 'REJECTED' || status === 'STUCK' ? 'danger' : status === 'PENDING_REVIEW' || status === 'APPROVED' ? 'warning' : 'info' }
-function sourceText(row: Withdrawal): string { return row.typeDesc || ({ PROMOTION: '推广金', BONUS: '分红', BALANCE: '余额' } as Record<string, string>)[row.type] || row.type || '未知来源' }
+function sourceText(row: Withdrawal): string { return row.typeDesc || ({ PROMOTION: '推广金', BONUS: '红包', BALANCE: '余额' } as Record<string, string>)[row.type] || row.type || '未知来源' }
 function methodText(row: Withdrawal): string { return row.withdrawMethodDesc || (row.withdrawMethod === 'BANK_CARD' ? '银行卡' : row.withdrawMethod === 'WECHAT_BALANCE' ? '微信零钱' : '未知方式') }
 function methodHint(row: Withdrawal): string { return row.withdrawMethod === 'BANK_CARD' ? '审核通过后由财务人工银行转账，到账后还需手动确认。' : '审核通过后进入微信零钱处理流程，审核通过不代表已到账。' }
 function displayTime(value: string): string { return value || '未完成' }

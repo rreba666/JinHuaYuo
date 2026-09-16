@@ -14,6 +14,7 @@ import { bindStoredPromotionIfLoggedIn, capturePromotionContext } from '@/utils/
  * 解析扫码携带的推广者身份并补绑定后，跳转到首页。
  */
 onLoad((options) => {
+	console.log('扫码 scene=', options?.scene, 'promoterId=', options?.promoterId)
   capturePromotionContext(options as Record<string, unknown>)
   void bindStoredPromotionIfLoggedIn().finally(() => {
     uni.switchTab({ url: '/pages/index/index' })

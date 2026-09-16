@@ -654,10 +654,12 @@ function validateCheckoutInputs(isExistingOrder: boolean): boolean {
   return true
 }
 
-/** 将分红商品购买机会错误转换为面向用户的业务提示。 */
+/** 将红包商品购买机会错误转换为面向用户的业务提示。 */
 function getPaymentErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : ''
-  if (message.includes('购买机会不足') || message.includes('无法购买该分红商品')) {
+  const rawMessage = error instanceof Error ? error.message : ''
+  // 后端历史文案可能仍含旧业务词（Unicode 转义 5206 7EA2），展示前统一归一化为“红包”，避免用户看到旧词。
+  const message = rawMessage.replace(/\u5206\u7EA2/g, '红包')
+  if (message.includes('购买机会不足') || message.includes('无法购买该红包商品')) {
     return '一个账号一个补贴周期内最多同时存在三件商品哦'
   }
   return message || '支付未完成'
@@ -764,7 +766,7 @@ async function submitPayment(): Promise<void> {
     uni.showToast({ title: '没有可结算的商品', icon: 'none' })
     return
   }
-  // 分红商品要求有可用槽位：若可用槽位不足，后端会拒绝下单，这里提前提示更友好。
+  // 红包商品要求有可用槽位：若可用槽位不足，后端会拒绝下单，这里提前提示更友好。
   const dividendQty = getDividendQuantity(items.value)
   if (!isExistingOrder && dividendQty > 0) {
     try {

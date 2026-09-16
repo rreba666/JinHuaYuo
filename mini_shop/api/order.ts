@@ -160,6 +160,16 @@ export function getOrderDetail(orderId: number | string): Promise<OrderDetail> {
   return request<OrderDetail>({ url: `/api/order/detail/${orderId}`, method: 'GET' })
 }
 
+/**
+ * 按**订单号**查询订单详情。
+ * 用于微信「订单信息录入 → 小程序商品订单详情 path」入口：微信会把 path 里的 `${商品订单号}`
+ * 替换成支付预下单的 `out_trade_no`（= 我们的 orderNo），因此该入口只有订单号、没有 orderId。
+ * 返回结构与 `getOrderDetail(orderId)` 一致（含 `id`），后续流程可完全复用。
+ */
+export function getOrderDetailByNo(orderNo: string): Promise<OrderDetail> {
+  return request<OrderDetail>({ url: `/api/order/detail-by-no/${encodeURIComponent(orderNo)}`, method: 'GET' })
+}
+
 /** 获取自提二维码信息（独立接口，核销/退款/超期关闭后 pickupCode 置 null）。 */
 export function getPickupCode(orderId: number | string): Promise<PickupCodeVO> {
   return request<PickupCodeVO>({ url: `/api/order/pickup-code/${orderId}`, method: 'GET' }).then((data) => ({

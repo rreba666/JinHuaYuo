@@ -6,7 +6,8 @@ import { clearAuth, getAuth, isLoggedIn, isRegisteredUser } from '@/utils/auth'
 import { getPromotionCode } from '@/api/promotion'
 import { getAnnouncementList, type Announcement } from '@/api/announcement'
 import { uploadFile } from '@/utils/request'
-import { loadFrozenPromotionAmount } from '@/utils/promotion-freeze'
+import { loadPendingSettlementAmount } from '@/utils/promotion-freeze'
+import { resolvePromotionSettlement, syncPromotionSettlement } from '@/utils/promotion-settlement'
 import { createThrottle } from '@/utils/interaction'
 import { validateText } from '@/utils/input-validation'
 import PromotionCodePoster from '@/components/PromotionCodePoster.vue'
@@ -30,11 +31,23 @@ const avatarUploading = ref(false)
 const avatarTempPath = ref('')
 const profileForm = reactive({ nickname: '', avatarUrl: '' })
 const registeredUser = computed(() => isRegisteredUser(user.value?.identity))
-const promotionFrozenAmount = ref(0)
-const promotionDisplayAmount = computed(() => {
+/** 平台尚未结算到账的推广金（不在钱包 pendingPromotion 里，必须单独展示，否则转余额后会消失）。 */
+const promotionPendingAmount = ref(0)
+/** 实时合计 = 钱包可转推广金 + 平台尚未结算到账的推广金。 */
+const livePromotionAmount = computed(() => {
   const withdrawable = Number(wallet.value?.pendingPromotion || 0)
-  return (Number.isFinite(withdrawable) ? withdrawable : 0) + promotionFrozenAmount.value
+  return (Number.isFinite(withdrawable) ? withdrawable : 0) + promotionPendingAmount.value
 })
+/**
+ * 转余额兜底：后端转余额后会先把 pending 清零、约 1 小时后才重新累计未转出的部分，
+ * 期间用「转账前展示合计 − 实际到账金额」兜底，避免推广收益瞬间显示为 0
+ * （详见 utils/promotion-settlement.ts）。
+ */
+const promotionDisplay = computed(() => resolvePromotionSettlement(livePromotionAmount.value, user.value?.id))
+/** 收益卡「推广收益」展示金额（后端未追平时为兜底值）。 */
+const promotionDisplayAmount = computed(() => promotionDisplay.value.amount)
+/** 是否处于「结算中」（当前展示的是本地兜底值）。 */
+const promotionSettling = computed(() => promotionDisplay.value.settling)
 /** 启用中的公告列表（公开接口，个人页订单模块下方横向跑马灯展示）。 */
 const announcements = ref<Announcement[]>([])
 const announcementVisible = ref(false)
@@ -81,24 +94,24 @@ const visibleMenuItems = computed(() => {
 /** 收益卡可见性按模块开关过滤：推广收益/平台红包→promotion，我的余额→basic（停用 wallet 后余额仍展示）。 */
 const incomeEntries = computed(() => {
   const modules = moduleConfig.value
-  const all = [
+  const all: { label: string; value?: number; settling?: boolean }[] = [
     { label: '我的余额', value: wallet.value?.balance },
-    { label: '推广收益', value: promotionDisplayAmount.value },
+    { label: '推广收益', value: promotionDisplayAmount.value, settling: promotionSettling.value },
     { label: '平台红包', value: wallet.value?.pendingBonus },
   ]
   const moduleOf: Record<number, string> = { 0: 'basic', 1: 'promotion', 2: 'promotion' }
   return all.filter((_, index) => isModuleEnabled(modules, moduleOf[index] || 'basic'))
 })
 
-/** 待领取分红积分（红包金额）。 */
+/** 待领取红包积分（红包金额）。 */
 const pendingBonus = computed(() => Number(wallet.value?.pendingBonus || 0))
-/** 上次已查看的分红金额（本地缓存，用于红点提示新分红）。 */
+/** 上次已查看的红包金额（本地缓存，用于红点提示新红包）。 */
 const lastSeenBonus = ref(Number(uni.getStorageSync('bonus_last_seen') || 0))
-/** 是否有未查看的新分红红包（有真实新分红才亮，点开查看后按已读隐藏）。 */
+/** 是否有未查看的新红包（有真实新红包才亮，点开查看后按已读隐藏）。 */
 const hasUnseenBonus = computed(() => pendingBonus.value > lastSeenBonus.value)
 /** 红包弹窗可见状态。 */
 const redPacketVisible = ref(false)
-/** 红包弹窗打开时锁定的未转余额分红总额，避免使用旧钱包快照。 */
+/** 红包弹窗打开时锁定的未转余额红包总额，避免使用旧钱包快照。 */
 const redPacketDisplayAmount = ref(0)
 /** 红包弹窗内用于递增动画的金额，不参与业务计算。 */
 const redPacketAnimatedAmount = ref(0)
@@ -135,23 +148,30 @@ async function loadData(): Promise<void> {
   if (!isLoggedIn()) {
     user.value = null
     wallet.value = null
-    promotionFrozenAmount.value = 0
+    promotionPendingAmount.value = 0
     return
   }
   try { user.value = await getUserProfile() } catch { user.value = null /* 资料失败按游客处理 */ }
   if (!registeredUser.value) {
     wallet.value = null
-    promotionFrozenAmount.value = 0
+    promotionPendingAmount.value = 0
     return
   }
   try {
-    const [walletInfo, frozenAmount] = await Promise.all([getWalletInfo(), loadFrozenPromotionAmount()])
+    const walletInfo = await getWalletInfo()
     wallet.value = walletInfo
-    promotionFrozenAmount.value = frozenAmount
+    // 待到账金额：后端 2026-09-16 起在钱包接口直接下发 unsettledPromotion（权威口径）；
+    // 未返回时才回退到前端按推广明细汇总（老环境），避免每次都发多页明细请求。
+    const backendUnsettled = walletInfo?.unsettledPromotion
+    promotionPendingAmount.value = typeof backendUnsettled === 'number' && Number.isFinite(backendUnsettled)
+      ? backendUnsettled
+      : await loadPendingSettlementAmount()
     if (!redPacketVisible.value) redPacketDisplayAmount.value = Number(wallet.value?.pendingBonus || 0)
+    // 校准转余额兜底：后端已追平则清除本地兜底值，未追平则继续按兜底值展示（避免「推广收益」显示 0）
+    syncPromotionSettlement(livePromotionAmount.value, user.value?.id)
   } catch {
     wallet.value = null
-    promotionFrozenAmount.value = 0
+    promotionPendingAmount.value = 0
   }
 }
 
@@ -251,7 +271,7 @@ function goIncome(index: number): void {
     return
   }
   if (label === '平台红包') {
-    // 有新分红红包（红点）时弹红包窗；无红点时直接进入红包页
+    // 有新红包（红点）时弹红包窗；无红点时直接进入红包页
     if (hasUnseenBonus.value) {
       openRedPacket()
     } else {
@@ -305,7 +325,7 @@ function startRedPacketMotion(): void {
   }, 16)
 }
 
-/** 刷新钱包后打开红包弹窗，展示当前未转余额的分红总额。 */
+/** 刷新钱包后打开红包弹窗，展示当前未转余额的红包总额。 */
 async function openRedPacket(): Promise<void> {
   if (redPacketLoading.value) return
   redPacketLoading.value = true
@@ -518,7 +538,7 @@ onShow(() => { void refreshData() })
         <view v-if="registeredUser" class="income-strip">
           <view v-for="(item, index) in incomeEntries" :key="item.label" class="income-item" @click="goIncome(index)">
             <text :class="['income-value', incomeValueClass(item.value)]">{{ formatIncome(item.value) }}</text>
-            <text class="income-label">{{ item.label }}</text>
+            <text class="income-label">{{ item.label }}<text v-if="item.settling" class="income-label-tag">（结算中）</text></text>
             <view v-if="index === 2 && hasUnseenBonus" class="income-dot" />
           </view>
         </view>
@@ -641,6 +661,7 @@ onShow(() => { void refreshData() })
 .income-value-compact { font-size: 30rpx; }
 .income-value-long { font-size: 25rpx; }
 .income-label { display: block; margin-top: 12rpx; color: #fff; font-size: 24rpx; line-height: 34rpx; text-align: center; white-space: nowrap; }
+.income-label-tag { color: #fbd69d; font-size: 18rpx; }
 .income-dot { position: absolute; top: 56rpx; left: 160rpx; width: 20rpx; height: 20rpx; border-radius: 50%; background: #f34848; }
 
 .order-section { padding: 34rpx 0 38rpx; background: #fff; border-bottom: 22.9rpx solid #f5f5f5; color: #1E1E1E; font-family: 'PingFang SC', '苹方-简', sans-serif; font-weight: 500; }

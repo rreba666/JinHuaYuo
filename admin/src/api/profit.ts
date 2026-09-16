@@ -160,40 +160,40 @@ export async function unbindPromotionRelation(buyerUserId: string): Promise<void
 }
 
 export async function getBonusPools(): Promise<SevenDayBonusPool[]> {
-  const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/pools'), '奖池查询失败')
+  const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/pools'), '红包查询失败')
   return Array.isArray(data) ? data.map(normalizePool) : []
 }
 
 export async function getBonusDetails(poolId: string): Promise<SevenDayBonusDetail[]> {
-  const data = unwrap(await request.get<ProfitResponse<unknown>>(`/api/admin/profit/detail/${poolId}`), '奖池明细查询失败')
+  const data = unwrap(await request.get<ProfitResponse<unknown>>(`/api/admin/profit/detail/${poolId}`), '红包明细查询失败')
   return Array.isArray(data) ? data.map(normalizeDetail) : []
 }
 
 export async function getUnsettledDailyDetails(): Promise<SevenDayBonusDetail[]> {
-  const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/daily/unsettled'), '未结算奖池查询失败')
+  const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/daily/unsettled'), '未结算红包查询失败')
   return Array.isArray(data) ? data.map(normalizeDetail) : []
 }
 
 export async function getProfitContributions(query: { status?: string; page: number; size: number }): Promise<DividendContributionPage> {
-  return normalizeContributionPage(unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/contributions', { params: query }), '分红贡献查询失败'), query.page, query.size)
+  return normalizeContributionPage(unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/contributions', { params: query }), '红包贡献查询失败'), query.page, query.size)
 }
 
 export async function getDividendLimits(): Promise<UserDividendLimit[]> {
-  const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/limits'), '用户分红额度查询失败')
+  const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/limits'), '用户红包额度查询失败')
   return Array.isArray(data) ? data.map(normalizeLimit) : []
 }
 
 export async function injectBonusPool(payload: BonusInjectDTO): Promise<void> {
   const amount = Number(payload.amount)
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('注入金额必须大于 0')
-  unwrap(await request.post<ProfitResponse<null>>('/api/admin/profit/inject', { ...payload, amount }), '奖池注入失败')
+  unwrap(await request.post<ProfitResponse<null>>('/api/admin/profit/inject', { ...payload, amount }), '红包注入失败')
 }
 
-export async function settleProfit(startDate: string, endDate: string): Promise<void> { unwrap(await request.post<ProfitResponse<null>>('/api/admin/profit/settle', null, { params: { startDate, endDate } }), '奖池结算失败') }
-export async function confirmPool(poolId: string): Promise<void> { unwrap(await request.post<ProfitResponse<null>>(`/api/admin/profit/pool/${poolId}/confirm`), '奖池确认失败') }
-export async function adjustPool(poolId: string, payload: ProfitAdjustPoolDTO): Promise<void> { unwrap(await request.put<ProfitResponse<null>>(`/api/admin/profit/pool/${poolId}/adjust`, payload), '奖池调整失败') }
-export async function adjustDaily(detailId: string, payload: ProfitAdjustDailyDTO): Promise<void> { unwrap(await request.put<ProfitResponse<null>>(`/api/admin/profit/daily/${detailId}/adjust`, payload), '每日奖池调整失败') }
-export async function resetDividendLimit(userId: string): Promise<void> { unwrap(await request.put<ProfitResponse<null>>(`/api/admin/profit/limit/${userId}/reset`), '分红额度重置失败') }
+export async function settleProfit(startDate: string, endDate: string): Promise<void> { unwrap(await request.post<ProfitResponse<null>>('/api/admin/profit/settle', null, { params: { startDate, endDate } }), '红包结算失败') }
+export async function confirmPool(poolId: string): Promise<void> { unwrap(await request.post<ProfitResponse<null>>(`/api/admin/profit/pool/${poolId}/confirm`), '红包确认失败') }
+export async function adjustPool(poolId: string, payload: ProfitAdjustPoolDTO): Promise<void> { unwrap(await request.put<ProfitResponse<null>>(`/api/admin/profit/pool/${poolId}/adjust`, payload), '红包调整失败') }
+export async function adjustDaily(detailId: string, payload: ProfitAdjustDailyDTO): Promise<void> { unwrap(await request.put<ProfitResponse<null>>(`/api/admin/profit/daily/${detailId}/adjust`, payload), '每日红包调整失败') }
+export async function resetDividendLimit(userId: string): Promise<void> { unwrap(await request.put<ProfitResponse<null>>(`/api/admin/profit/limit/${userId}/reset`), '红包额度重置失败') }
 
 export async function getWalletTestResult(token: string): Promise<WalletTestResult> {
   return normalizeWalletTest(await getUserTestData<unknown>(token, '/api/wallet/info'))

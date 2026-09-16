@@ -23,7 +23,6 @@ export type ModuleKey =
   | 'wallet'     // 钱包/提现
   | 'promotion'  // 分销推广
   | 'aftersale'  // 售后
-  | 'invoice'    // 发票
 
 /** 模块配置项 */
 export interface ModuleConfig {
@@ -79,7 +78,7 @@ export interface ServiceTagV2 {
   sortOrder: number
 }
 
-/** 业务规则（提现/推广/分红） */
+/** 业务规则（提现/推广/红包） */
 export interface ClientRulesV2 {
   withdraw?: {
     minAmount: number
@@ -111,11 +110,13 @@ export interface ClientContentV2 {
 // 二、拉取层
 // ============================================================================
 
-/** 拉取当前品牌全部模块启停（含停用；basic 恒 1）。失败返回 null，调用方走默认值。 */
+/**
+ * 拉取当前品牌模块启停。
+ * 注：今华有/隆平为单商户独立部署，无多品牌模块开关概念，后端未提供 /api/v2/modules。
+ * 恒返回 null，isModuleEnabled(null) 恒 true（全启用），页面功能不受影响，且不再请求不存在的接口（消除 404）。
+ */
 export function getModules(): Promise<ModuleConfig[] | null> {
-  return request<ModuleConfig[]>({ url: '/api/v2/modules', method: 'GET' })
-    .then((data) => (Array.isArray(data) ? data : null))
-    .catch(() => null)
+  return Promise.resolve(null)
 }
 
 /** 拉取当前品牌客户端聚合配置（模块+主题+协议+标签+规则）。失败返回 null，调用方走默认值。 */

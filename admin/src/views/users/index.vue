@@ -75,7 +75,7 @@ async function saveWallet(): Promise<void> {
   }
   try {
     await ElMessageBox.confirm(
-      '本操作属于手工调账，直接修改用户可提现余额，不经过推广金、分红或提现自动流转，请确认业务影响。',
+      '本操作属于手工调账，直接修改用户可提现余额，不经过推广金、红包或提现自动流转，请确认业务影响。',
       '手工调账确认',
       { type: 'warning', confirmButtonText: '确认保存', cancelButtonText: '取消' },
     )
@@ -255,7 +255,7 @@ onMounted(() => { void loadList() })
           <el-descriptions-item label="状态">{{ isDeleted(store.detail) ? '已删除' : normalizeBanStatus(store.detail.banStatus) ? '封禁' : '正常' }}</el-descriptions-item>
           <el-descriptions-item label="注册时间">{{ store.detail.createTime }}</el-descriptions-item>
           <el-descriptions-item label="待提现推广金">¥ {{ store.detail.pendingPromotion.toFixed(2) }}</el-descriptions-item>
-          <el-descriptions-item label="待提现分红">¥ {{ store.detail.pendingBonus.toFixed(2) }}</el-descriptions-item>
+          <el-descriptions-item label="待提现红包">¥ {{ store.detail.pendingBonus.toFixed(2) }}</el-descriptions-item>
           <el-descriptions-item label="余额">¥ {{ store.detail.balance.toFixed(2) }}</el-descriptions-item>
         </el-descriptions>
         <el-divider>钱包余额编辑</el-divider>
@@ -264,7 +264,7 @@ onMounted(() => { void loadList() })
           <el-form-item label="待提现推广金">
             <el-input-number v-model="walletForm.pendingPromotion" :min="0" :precision="2" :step="0.01" controls-position="right" />
           </el-form-item>
-          <el-form-item label="待提现分红">
+          <el-form-item label="待提现红包">
             <el-input-number v-model="walletForm.pendingBonus" :min="0" :precision="2" :step="0.01" controls-position="right" />
           </el-form-item>
           <el-form-item label="余额">

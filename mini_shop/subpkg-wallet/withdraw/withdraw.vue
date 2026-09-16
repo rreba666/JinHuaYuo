@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { onShow, onUnload } from '@dcloudio/uni-app'
 import { getRealnameStatus, type RealnameStatus } from '@/api/realname'
 import { applyTransferAuth, getTransferAuthStatus, type TransferAuthState } from '@/api/transfer-auth'
-import { getUserProfile, getWalletInfo, searchUser, transferWallet, withdrawWallet, getWithdrawals, type UserProfile, type UserSearchVO, type WalletInfo, type WithdrawMethod, type WithdrawRecord, type WithdrawType } from '@/api/user'
+import { getUserProfile, getWalletInfo, getWithdrawRules, searchUser, transferWallet, withdrawWallet, getWithdrawals, type UserProfile, type UserSearchVO, type WalletInfo, type WithdrawMethod, type WithdrawRecord, type WithdrawRules, type WithdrawType } from '@/api/user'
 import RealnameVerifySheet from '@/components/RealnameVerifySheet.vue'
 import { clearAuth, getAuth, hasWalletNoticeSeen, isLoggedIn, isRegisteredUser, markWalletNoticeSeen } from '@/utils/auth'
 import { isApiRequestError } from '@/utils/request'
@@ -61,21 +61,90 @@ const registeredUser = computed(() => isRegisteredUser(user.value?.identity))
 const navStyle = computed(() => ({ top: `${menuTop.value}px`, height: `${menuHeight.value}px` }))
 const bodyStyle = computed(() => ({ paddingTop: `${menuTop.value + menuHeight.value + uni.upx2px(100)}px` }))
 const availableBalance = computed(() => Number(wallet.value?.balance ?? 0))
-const withdrawMinimumLabel = computed(() => formatMoney(WITHDRAW_MIN_AMOUNT))
+/**
+ * 提现规则本地兜底值：后台 `GET /api/wallet/withdraw-rules` 未返回或请求失败时使用（页面不留空白）。
+ */
+const DEFAULT_WITHDRAW_FEE_RATE = 0.05
+const DEFAULT_WITHDRAW_LOCK_DAYS = 10
+/**
+ * 单笔提现上限（元）：**商户后台（微信商户 / 支付渠道）侧的限额**，后端 `WithdrawRuleVO` 暂无对应字段，
+ * 因此这里保持写死；后续若后端接入商户侧限额再改为配置驱动
+ * （见 `docs/logs/2026-09-16-提现规则改为后台配置驱动.md`）。
+ */
+const WITHDRAW_SINGLE_LIMIT = 200
+/** 到账时间后端未下发，保留固定文案。 */
+const WITHDRAW_ARRIVAL_TEXT = '审核通过后 1-3 个工作日'
+/** 后台下发的提现规则（最低额 / 费率 / 每日金额与次数上限 / 支付后锁定期；后端还会返回活跃笔数与冻结上限，页面暂不展示）。 */
+const withdrawRules = ref<WithdrawRules | null>(null)
+/** 最低提现金额：以后台配置为准，缺省回退本地默认。 */
+const withdrawMinAmount = computed(() => {
+  const value = Number(withdrawRules.value?.minAmount)
+  return Number.isFinite(value) && value > 0 ? value : Number(WITHDRAW_MIN_AMOUNT)
+})
+/** 最低提现额度文案：整数不补小数（1 元而非 1.00 元），配合模板里的「元」使用。 */
+const withdrawMinimumLabel = computed(() => (Number.isInteger(withdrawMinAmount.value) ? String(withdrawMinAmount.value) : formatMoney(withdrawMinAmount.value)))
+/** 每日累计提现金额上限（元）；0/未配置 = 不限制（不展示该限制）。 */
+const withdrawDailyAmountLimit = computed(() => {
+  const value = Number(withdrawRules.value?.dailyAmountLimit)
+  return Number.isFinite(value) && value > 0 ? value : 0
+})
+/** 每日提现次数上限；0/未配置 = 不限制。 */
+const withdrawDailyCountLimit = computed(() => {
+  const value = Number(withdrawRules.value?.dailyCountLimit)
+  return Number.isFinite(value) && value > 0 ? value : 0
+})
+/** 手续费率（0~1 小数），以后台配置为准。 */
+const withdrawFeeRate = computed(() => {
+  const value = Number(withdrawRules.value?.feeRate)
+  return Number.isFinite(value) && value >= 0 ? value : DEFAULT_WITHDRAW_FEE_RATE
+})
+/** 手续费率百分比文案（0.05 → 5%）。 */
+const withdrawFeePercentLabel = computed(() => formatFeeRateLabel(withdrawFeeRate.value))
+/** 支付后锁定期天数（支付时刻起 N×24 小时内不可提现）。 */
+const withdrawLockDays = computed(() => {
+  const value = Number(withdrawRules.value?.payLockDays)
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_WITHDRAW_LOCK_DAYS
+})
+/** 下次可提现时刻（空 = 当前不在锁定期，可立即提现）——后端已按精确 240 小时口径算好。 */
+const withdrawNextWithdrawableAt = computed(() => {
+  const value = withdrawRules.value?.nextWithdrawableAt
+  return typeof value === 'string' && value.trim() ? value.trim() : ''
+})
+/** 锁定期提示：命中锁定时直接告诉用户具体可提现时间，避免"撞错"后才知道。 */
+const withdrawLockHint = computed(() => (withdrawNextWithdrawableAt.value ? `最近有订单支付，暂时无法提现；${withdrawNextWithdrawableAt.value} 后可提现` : ''))
+/** 是否超过单笔上限（商户后台限额，前端仅作提示，最终以后端校验为准）。 */
+const overSingleLimit = computed(() => withdrawAmountNumber.value > WITHDRAW_SINGLE_LIMIT)
+/** 单次输入是否超过单日累计上限（后台配置，前端仅作提示，最终以后端校验为准）。 */
+const overDailyAmountLimit = computed(() => withdrawDailyAmountLimit.value > 0 && withdrawAmountNumber.value > withdrawDailyAmountLimit.value)
 /** 用户输入的提现金额（非法输入按 0 处理）。 */
 const withdrawAmountNumber = computed(() => {
   const value = Number(withdrawAmount.value)
   return Number.isFinite(value) ? value : 0
 })
-/** 5% 提现手续费。 */
-const withdrawFee = computed(() => (withdrawAmountNumber.value > 0 ? withdrawAmountNumber.value * 0.05 : 0))
+/** 提现手续费：按后台配置费率计算。 */
+const withdrawFee = computed(() => (withdrawAmountNumber.value > 0 ? withdrawAmountNumber.value * withdrawFeeRate.value : 0))
 /** 扣除手续费后的实际到账金额。 */
-const withdrawActual = computed(() => (withdrawAmountNumber.value > 0 ? withdrawAmountNumber.value * 0.95 : 0))
+const withdrawActual = computed(() => (withdrawAmountNumber.value > 0 ? withdrawAmountNumber.value * (1 - withdrawFeeRate.value) : 0))
 /** 是否需要引导完成免确认收款授权。 */
 const needAuth = computed(() => transferAuthState.value !== 'TAKING_EFFECT')
 
 function formatMoney(value: number): string {
   return Number.isFinite(value) ? value.toFixed(2) : '0.00'
+}
+
+/** 手续费率百分比文案：0.05 → 5%，0.006 → 0.6%（避免浮点误差显示成 5.000000000000001%）。 */
+function formatFeeRateLabel(rate: number): string {
+  const percent = Math.round(rate * 10000) / 100
+  return `${Number.isInteger(percent) ? percent : String(percent)}%`
+}
+
+/** 加载后台提现规则；失败时保留本地默认值，不打断提现流程。 */
+async function loadWithdrawRules(): Promise<void> {
+  try {
+    withdrawRules.value = await getWithdrawRules()
+  } catch {
+    withdrawRules.value = null
+  }
 }
 
 function createWithdrawIdempotencyKey(): string {
@@ -241,7 +310,7 @@ async function loadRealnameStatus(): Promise<void> {
 /** 初始化或刷新钱包页，确保身份升级后重新进入即可使用提现功能。 */
 async function loadPage(): Promise<void> {
   if (!(await ensureRegisteredAccess())) return
-  await Promise.all([loadWallet(), loadTransferAuthStatus(), loadWithdrawRecords(true), loadRealnameStatus()])
+  await Promise.all([loadWallet(), loadWithdrawRules(), loadTransferAuthStatus(), loadWithdrawRecords(true), loadRealnameStatus()])
   openWalletNotice()
 }
 
@@ -470,7 +539,7 @@ async function handleWithdraw(): Promise<void> {
   if (withdrawSubmitting.value) return
   const amountResult = validateAmount(withdrawAmount.value, {
     label: '提现金额',
-    min: WITHDRAW_MIN_AMOUNT,
+    min: withdrawMinAmount.value,
     max: availableBalance.value,
   })
   if (!amountResult.ok) {
@@ -644,10 +713,29 @@ onUnload(() => {
             <view class="type-chip" :class="{ active: withdrawOption === 'BANK_CARD' }" @click="selectWithdrawOption('BANK_CARD')">银行卡提现</view>
           </view>
           <text class="panel-title panel-section-title">提现金额</text>
-          <input v-model="withdrawAmount" class="panel-input" maxlength="11" type="digit" :disabled="withdrawSubmitting" :placeholder="`请输入提现余额，最低 ${withdrawMinimumLabel}`" />
-          <text v-if="withdrawOption === 'BANK_CARD'" class="fee-hint">银行卡信息取自实名认证资料，平台审核通过后人工打款；提现将收取 5% 手续费。</text>
-          <text v-else class="fee-hint">提现将收取 5% 手续费，提交后进入审核。</text>
+          <input v-model="withdrawAmount" class="panel-input" maxlength="11" type="digit" :disabled="withdrawSubmitting" :placeholder="`请输入提现余额，最低 ${withdrawMinimumLabel} 元`" />
+          <text v-if="withdrawOption === 'BANK_CARD'" class="fee-hint">银行卡信息取自实名认证资料，平台审核通过后人工打款；提现将收取 {{ withdrawFeePercentLabel }} 手续费。</text>
+          <text v-else class="fee-hint">提现将收取 {{ withdrawFeePercentLabel }} 手续费，提交后进入审核。</text>
+          <text v-if="!realnameVerified" class="fee-hint">首次提现需完成实名认证（仅一次），认证后余额满 {{ withdrawMinimumLabel }} 元即可提现，无其他门槛。</text>
           <text v-if="withdrawAmountNumber > 0" class="fee-calc">手续费 ¥{{ formatMoney(withdrawFee) }}，实际到账 ¥{{ formatMoney(withdrawActual) }}</text>
+          <text v-if="overSingleLimit" class="fee-calc fee-warning">单笔最高可提现 {{ WITHDRAW_SINGLE_LIMIT }} 元，请调整提现金额</text>
+          <text v-if="overDailyAmountLimit" class="fee-calc fee-warning">单日累计提现上限 {{ withdrawDailyAmountLimit }} 元，请调整提现金额</text>
+          <text v-if="withdrawLockHint" class="fee-calc fee-warning">{{ withdrawLockHint }}</text>
+
+          <!-- 提现规则：金额/次数/锁定期全部取自后台配置（GET /api/wallet/withdraw-rules），接口失败时用本地默认值兜底 -->
+          <view class="rule-card">
+            <text class="rule-title">提现规则</text>
+            <view class="rule-item"><text class="rule-label">提现门槛</text><text class="rule-text">账户余额满 {{ withdrawMinimumLabel }} 元即可提现，无需邀请好友、无需消费</text></view>
+            <view class="rule-item"><text class="rule-label">可提现额度</text><text class="rule-text">最低提现 {{ withdrawMinimumLabel }} 元，单笔最高 {{ WITHDRAW_SINGLE_LIMIT }} 元{{ withdrawDailyAmountLimit > 0 ? '，单日累计上限 ' + withdrawDailyAmountLimit + ' 元' : '' }}</text></view>
+            <view class="rule-item"><text class="rule-label">每日提现次数</text><text class="rule-text">{{ withdrawDailyCountLimit > 0 ? '每日最多可提现 ' + withdrawDailyCountLimit + ' 次' : '每日提现次数不限' }}</text></view>
+            <view class="rule-item"><text class="rule-label">提现时间</text><text class="rule-text">全天可提现（00:00–24:00），提交后进入平台审核</text></view>
+            <!-- 提现锁口径：天数为后台配置（精确 N×24 小时，自支付时刻起算），不写实现细节 -->
+            <view class="rule-item"><text class="rule-label">可提现时间</text><text class="rule-text">收益有 {{ withdrawLockDays }} 天锁定期（自订单支付时刻起算），需满 {{ withdrawLockDays }} 天才可提现</text></view>
+            <view class="rule-item"><text class="rule-label">到账时间</text><text class="rule-text">{{ WITHDRAW_ARRIVAL_TEXT }}到账（银行卡提现为审核通过后人工打款）</text></view>
+            <view class="rule-item"><text class="rule-label">实名认证</text><text class="rule-text">依据法律法规要求，首次提现前需完成实名认证（仅需一次），认证后即可正常提现</text></view>
+            <view class="rule-item"><text class="rule-label">收款授权</text><text class="rule-text">零钱提现首次需在微信中确认一次收款授权，授权后后续提现无需重复操作</text></view>
+            <view class="rule-item"><text class="rule-label">手续费</text><text class="rule-text">按提现金额的 {{ withdrawFeePercentLabel }} 收取，实际到账 = 提现金额 − 手续费</text></view>
+          </view>
           <template v-if="withdrawOption === 'BANK_CARD'">
             <button class="panel-button" :disabled="withdrawSubmitting || realnameChecking" @click="handleWithdraw">
               {{ withdrawSubmitting ? '提交中...' : (realnameVerified ? '确认提现' : '实名绑定') }}
@@ -776,6 +864,14 @@ onUnload(() => {
 .panel-input { height: 84rpx; padding: 0 22rpx; box-sizing: border-box; border-radius: 18rpx; background: #f8fafc; color: #111827; font-size: 26rpx; }
 .fee-hint { display: block; margin-top: 14rpx; color: #b45309; font-size: 22rpx; line-height: 1.5; }
 .fee-calc { display: block; margin-top: 8rpx; color: #ff5a1f; font-size: 24rpx; font-weight: 600; line-height: 1.5; }
+.fee-warning { color: #d40000; }
+/* 提现规则（微信审核要求：清晰展示额度 / 次数 / 提现与到账时间） */
+.rule-card { margin-top: 20rpx; padding: 20rpx 24rpx; border-radius: 12rpx; background: #f7f8fa; }
+.rule-title { display: block; margin-bottom: 14rpx; color: #1f2329; font-size: 26rpx; font-weight: 600; }
+.rule-item { display: flex; margin-bottom: 10rpx; }
+.rule-item:last-child { margin-bottom: 0; }
+.rule-label { flex-shrink: 0; width: 168rpx; color: #86909c; font-size: 24rpx; line-height: 36rpx; }
+.rule-text { flex: 1; color: #4e5969; font-size: 24rpx; line-height: 36rpx; }
 .search-input { flex: 1; }
 .search-button { flex-shrink: 0; width: 140rpx; height: 84rpx; border-radius: 18rpx; background: linear-gradient(135deg, #ff6a2b, #ff5a1f); color: #fff; font-size: 26rpx; font-weight: 600; }
 .search-button::after, .panel-button::after, .notice-button::after { border: 0; }

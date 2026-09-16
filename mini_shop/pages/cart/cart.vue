@@ -6,6 +6,7 @@ import { DIVIDEND_PURCHASE_LIMIT, PURCHASE_LIMIT_MESSAGE, getDividendQuantity } 
 import { createThrottle } from '@/utils/interaction'
 import RequestState from '@/components/RequestState.vue'
 import LoginGuide from '@/components/LoginGuide.vue'
+import PageWatermark from '@/components/PageWatermark.vue'
 import { isLoggedIn } from '@/utils/auth'
 
 const menuTop = ref(0)
@@ -168,7 +169,9 @@ onShow(() => { loading.value = true; void refreshList() })
           </view>
         </view>
         <view class="lst-pad" />
+        <PageWatermark />
       </scroll-view>
+      <PageWatermark v-if="!loading && !items.length" />
     </view>
 
     <view v-if="!loading && items.length" class="ftr">
@@ -179,13 +182,13 @@ onShow(() => { loading.value = true; void refreshList() })
       <view class="ftr-r">
         <template v-if="editMode">
           <view class="ftr-b del-b" :class="{ off: !checkedCount }" @click="onRemoveSelected"><text class="ftr-bt">删除({{ checkedCount }})</text></view>
-        </template>
+</template>
         <template v-else>
           <view class="checkout-b" :class="{ off: !checkedCount }" @click="goPayment">
             <text class="checkout-label">结算（{{ checkedCount }}）</text>
             <view class="checkout-right"><text class="checkout-price">¥{{ checkedTotal }}</text><image class="checkout-arrow" src="/static/cart/right.png" mode="aspectFit" /></view>
           </view>
-        </template>
+</template>
       </view>
     </view>
 

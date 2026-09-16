@@ -45,4 +45,7 @@ foreach ($relativePath in $excluded) {
 $category = ReadSource "pages/category/category.vue"
 if (-not ($category -match "watermark")) { throw "category must reserve watermark space" }
 
+$cart = ReadSource "pages/cart/cart.vue"
+if (-not ($cart -match 'PageWatermark v-if="!loading && !items\.length"')) { throw "empty cart must keep the watermark visible" }
+
 Write-Output "page watermark contract: PASS"

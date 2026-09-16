@@ -5,12 +5,13 @@ import { getPromotionRecords, getPromotionSummary, type PromotionRecord, type Pr
 import { convertWallet, getUserProfile, getWalletInfo, type UserProfile, type WalletInfo } from '@/api/user'
 import { isLoggedIn, isRegisteredUser } from '@/utils/auth'
 import { bindStoredPromotionIfLoggedIn, buildPromotionSharePath, capturePromotionContext } from '@/utils/promotion'
-import { formatPromotionQueryDate, getFrozenPromotionAmount, isFrozenPromotion, PROMOTION_FREEZE_MS } from '@/utils/promotion-freeze'
+import { formatPromotionQueryDate, getPendingSettlementAmount, isPendingSettlementRecord, PROMOTION_SETTLEMENT_MAX_PAGES, PROMOTION_SETTLEMENT_PAGE_SIZE, PROMOTION_SETTLEMENT_QUERY_MS } from '@/utils/promotion-freeze'
+import { resolvePromotionSettlement, savePromotionSettlement, syncPromotionSettlement } from '@/utils/promotion-settlement'
 import { createThrottle } from '@/utils/interaction'
 import LoginGuide from '@/components/LoginGuide.vue'
 import { useModuleGuard } from '@/utils/config'
 
-/** promotion 模块守卫：停用则拦截推广/分红（深链防护）。 */
+/** promotion 模块守卫：停用则拦截推广/红包（深链防护）。 */
 const { moduleEnabled: promotionEnabled, loadModuleConfig: loadPromotionModule } = useModuleGuard('promotion')
 
 const menuTop = ref(0)
@@ -19,7 +20,7 @@ const user = ref<UserProfile | null>(null)
 const wallet = ref<WalletInfo | null>(null)
 const promotionSummary = ref<PromotionSummary | null>(null)
 const promotionRecords = ref<PromotionRecord[]>([])
-const frozenPromotionRecords = ref<PromotionRecord[]>([])
+const settlementPromotionRecords = ref<PromotionRecord[]>([])
 const promotionPage = ref(1)
 const promotionTotal = ref(0)
 const promotionLoading = ref(false)
@@ -33,7 +34,21 @@ const loginGuideVisible = ref(false)
 const navigationThrottle = createThrottle(500)
 let pageLoadPromise: Promise<void> | null = null
 const registeredUser = computed(() => isRegisteredUser(user.value?.identity))
-const frozenPromotionAmount = computed(() => getFrozenPromotionAmount(frozenPromotionRecords.value, promotionClock.value))
+/**
+ * 后端直接下发的「待到账」金额（2026-09-16 起）：推广汇总优先，其次钱包接口。
+ * 都未返回时返回 null，由前端按推广明细汇总兜底（老环境 / 字段缺失）。
+ */
+const backendUnsettledPromotion = computed<number | null>(() => {
+  const fromSummary = promotionSummary.value?.unsettledPromotion
+  if (typeof fromSummary === 'number' && Number.isFinite(fromSummary)) return fromSummary
+  const fromWallet = wallet.value?.unsettledPromotion
+  if (typeof fromWallet === 'number' && Number.isFinite(fromWallet)) return fromWallet
+  return null
+})
+/** 前端按推广明细汇总的「待到账」兜底值（仅后端未下发 unsettledPromotion 时使用）。 */
+const settlementFallbackAmount = computed(() => getPendingSettlementAmount(settlementPromotionRecords.value, promotionClock.value))
+/** 平台尚未结算到账的推广金：这些金额不在钱包 pendingPromotion 里，转余额后仍要展示，否则会"凭空消失"。 */
+const pendingSettlementAmount = computed(() => backendUnsettledPromotion.value ?? settlementFallbackAmount.value)
 
 /** 自定义导航栏样式，和微信胶囊按钮保持同一高度。 */
 const navStyle = computed(() => ({ top: `${menuTop.value}px`, height: `${menuHeight.value}px` }))
@@ -41,21 +56,34 @@ const navStyle = computed(() => ({ top: `${menuTop.value}px`, height: `${menuHei
 /** 内容区从胶囊按钮下方开始，避免标题被系统导航遮挡。 */
 const bodyStyle = computed(() => ({ paddingTop: `${menuTop.value + menuHeight.value + uni.upx2px(100)}px` }))
 
-/** 当前已解冻、可转余额的推广金，冻结部分不参与转余额。 */
+/** 当前可转余额的推广金（后端钱包 pendingPromotion，未结算到账的部分不在其中）。 */
 const withdrawablePromotion = computed(() => {
   const value = Number(promotionSummary.value?.pendingPromotion ?? wallet.value?.pendingPromotion)
   return Number.isFinite(value) && value > 0 ? value : 0
 })
 
-/** 当前已产生的推广金，包含近七天内仍处于冻结期的金额，仅用于展示。 */
-const displayedPromotionAmount = computed(() => withdrawablePromotion.value + frozenPromotionAmount.value)
+/** 当前已产生的推广金合计 = 钱包可转金额 + 平台尚未结算到账的部分（仅用于展示）。 */
+const displayedPromotionAmount = computed(() => withdrawablePromotion.value + pendingSettlementAmount.value)
 
-/** 累计推广金额，接口失败时保持真实空态。 */
+/**
+ * 转余额兜底：后端转余额后会先把 pending 清零、约 1 小时后才把未转出部分重新累计回来，
+ * 这段窗口期内用「转账前展示合计 − 实际转入余额金额」兜底，避免收益瞬间显示为 0
+ * （详见 utils/promotion-settlement.ts）。
+ */
+const promotionDisplay = computed(() => resolvePromotionSettlement(displayedPromotionAmount.value, user.value?.id))
+/** 最终对外展示的推广金合计（后端未追平时为兜底值）。 */
+const promotionBalanceAmount = computed(() => promotionDisplay.value.amount)
+/** 是否处于「结算中」（后端数据尚未追平，当前展示的是本地兜底值）。 */
+const promotionSettling = computed(() => promotionDisplay.value.settling)
+
+/**
+ * 推广金展示值 = **可转余额 + 平台尚未结算到账（待到账）** 的合计。
+ * 不再叠加后端 `totalPromotion`（累计口径受后端定时同步影响，会出现"昨天 1182、今天 396"的跳变）。
+ * 推广概要接口未返回时保持空态 `--`。
+ */
 const totalPromotionText = computed(() => {
   if (!promotionSummary.value) return '--'
-  const confirmedAmount = Number(promotionSummary.value.totalPromotion)
-  // 展示累计推广：后端全量累计 + 近 7 天冻结（冻结期内的推广金，为体验而展示）。
-  return Number.isFinite(confirmedAmount) ? formatMoney(confirmedAmount + frozenPromotionAmount.value) : '--'
+  return formatMoney(promotionBalanceAmount.value)
 })
 
 /** 已绑定用户数量，接口失败时保持真实空态。 */
@@ -125,28 +153,31 @@ async function loadPromotionRecords(): Promise<void> {
   }
 }
 
-/** 查询近七天推广记录，完整计算当前仍冻结的推广金。 */
-async function loadFrozenPromotionRecords(): Promise<void> {
+/**
+ * 查询近期推广记录，计算「平台尚未结算到账」的推广金。
+ * 窗口取 60 天：正常记录在支付后 7 天退款窗口结束即入账，60 天用于兜住延迟入账的记录，避免漏算。
+ */
+async function loadSettlementPromotionRecords(): Promise<void> {
   if (!registeredUser.value) return
   const now = Date.now()
   promotionClock.value = now
-  const startTime = formatPromotionQueryDate(now - PROMOTION_FREEZE_MS)
+  const startTime = formatPromotionQueryDate(now - PROMOTION_SETTLEMENT_QUERY_MS)
   const endTime = formatPromotionQueryDate(now)
   const recentRecords: PromotionRecord[] = []
   let page = 1
   let total = 0
   try {
     do {
-      const result = await getPromotionRecords({ startTime, endTime, page, pageSize: 100 })
+      const result = await getPromotionRecords({ startTime, endTime, page, pageSize: PROMOTION_SETTLEMENT_PAGE_SIZE })
       recentRecords.push(...(result.list || []))
       total = Number(result.total) || recentRecords.length
       page += 1
       if (!result.list?.length) break
-    } while (recentRecords.length < total)
-    frozenPromotionRecords.value = recentRecords
+    } while (recentRecords.length < total && page <= PROMOTION_SETTLEMENT_MAX_PAGES)
+    settlementPromotionRecords.value = recentRecords
   } catch {
-    // 冻结金额是增强展示，查询失败时保留后端确认金额，不影响转余额。
-    frozenPromotionRecords.value = []
+    // 未到账金额是增强展示，查询失败时保留后端确认金额，不影响转余额。
+    settlementPromotionRecords.value = []
   }
 }
 
@@ -168,7 +199,7 @@ async function loadMorePromotionRecords(): Promise<void> {
 }
 
 
-/** 将推广积分一键转入余额，成功后刷新钱包与推广汇总。 */
+/** 将推广积分一键转入余额；转后立即按「转账前合计 − 实际到账金额」兜底展示，不依赖后端轮询。 */
 async function handleConvertPromotion(): Promise<void> {
   if (!registeredUser.value) {
     denyGuestAccess()
@@ -181,9 +212,18 @@ async function handleConvertPromotion(): Promise<void> {
   }
   converting.value = true
   try {
+    // 转账前的展示合计与余额：用于计算"本次实际转入余额的金额"（余额增量最可信）
+    const beforeDisplay = displayedPromotionAmount.value
+    const beforeBalance = Number(wallet.value?.balance || 0)
     // 直接调用 /api/wallet/convert，避免前端只改界面不改余额。
     await convertWallet('PROMOTION')
     await Promise.all([loadWallet(), loadPromotionSummary()])
+    if (backendUnsettledPromotion.value === null) await loadSettlementPromotionRecords()
+    const transferred = Math.max(0, Number(wallet.value?.balance || 0) - beforeBalance)
+    // 兜底：转账后仍应展示的推广金 = 转账前合计 − 实际到账金额（冻结/待到账部分不该凭空消失）
+    savePromotionSettlement(user.value?.id, Math.max(0, beforeDisplay - transferred))
+    // 立即按兜底口径重算，避免后端 pending 清零期间页面显示 0
+    syncPromotionSettlement(displayedPromotionAmount.value, user.value?.id)
     uni.showToast({ title: '已转入余额', icon: 'success' })
   } catch (error) {
     uni.showToast({ title: error instanceof Error ? error.message : '转余额失败', icon: 'none' })
@@ -192,14 +232,19 @@ async function handleConvertPromotion(): Promise<void> {
   }
 }
 
-/** 查看冻结推广金的规则说明。 */
+/** 查看推广金的规则说明（点击推广金金额触发）。 */
 function showPromotionIncomeInfo(): void {
-  const total = displayedPromotionAmount.value
+  const total = promotionBalanceAmount.value
   const withdrawable = withdrawablePromotion.value
-  const frozen = frozenPromotionAmount.value
+  const unsettled = pendingSettlementAmount.value
+  const common = `\n\n· 待到账的推广金是已产生、但平台尚未结算到账的收益（订单满 7 天退款窗口后结算入账），结算后会自动进入可转余额；\n· 提现（余额 / 推广金）另有锁定期：需在订单支付满 10 天后才能提现，详见钱包提现页的「提现规则」；\n· 本页「推广金」按「可转余额 + 待到账」合计展示，不等于已结算到账金额。`
+  // 结算中：后端 pending 尚未追平，等式不再成立，改用说明剩余金额的口径
+  const content = promotionSettling.value
+    ? `你刚刚将可转余额的推广金转入了余额，页面仍显示 ${formatMoney(total)} 元在结算中（其中待到账 ${formatMoney(unsettled)} 元），最迟 1 小时内更新为最新金额。${common}`
+    : `当前推广金合计 ${formatMoney(total)} 元 = 可转余额 ${formatMoney(withdrawable)} 元 + 待到账 ${formatMoney(unsettled)} 元。${common}`
   uni.showModal({
-    title: '推广收益说明',
-    content: `当前推广收益 ${formatMoney(total)} 元，其中可转余额 ${formatMoney(withdrawable)} 元，冻结推广金 ${formatMoney(frozen)} 元。冻结推广金是最近 7 天内产生、暂时不能提现的推广收益，冻结期满后即可正常使用。`,
+    title: '推广金说明',
+    content,
     showCancel: false,
     confirmText: '知道了',
   })
@@ -259,7 +304,11 @@ async function ensureRegisteredAccess(): Promise<boolean> {
 /** 初始化或刷新推广中心，身份升级后重新进入即可获得完整功能。 */
 async function loadPage(): Promise<void> {
   if (!(await ensureRegisteredAccess())) return
-  await Promise.all([loadWallet(), loadPromotionSummary(), loadPromotionRecords(), loadFrozenPromotionRecords()])
+  await Promise.all([loadWallet(), loadPromotionSummary(), loadPromotionRecords()])
+  // 后端已下发 unsettledPromotion 时无需再拉明细汇总（省一次多页请求），仅在字段缺失时兜底
+  if (backendUnsettledPromotion.value === null) await loadSettlementPromotionRecords()
+  // 数据加载完成后校准兜底快照：后端已追平则清除，未追平则继续按兜底值展示
+  syncPromotionSettlement(displayedPromotionAmount.value, user.value?.id)
 }
 
 /** 合并首次挂载与重新显示时的并发刷新，避免重复请求推广数据。 */
@@ -321,10 +370,10 @@ onShow(() => {
       <image class="back-button" src="/static/left_arrow.png" mode="aspectFit" @click="goBack" />
     </view>
 
-    <!-- promotion 模块停用：拦截推广/分红（深链防护） -->
+    <!-- promotion 模块停用：拦截推广/红包（深链防护） -->
     <view v-if="!promotionEnabled" class="module-blocked">
       <text class="module-blocked-title">推广功能未开通</text>
-      <text class="module-blocked-desc">当前商户未开通分销推广模块，推广与分红暂不可用。</text>
+      <text class="module-blocked-desc">当前商户未开通分销推广模块，推广与红包暂不可用。</text>
     </view>
 
     <scroll-view v-if="registeredUser && promotionEnabled" class="page-scroll" scroll-y :style="bodyStyle" @scrolltolower="loadMorePromotionRecords">
@@ -336,7 +385,10 @@ onShow(() => {
 
         <view class="balance-card">
           <image class="promotion-background" src="/static/Promotion/推广背景_slices/推广背景@2x.png" mode="scaleToFill" />
-          <text class="balance-value" @click="showPromotionIncomeInfo">{{ formatMoney(displayedPromotionAmount) }}</text>
+          <view class="balance-amount">
+            <text class="balance-value" @click="showPromotionIncomeInfo">{{ formatMoney(promotionBalanceAmount) }}</text>
+            <text v-if="promotionSettling" class="balance-settling" @click="showPromotionIncomeInfo">结算中</text>
+          </view>
           <view class="card-actions">
             <view class="wallet-button" :class="{ disabled: converting }" @click="handleConvertPromotion">转余额</view>
             <view class="wallet-button wallet-link" @click="goWallet">钱包提现</view>
@@ -352,7 +404,7 @@ onShow(() => {
             <image class="stat-icon-image" src="/static/Promotion/推广金_slices/推广金.png" mode="aspectFit" />
             <view class="stat-copy">
               <text class="stat-value">{{ totalPromotionText }}</text>
-              <text class="stat-label">累计推广（元）</text>
+              <text class="stat-label">推广金（元）</text>
             </view>
           </view>
           <view class="stat-card">
@@ -384,7 +436,7 @@ onShow(() => {
               <text class="promotion-cell buyer-name">{{ record.buyerName || '--' }}</text>
               <text class="promotion-cell order-time">{{ formatDate(record.createTime) }}</text>
               <text class="promotion-cell order-amount">{{ formatMoney(record.payAmount) }}</text>
-              <view class="promotion-cell promotion-amount"><text>+{{ formatMoney(record.amount) }}</text><text v-if="isFrozenPromotion(record)" class="promotion-frozen-mark">冻结</text></view>
+              <view class="promotion-cell promotion-amount"><text>+{{ formatMoney(record.amount) }}</text><text v-if="isPendingSettlementRecord(record)" class="promotion-unsettled-mark">待到账</text></view>
             </view>
             <view v-show="promotionLoadingMore" class="promotion-more">加载中...</view>
             <view v-show="!promotionLoadingMore && !hasMorePromotionRecords" class="promotion-more">已加载全部</view>
@@ -419,7 +471,9 @@ onShow(() => {
 .share-subtitle { margin-left: 10rpx; color: #959595; font-size: 22.9rpx; line-height: 22.9rpx; }
 .balance-card { position: relative; width: 756rpx; max-width: calc(100% - 32rpx); height: 176rpx; margin: 24rpx 16rpx 0; overflow: hidden; }
 .promotion-background { position: absolute; inset: 0; z-index: 0; display: block; width: 100%; height: 100%; }
-.balance-value { position: absolute; bottom: 34rpx; left: 64rpx; z-index: 1; color: #fbd69d; font-size: 45.8rpx; font-weight: 600; line-height: 54.96rpx; }
+.balance-amount { position: absolute; bottom: 34rpx; left: 64rpx; z-index: 1; display: flex; align-items: center; }
+.balance-value { color: #fbd69d; font-size: 45.8rpx; font-weight: 600; line-height: 54.96rpx; }
+.balance-settling { margin-left: 12rpx; padding: 2rpx 10rpx; border: 1rpx solid #fbd69d; color: #fbd69d; font-size: 18rpx; line-height: 26rpx; }
 .card-actions { position: absolute; right: 62rpx; bottom: 40rpx; z-index: 1; display: flex; align-items: center; gap: 24rpx; }
 .wallet-button { display: flex; align-items: center; justify-content: center; width: 136rpx; height: 56rpx; box-sizing: border-box; border: 1rpx solid #fbd69d; color: #fbd69d; background: transparent; font-size: 22.9rpx; white-space: nowrap; }
 .wallet-button.wallet-link { color: #000; background: #fbd69d; }
@@ -448,7 +502,7 @@ onShow(() => {
 .promotion-cell { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre-line; }
 .order-time, .order-amount { text-align: center; }
 .promotion-amount { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; color: #010101; text-align: right; }
-.promotion-frozen-mark { margin-top: 4rpx; padding: 2rpx 8rpx; color: #b4772f; background: #fff4e5; font-size: 18rpx; line-height: 22rpx; }
+.promotion-unsettled-mark { margin-top: 4rpx; padding: 2rpx 8rpx; color: #b4772f; background: #fff4e5; font-size: 18rpx; line-height: 22rpx; }
 .promotion-more { padding: 18rpx 0; color: #959595; font-size: 20rpx; text-align: center; }
 .sheet-head { position: relative; display: flex; align-items: center; justify-content: center; min-height: 54rpx; }
 .sheet-title { color: #222; font-size: 30rpx; font-weight: 600; }

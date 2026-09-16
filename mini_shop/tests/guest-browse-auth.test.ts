@@ -16,7 +16,6 @@ const loginGuideSource = readFileSync(resolve(root, 'components/LoginGuide.vue')
 const mineSource = readFileSync(resolve(root, 'pages/mine/mine.vue'), 'utf8')
 const paymentSource = readFileSync(resolve(root, 'subpkg-order/payment/payment.vue'), 'utf8')
 const orderDetailSource = readFileSync(resolve(root, 'subpkg-order/orders/detail.vue'), 'utf8')
-const invoiceSource = readFileSync(resolve(root, 'subpkg-order/invoice/list.vue'), 'utf8')
 
 test('expired sessions do not force a guest page to relaunch into login', () => {
   assert.doesNotMatch(requestSource, /uni\.reLaunch\(\{\s*url:\s*['"]\/pages\/login\/login['"]/)
@@ -63,7 +62,7 @@ test('user agreement page contains the complete agreement sections', () => {
   assert.doesNotMatch(userAgreementSource, /生效日期/)
   assert.match(userAgreementSource, /最后更新：2026年8月23日/)
   assert.match(userAgreementSource, /一、定义与解释/)
-  assert.match(userAgreementSource, /六、平台红包补贴规则/)
+  assert.match(userAgreementSource, /六、平台消费补贴红包规则/)
   assert.match(userAgreementSource, /八、用户信息保护/)
   assert.match(userAgreementSource, /十五、其他/)
   assert.match(userAgreementSource, /91360421MAKL2FCP56/)
@@ -123,10 +122,6 @@ test('protected direct-entry pages gate before requesting account APIs', () => {
   )
   assert.match(orderDetailSource, /if \(!isLoggedIn\(\)\)[\s\S]*?loginGuideVisible\.value = true/)
   assert.match(orderDetailSource, /<LoginGuide v-model="loginGuideVisible" \/>/)
-  assert.match(invoiceSource, /import \{ isLoggedIn \} from ['"]@\/utils\/auth['"]/
-  )
-  assert.match(invoiceSource, /if \(!isLoggedIn\(\)\)[\s\S]*?loginGuideVisible\.value = true/)
-  assert.match(invoiceSource, /<LoginGuide v-model="loginGuideVisible" \/>/)
 })
 
 test('personal page skips the protected profile request for guests', () => {

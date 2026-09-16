@@ -52,6 +52,15 @@ export interface OrderDetail extends Order {
   pickupCode?: string
   /** 自提门店 ID。 */
   pickupShopId?: string
+  /**
+   * 微信「发货信息管理」上报状态（后端提供后自动展示）：
+   * 0 未上报 / 1 已上报 / 2 上报失败；字段未返回时前端不展示该区块。
+   */
+  wxShippingStatus?: number
+  /** 微信上报失败原因（wxShippingStatus=2 时展示）。 */
+  wxShippingErrmsg?: string
+  /** 微信上报时间。 */
+  wxShippingUploadTime?: string
 }
 
 export interface OrderPageResult {

@@ -16,7 +16,13 @@ export interface UserProfile {
 /** 钱包信息（对应 WalletVO） */
 export interface WalletInfo {
   balance: number
+  /** 待提现推广金（已入账、可一键转余额或提现）。 */
   pendingPromotion: number
+  /**
+   * 待到账推广金（元）：已产生但未过 7 天退款窗口、尚未入账的部分（2026-09-16 后端新增）。
+   * **推广收益合计 = pendingPromotion + unsettledPromotion**，前端不再自行按明细汇总。
+   */
+  unsettledPromotion?: number
   pendingBonus: number
   totalIncome: number
 }
@@ -76,7 +82,39 @@ export function getWalletInfo(): Promise<WalletInfo> {
   return request<WalletInfo>({ url: '/api/wallet/info', method: 'GET' })
 }
 
-/** 一键转余额，默认可由推广金或分红发起。 */
+/**
+ * 提现规则（对应 `WithdrawRuleVO`，`GET /api/wallet/withdraw-rules`）。
+ * 提现页展示与金额下限前置校验用；**实际下限与限额仍由后端二次校验**。
+ * 不含任何测试豁免配置（后端刻意不下发）。
+ */
+export interface WithdrawRules {
+  /** 最低提现金额（元），后端已按当前登录用户身份计算。 */
+  minAmount: number
+  /** 手续费率（0~1 小数，如 0.05 = 5%）。 */
+  feeRate: number
+  /** 每日累计提现金额上限（元）。 */
+  dailyAmountLimit: number
+  /** 每日提现次数上限。 */
+  dailyCountLimit: number
+  /** 同时处理中的提现笔数上限。 */
+  maxConcurrent: number
+  /** 当前提现冻结总额上限（元）。 */
+  frozenLimit: number
+  /** 支付后锁定期天数（支付时刻起 N×24 小时内不可提现）。 */
+  payLockDays: number
+  /**
+   * 下次可提现时刻（`yyyy-MM-dd HH:mm:ss`）；**null = 当前不在锁定期，可立即提现**（2026-09-16 后端新增）。
+   * 后端口径：支付时刻起 240 小时内不可提现，解锁时刻 = 支付时刻 + 240 小时（不再按自然日零点）。
+   */
+  nextWithdrawableAt?: string | null
+}
+
+/** 查询提现规则（后台配置驱动提现页文案与校验，避免前端写死金额/次数）。 */
+export function getWithdrawRules(): Promise<WithdrawRules> {
+  return request<WithdrawRules>({ url: '/api/wallet/withdraw-rules', method: 'GET' })
+}
+
+/** 一键转余额，默认可由推广金或红包发起。 */
 export function convertWallet(type: Exclude<WithdrawType, 'BALANCE'>): Promise<void> {
   return request<void>({
     url: `/api/wallet/convert?type=${encodeURIComponent(type)}`,
@@ -121,7 +159,7 @@ export function getWithdrawals(page = 1, pageSize = 20): Promise<WithdrawPageRes
   })
 }
 
-/** 分红槽位（对应 DividendSlotVO，用于红包来源列表）。 */
+/** 红包槽位（对应 DividendSlotVO，用于红包来源列表）。 */
 export interface DividendSlot {
   /** 槽位 ID（int64，序列化为字符串） */
   id: string
@@ -129,9 +167,9 @@ export interface DividendSlot {
   productName: string
   /** 商品价格（槽位基准价） */
   productPrice: number
-  /** 分红上限（=价格×1.5） */
+  /** 红包上限（=价格×1.5） */
   capAmount: number
-  /** 本槽位累计已领分红 */
+  /** 本槽位累计已领红包 */
   totalReceived: number
   /** 是否锁死：0=活跃, 1=已锁死 */
   locked: number
@@ -141,14 +179,14 @@ export interface DividendSlot {
   createTime: string
 }
 
-/** 分红槽位列表。 */
+/** 红包槽位列表。 */
 export interface DividendSlotList {
   availablePurchase: number
   totalPurchases: number
   slots: DividendSlot[]
 }
 
-/** 查询分红槽位列表（红包来源）。 */
+/** 查询红包槽位列表（红包来源）。 */
 export async function getDividendSlots(): Promise<DividendSlotList> {
   const result = await request<DividendSlotList>({ url: '/api/wallet/dividend-slots', method: 'GET' })
   return {
@@ -157,19 +195,19 @@ export async function getDividendSlots(): Promise<DividendSlotList> {
   }
 }
 
-/** 分红流水（逐笔，对应 DividendRecordVO，红包页来源列表用）。 */
+/** 红包流水（逐笔，对应 DividendRecordVO，红包页来源列表用）。 */
 export interface DividendRecord {
-  /** 分红流水 ID（int64，序列化为字符串） */
+  /** 红包流水 ID（int64，序列化为字符串） */
   id: string
   /** 红包来源（商品名） */
   productName: string
-  /** 本笔分红金额（积分，纯数值） */
+  /** 本笔红包金额（积分，纯数值） */
   amount: number
-  /** 分红到账时间（yyyy-MM-dd HH:mm:ss） */
+  /** 红包到账时间（yyyy-MM-dd HH:mm:ss） */
   createTime: string
 }
 
-/** 分红流水分页结果。 */
+/** 红包流水分页结果。 */
 export interface DividendRecordPage {
   total: number
   list: DividendRecord[]
@@ -177,7 +215,7 @@ export interface DividendRecordPage {
   pageSize: number
 }
 
-/** 分页查询分红明细流水（按到账时间倒序）。 */
+/** 分页查询红包明细流水（按到账时间倒序）。 */
 export async function getDividendRecords(params: { page?: number; pageSize?: number } = {}): Promise<DividendRecordPage> {
   const query = `page=${encodeURIComponent(String(params.page || 1))}&pageSize=${encodeURIComponent(String(params.pageSize || 10))}`
   const result = await request<DividendRecordPage>({ url: `/api/wallet/dividend-records?${query}`, method: 'GET' })

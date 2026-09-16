@@ -62,7 +62,7 @@ function validateWalletPayload(payload: AdminWalletUpsertDTO): void {
   }
 }
 
-/** 覆盖指定用户的可提现推广金或待提现分红。 */
+/** 覆盖指定用户的可提现推广金或待提现红包。 */
 export async function updateUserWallet(userId: string, payload: AdminWalletUpsertDTO): Promise<void> {
   validateWalletPayload(payload)
   userId = String(userId)

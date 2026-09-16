@@ -273,7 +273,6 @@ onShow(() => {
 
         <view class="summary">
           <text class="price">¥{{ formatAmount(displayPrice) }}</text>
-          <text v-if="product?.soldCount" class="sold-count">已售 {{ product?.soldCount }}</text>
           <view class="title-row">
             <text class="name">{{ product?.name }}</text>
             <view class="title-icons">
@@ -337,7 +336,6 @@ onShow(() => {
 .gallery-image { width: 100%; height: 100%; }
 .summary { padding: 22rpx 20rpx 0; background: #fff; }
 .price { display: block; color: #d40000; font-size: 40rpx; font-weight: 700; line-height: 1.2; }
-.sold-count { display: block; margin-top: 8rpx; color: #999; font-size: 24rpx; }
 .title-row { display: flex; align-items: flex-start; justify-content: space-between; margin-top: 22rpx; gap: 18rpx; }
 .name { flex: 1; min-width: 0; color: #222; font-size: 32rpx; font-weight: 600; line-height: 1.35; }
 .title-icons { display: flex; flex-shrink: 0; align-items: center; gap: 36rpx; padding-top: 4rpx; }

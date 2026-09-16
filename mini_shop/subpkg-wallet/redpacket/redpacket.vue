@@ -29,7 +29,7 @@ let pageLoadPromise: Promise<void> | null = null
 const navStyle = computed(() => ({ top: `${menuTop.value}px`, height: `${menuHeight.value}px` }))
 const bodyTop = computed(() => menuTop.value + menuHeight.value)
 
-/** 待领取分红总额（红包金额，仅积分，不含货币符号）。 */
+/** 待领取红包总额（红包金额，仅积分，不含货币符号）。 */
 const bonusAmount = computed(() => {
   const value = Number(wallet.value?.pendingBonus || 0)
   return Number.isFinite(value) && value > 0 ? value : 0
@@ -89,7 +89,7 @@ function refreshData(): Promise<void> {
   return pending
 }
 
-/** 上拉加载更多分红流水。 */
+/** 上拉加载更多红包流水。 */
 async function loadMoreRecords(): Promise<void> {
   if (!registeredUser.value) return
   if (loading.value || loadingMore.value || records.value.length >= recordsTotal.value) return
@@ -106,7 +106,7 @@ async function loadMoreRecords(): Promise<void> {
   }
 }
 
-/** 把分红积分一键转入余额，成功后清空本地红点标记（下次分红重新提示）。 */
+/** 把红包积分一键转入余额，成功后清空本地红点标记（下次红包重新提示）。 */
 async function convertBonus(): Promise<void> {
   if (!registeredUser.value) return
   if (converting.value) return
@@ -117,7 +117,7 @@ async function convertBonus(): Promise<void> {
   converting.value = true
   try {
     await convertWallet('BONUS')
-    // 转余额后待领取分红清零，重置红点已读标记，下次新分红重新亮红点
+    // 转余额后待领取红包清零，重置红点已读标记，下次新红包重新亮红点
     uni.setStorageSync('bonus_last_seen', 0)
     await loadData()
     uni.showToast({ title: '已转入余额', icon: 'success' })

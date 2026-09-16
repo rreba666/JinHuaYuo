@@ -118,7 +118,7 @@ onMounted(() => {
       <view class="content">
         <!-- 使用说明 -->
         <view class="intro">
-          <text class="intro-title">小分子肽健康需求自查问卷</text>
+          <text class="intro-title">今华有肽健康需求自查问卷</text>
           <text class="intro-text">请根据您近一个月内的真实身体状况，对以下每项描述进行评分（1~5 分）。</text>
           <view class="score-tips">
             <view v-for="tip in HEALTH_SURVEY_SCORE_TIPS" :key="tip.label" class="score-tip">
