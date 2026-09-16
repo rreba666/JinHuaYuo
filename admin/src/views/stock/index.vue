@@ -22,7 +22,10 @@ const router = useRouter()
 const activeTab = ref<'ledger' | 'gaps'>('ledger')
 
 // ===== 页签一：库存台账 =====
-const ledgerSkuId = ref('')
+/** 台账查询的 ID 维度：`sku`=SKU ID（最精确） / `product`=商品 ID（后端解析该商品唯一的启用 SKU） */
+const ledgerIdType = ref<'sku' | 'product'>('sku')
+/** 台账查询的 ID 值（含义由 `ledgerIdType` 决定） */
+const ledgerId = ref('')
 const ledgerDateRange = ref<[string, string] | null>(null)
 const ledger = ref<StockLedger | null>(null)
 const ledgerLoading = ref(false)
@@ -55,9 +58,14 @@ function showError(error: unknown, fallback: string): void {
   ElMessage.error(error instanceof Error ? error.message : fallback)
 }
 
-/** 识别「接口未上线」类错误（后端未发版时给出说明而不是反复报错）。 */
+/**
+ * 识别「接口未上线」类错误（后端未发版时给出说明而不是反复报错）。
+ * ⚠️ 只能匹配**接口级**文案（request.ts 对 HTTP 404/405 的固定说法），
+ * **不能**用泛化的「不存在」——业务码 `1002` 的 message 是「商品不存在或已删除」，
+ * 一旦匹配就会把整页切成"接口未上线"，把业务错误吞掉。
+ */
 function isUnavailableError(message: string): boolean {
-  return /404|不存在|not\s*found|尚未上线/i.test(message)
+  return /接口不存在|尚未上线|not\s*found|404/i.test(message)
 }
 
 /** 金额展示（退款金额等）。 */
@@ -145,17 +153,26 @@ const assertionState = computed<{ type: 'error' | 'info' | 'success'; text: stri
   return { type: 'info', text: data.assertionNote || 'endTime 之后仍有库存变动（查的是历史区间，属正常现象）' }
 })
 
-/** 查询库存台账。 */
+/**
+ * 查询库存台账。
+ *
+ * `skuId` / `productId` **二选一**（后端规则，api-docs 2026-09-16 18:01 版）：
+ * - 只传商品 ID → 服务端解析该商品**唯一的启用 SKU**，返回 `resolvedFromProduct=true`；
+ * - 该商品有多个启用 SKU → `code=1000`（message 列出可选 skuId）；
+ * - 商品不存在/已删除 或 没有启用 SKU → `code=1002`。
+ * 后两种 message 后端已给中文，这里原样提示即可（多 SKU 时引导用户改填 SKU ID）。
+ */
 async function queryLedger(): Promise<void> {
-  const skuId = ledgerSkuId.value.trim()
-  if (!/^[1-9]\d*$/.test(skuId)) {
-    ElMessage.warning('请输入正确的 SKU ID（正整数）')
+  const id = ledgerId.value.trim()
+  if (!/^[1-9]\d*$/.test(id)) {
+    ElMessage.warning(`请输入正确的${ledgerIdType.value === 'sku' ? 'SKU ID' : '商品 ID'}（正整数）`)
     return
   }
   ledgerLoading.value = true
   try {
     const range = rangeToParams(ledgerDateRange.value)
-    ledger.value = await getStockLedger({ skuId, ...range, page: 1, size: ledgerSize.value })
+    const idParam = ledgerIdType.value === 'sku' ? { skuId: id } : { productId: id }
+    ledger.value = await getStockLedger({ ...idParam, ...range, page: 1, size: ledgerSize.value })
     ledgerQueried.value = true
     ledgerUnavailable.value = false
   } catch (error) {
@@ -194,7 +211,7 @@ async function ledgerSizeChange(size: number): Promise<void> {
 
 /** 重置台账查询条件。 */
 function resetLedger(): void {
-  ledgerSkuId.value = ''
+  ledgerId.value = ''
   ledgerDateRange.value = null
   ledger.value = null
   ledgerQueried.value = false
@@ -309,25 +326,35 @@ watch(activeTab, (tab) => {
   if (tab === 'gaps' && !gapsLoaded.value) void loadGaps()
 })
 
+/** 从路由 query 取台账查询目标（`?skuId=` 优先，其次 `?productId=`）。 */
+function ledgerTargetFromQuery(): { type: 'sku' | 'product'; id: string } | null {
+  const skuId = String(route.query.skuId || '').trim()
+  if (/^[1-9]\d*$/.test(skuId)) return { type: 'sku', id: skuId }
+  const productId = String(route.query.productId || '').trim()
+  if (/^[1-9]\d*$/.test(productId)) return { type: 'product', id: productId }
+  return null
+}
+
 /**
  * 已停留在本页时，从商品列表再次点「查看台账」是**同路径只变 query**，
- * onMounted 不会重跑，所以这里监听 skuId 变化并重新查询。
+ * onMounted 不会重跑，所以这里监听 skuId / productId 的变化并重新查询。
  */
-watch(() => route.query.skuId, (value) => {
-  const id = String(value || '').trim()
-  if (!/^[1-9]\d*$/.test(id)) return
+watch(() => `${route.query.skuId ?? ''}|${route.query.productId ?? ''}`, () => {
+  const target = ledgerTargetFromQuery()
+  if (!target) return
   activeTab.value = 'ledger'
-  ledgerSkuId.value = id
+  ledgerIdType.value = target.type
+  ledgerId.value = target.id
   void queryLedger()
 })
 
 onMounted(() => {
-  // 支持从商品列表带 SKU 直接进入（`/stock?skuId=24`）
-  const skuId = String(route.query.skuId || '').trim()
-  if (/^[1-9]\d*$/.test(skuId)) {
-    ledgerSkuId.value = skuId
-    void queryLedger()
-  }
+  // 支持从商品列表带 ID 直接进入：`/stock?skuId=24`（SKU 维度）或 `/stock?productId=900009`（商品维度）
+  const target = ledgerTargetFromQuery()
+  if (!target) return
+  ledgerIdType.value = target.type
+  ledgerId.value = target.id
+  void queryLedger()
 })
 </script>
 
@@ -336,7 +363,7 @@ onMounted(() => {
     <div class="page-heading">
       <div>
         <h1>库存对账</h1>
-        <p>按 SKU 核对库存变动流水（期初 → 期末 → 实际），并排查「已退款但库存未回补」的订单。</p>
+        <p>按 SKU 或商品核对库存变动流水（期初 → 期末 → 实际），并排查「已退款但库存未回补」的订单。</p>
       </div>
       <el-button :loading="ledgerLoading || gapsLoading" @click="refreshCurrent"><el-icon><Refresh /></el-icon>刷新</el-button>
     </div>
@@ -354,9 +381,22 @@ onMounted(() => {
         />
         <el-card shadow="never" class="content-card">
           <el-form inline @submit.prevent="queryLedger">
-            <el-form-item label="SKU ID">
-              <el-input v-model="ledgerSkuId" clearable placeholder="必填，如 24" style="width: 160px" @keyup.enter="queryLedger" />
+            <el-form-item label="查询维度">
+              <el-radio-group v-model="ledgerIdType">
+                <el-radio-button value="sku">SKU ID</el-radio-button>
+                <el-radio-button value="product">商品 ID</el-radio-button>
+              </el-radio-group>
             </el-form-item>
+            <el-form-item :label="ledgerIdType === 'sku' ? 'SKU ID' : '商品 ID'">
+              <el-input
+                v-model="ledgerId"
+                clearable
+                :placeholder="ledgerIdType === 'sku' ? '必填，如 24' : '单 SKU 商品可直接填商品 ID'"
+                style="width: 220px"
+                @keyup.enter="queryLedger"
+              />
+            </el-form-item>
+            <span class="id-tip">商品 ID 仅在该商品只有 1 个启用 SKU 时可用；多个 SKU 请用 SKU ID</span>
             <el-form-item label="时间区间">
               <el-date-picker v-model="ledgerDateRange" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" />
             </el-form-item>
@@ -366,7 +406,7 @@ onMounted(() => {
             </el-form-item>
           </el-form>
 
-          <el-empty v-if="!ledger && !ledgerLoading" description="输入 SKU ID 查询库存台账" />
+          <el-empty v-if="!ledger && !ledgerLoading" description="输入 SKU ID 或商品 ID 查询库存台账" />
 
           <template v-if="ledger">
             <!-- 期初 → 期末 → 实际 三值对照 -->
@@ -404,6 +444,9 @@ onMounted(() => {
             />
             <p class="stock-meta">
               <span>商品：{{ ledger.productName || '（商品已删除或查不到）' }}</span>
+              <span>SKU ID：{{ ledger.skuId }}</span>
+              <!-- 只传商品 ID 查询时后端会解析出唯一启用 SKU，这里明确告知，避免运营以为查错了 SKU -->
+              <span v-if="ledger.resolvedFromProduct" class="resolved-tip">由商品 ID {{ ledger.productId }} 解析（该商品只有 1 个启用 SKU）</span>
               <span>区间变动合计：<b :class="qtyClass(ledger.totalChangeQty)">{{ signed(ledger.totalChangeQty) }}</b></span>
               <span v-if="ledger.rangeClosingStock !== null">区间口径期末：{{ ledger.rangeClosingStock }}（{{ ledger.rangeClosingTime || '—' }}）</span>
               <span v-if="ledger.expectedClosing !== null">理论期末：{{ ledger.expectedClosing }}</span>
@@ -619,6 +662,8 @@ onMounted(() => {
 .stock-meta { display: flex; flex-wrap: wrap; gap: 18px; margin: 0 0 14px; color: var(--el-text-color-regular); font-size: 13px; }
 .section-title { display: flex; align-items: baseline; gap: 10px; margin: 18px 0 10px; }
 .section-sub { color: var(--el-text-color-secondary); font-size: 12px; }
+.id-tip { color: var(--el-text-color-secondary); font-size: 12px; }
+.resolved-tip { color: var(--el-color-success); }
 /* 变动量配色 */
 .qty-up { color: var(--el-color-success); font-weight: 600; }
 .qty-down { color: var(--el-color-danger); font-weight: 600; }

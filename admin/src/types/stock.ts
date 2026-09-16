@@ -84,6 +84,8 @@ export interface StockLedger {
   productId: string | null
   /** 商品名（商品已删则为 null） */
   productName: string | null
+  /** 本次台账是否由 `productId` 解析而来：true = 只传了商品 ID，`skuId` 是服务端解析出的唯一启用 SKU */
+  resolvedFromProduct: boolean
   startTime: string | null
   endTime: string | null
   /** 期初可售库存（`openingUnavailable=true` 时为 null） */
@@ -128,10 +130,17 @@ export interface StockLedger {
   details: StockLedgerDetails
 }
 
-/** 库存台账查询参数。 */
+/** 库存台账查询参数（`skuId` / `productId` **二选一，至少传一个**）。 */
 export interface StockLedgerQuery {
-  /** SKU ID（必填） */
-  skuId: string
+  /** SKU ID（与 `productId` 二选一、至少传一个；两者同时传时**以本参数为准**） */
+  skuId?: string
+  /**
+   * 商品 ID（与 `skuId` 二选一）。
+   * 只传它时服务端解析该商品**唯一的启用 SKU** 并返回 `resolvedFromProduct=true`；
+   * 该商品有**多个启用 SKU** → `code=1000`（message 里列出可选 skuId）；
+   * 商品不存在/已删除 或 没有任何启用 SKU → `code=1002`。
+   */
+  productId?: string
   /** 起始时间 `yyyy-MM-dd HH:mm:ss`；不传=从留痕最早记录起 */
   startTime?: string
   endTime?: string

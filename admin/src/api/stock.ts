@@ -94,8 +94,9 @@ function normalizeLedger(value: unknown, query: StockLedgerQuery): StockLedger {
   const list = Array.isArray(details.list) ? details.list : []
   const summary = Array.isArray(row.summary) ? row.summary : []
   return {
-    skuId: String(row.skuId ?? query.skuId),
+    skuId: String(row.skuId ?? query.skuId ?? ''),
     productId: row.productId === null || row.productId === undefined ? null : String(row.productId),
+    resolvedFromProduct: Boolean(row.resolvedFromProduct),
     productName: toNullableString(row.productName),
     startTime: toNullableString(row.startTime),
     endTime: toNullableString(row.endTime),
@@ -159,7 +160,10 @@ function normalizeGap(value: unknown): RefundRestockGap {
  * `page`/`size` 只影响 `details`，`summary` 始终是整区间聚合。
  */
 export async function getStockLedger(query: StockLedgerQuery): Promise<StockLedger> {
-  const params: Record<string, string | number> = { skuId: query.skuId, page: query.page, size: query.size }
+  const params: Record<string, string | number> = { page: query.page, size: query.size }
+  // skuId / productId 二选一（至少一个）：同时传时后端以 skuId 为准，且不校验两者是否匹配
+  if (query.skuId) params.skuId = query.skuId
+  if (query.productId) params.productId = query.productId
   if (query.startTime) params.startTime = query.startTime
   if (query.endTime) params.endTime = query.endTime
   const data = unwrap(await request.get<StockResponse<unknown>>('/api/admin/stock/ledger', { params }), '库存台账查询失败')
