@@ -74,6 +74,15 @@ function money(value: number): string {
 }
 
 /**
+ * 时间展示：后端返回的是 ISO（`2026-09-16T18:00:35`，注意带 `T`），直接渲染很别扭，
+ * 这里统一成「2026-09-16 18:00:35」；空值显示「—」。
+ */
+function formatTime(value: string | null | undefined): string {
+  if (!value) return '—'
+  return String(value).replace('T', ' ').slice(0, 19)
+}
+
+/**
  * 可空数值展示：`null` / `undefined` 显示「—」。
  * 后端的 `closingStock` / `currentStock` 等在「无流水 / SKU 已软删」时返回 null，
  * 直接插值会渲染成 `null` 字样，必须过这一层。
@@ -414,14 +423,14 @@ onMounted(() => {
               <div class="triple-item">
                 <span class="triple-label">期初</span>
                 <span class="triple-value" :class="{ 'triple-unknown': ledger.openingUnavailable }">{{ openingText }}</span>
-                <span class="triple-sub">{{ ledger.openingTime || '—' }}</span>
+                <span class="triple-sub">{{ formatTime(ledger.openingTime) }}</span>
                 <span v-if="ledger.openingNote" class="triple-note">{{ ledger.openingNote }}</span>
               </div>
               <span class="triple-arrow">→</span>
               <div class="triple-item">
                 <span class="triple-label">期末（最新流水）</span>
                 <span class="triple-value">{{ num(ledger.closingStock) }}</span>
-                <span class="triple-sub">锁定 {{ num(ledger.closingLockedStock) }} · {{ ledger.closingTime || '—' }}</span>
+                <span class="triple-sub">锁定 {{ num(ledger.closingLockedStock) }} · {{ formatTime(ledger.closingTime) }}</span>
               </div>
               <span class="triple-arrow">→</span>
               <div class="triple-item">
@@ -448,7 +457,7 @@ onMounted(() => {
               <!-- 只传商品 ID 查询时后端会解析出唯一启用 SKU，这里明确告知，避免运营以为查错了 SKU -->
               <span v-if="ledger.resolvedFromProduct" class="resolved-tip">由商品 ID {{ ledger.productId }} 解析（该商品只有 1 个启用 SKU）</span>
               <span>区间变动合计：<b :class="qtyClass(ledger.totalChangeQty)">{{ signed(ledger.totalChangeQty) }}</b></span>
-              <span v-if="ledger.rangeClosingStock !== null">区间口径期末：{{ ledger.rangeClosingStock }}（{{ ledger.rangeClosingTime || '—' }}）</span>
+              <span v-if="ledger.rangeClosingStock !== null">区间口径期末：{{ ledger.rangeClosingStock }}（{{ formatTime(ledger.rangeClosingTime) }}）</span>
               <span v-if="ledger.expectedClosing !== null">理论期末：{{ ledger.expectedClosing }}</span>
             </p>
 
@@ -493,7 +502,7 @@ onMounted(() => {
               @page-change="ledgerPageChange"
               @size-change="ledgerSizeChange"
             >
-              <el-table-column prop="createTime" label="发生时间" min-width="170" />
+              <el-table-column label="发生时间" min-width="170"><template #default="{ row }">{{ formatTime(row.createTime) }}</template></el-table-column>
               <el-table-column label="变动来源" width="150">
                 <template #default="{ row }">
                   <el-tag :type="row.changeType === 'MANUAL_SET' ? 'warning' : 'info'" size="small">{{ row.changeTypeName || row.changeType }}</el-tag>
@@ -602,7 +611,7 @@ onMounted(() => {
             <el-table-column label="退款金额" width="120">
               <template #default="{ row }">{{ money(row.refundAmount) }}</template>
             </el-table-column>
-            <el-table-column prop="refundTime" label="退款时间" min-width="170" />
+            <el-table-column label="退款时间" min-width="170"><template #default="{ row }">{{ formatTime(row.refundTime) }}</template></el-table-column>
             <el-table-column label="退款单号" min-width="190">
               <template #default="{ row }">
                 <template v-if="row.refundNo">
