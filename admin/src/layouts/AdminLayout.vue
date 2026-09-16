@@ -29,8 +29,10 @@ import { useAuthStore } from '@/stores/auth'
 import { useSettingStore } from '@/stores/setting'
 import { useThemeStore } from '@/stores/theme'
 import { useTodoStore } from '@/stores/todo'
-import { ROLE_LABELS } from '@/utils/permission'
+import { canAccess, ROLE_LABELS } from '@/utils/permission'
 import { getTodoSummary, type TodoItem } from '@/api/todo'
+import { getPendingWithdrawals } from '@/api/withdraw'
+import type { AdminRole } from '@/types/auth'
 
 const route = useRoute()
 const router = useRouter()
@@ -103,13 +105,49 @@ const todoItems = ref<TodoItem[]>([])
 const todoLoading = ref(false)
 let todoTimer: ReturnType<typeof setInterval> | null = null
 
+/**
+ * 商户管理员的「提现待审核」补位。
+ *
+ * 背景：后端 `GET /api/admin/todo/summary` 的角色口径是「**提现审核仅超管/财务返回**」，
+ * 但后台的「提现审核」菜单对商户管理员同样开放（`isFinance` 含 ADMIN，`permission.ts` 的 ADMIN 也含 `/withdraw`），
+ * 于是商户管理员出现"能进提现审核页、铃铛却没有这条待办"的不一致（用户反馈 2026-09-16）。
+ *
+ * 兜底做法：对「有 `/withdraw` 权限但后端没返回该项」的角色，前端补查一次待审核数量
+ * （`size=1` 只为拿 `total`，口径与提现审核页「共 N 条」完全一致）：
+ * - 后端已返回该项（超管/财务）→ 直接用后端的，不额外请求；
+ * - 补查失败（后端尚未放开该接口的角色权限 / 网络异常）→ **本次会话不再重试**，静默保持原样，
+ *   避免每次 30s 轮询都打一个无效请求。
+ */
+let withdrawTodoUnsupported = false
+async function appendWithdrawTodo(items: TodoItem[]): Promise<TodoItem[]> {
+  if (items.some((item) => item.key === 'WITHDRAW_AUDIT')) return items
+  if (withdrawTodoUnsupported) return items
+  if (!canAccess(authStore.role as AdminRole, '/withdraw')) return items
+  try {
+    const page = await getPendingWithdrawals({ page: 1, size: 1 })
+    const count = Number(page.total) || 0
+    if (count <= 0) return items
+    // 放在最前面：与超管看到的顺序一致（红色待办优先）
+    return [
+      { key: 'WITHDRAW_AUDIT', label: '提现待审核', count, route: '/withdraw?status=0', level: 'DANGER' },
+      ...items,
+    ]
+  } catch {
+    withdrawTodoUnsupported = true
+    return items
+  }
+}
+
 /** 拉取待办汇总；失败时静默兜底（不显示徽标、下拉显示「暂无待办」）。 */
 async function refreshTodo(): Promise<void> {
   todoLoading.value = true
   try {
     const summary = await getTodoSummary()
-    todoTotal.value = Number(summary.total) || 0
-    todoItems.value = summary.items.filter((item) => Number(item.count) > 0)
+    // 只展示 count>0 的项；商户管理员再补「提现待审核」（见 appendWithdrawTodo）
+    const items = await appendWithdrawTodo(summary.items.filter((item) => Number(item.count) > 0))
+    todoItems.value = items
+    // 徽标按**实际展示的项**求和：补位项不在后端 total 里，直接用 summary.total 会漏加
+    todoTotal.value = items.reduce((sum, item) => sum + (Number(item.count) || 0), 0)
   } catch {
     todoTotal.value = 0
     todoItems.value = []
