@@ -4,22 +4,23 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { CopyDocument, Refresh, Search, Warning } from '@element-plus/icons-vue'
 import DataTable from '@/components/DataTable.vue'
-import { getRefundRestockGaps, getStockLedger } from '@/api/stock'
-import type { RefundRestockGap, StockLedger, StockLedgerDetail } from '@/types/stock'
+import { getRefundRestockGaps, getStockLedger, getTotalStockDrifts } from '@/api/stock'
+import type { RefundRestockGap, StockLedger, StockLedgerDetail, TotalStockDrift } from '@/types/stock'
 import { copyToClipboard } from '@/utils/clipboard'
 
 /**
- * 库存对账页（今华有肽后台）。
+ * 库存对账页（今华有肽后台，三个只读页签）。
  *
- * 数据源为后端 2026-09-16 新增的两个**只读**接口：
+ * 数据源为后端 2026-09-16 新增的三个**只读**接口：
  * - 库存台账：`GET /api/admin/stock/ledger` —— 期初/期末/实际三值对照 + 「期初+变动=期末」自动断言；
- * - 退款应补未补：`GET /api/admin/stock/refund-restock-gaps` —— 已退款但库存未回补的订单项。
+ * - 退款应补未补：`GET /api/admin/stock/refund-restock-gaps` —— 已退款但库存未回补的订单项；
+ * - 冗余列偏离：`GET /api/admin/stock/total-stock-drifts` —— `product.total_stock` 冗余列与真实可售库存的偏离基线。
  *
- * 入口：菜单「库存对账」，以及商品列表 SKU 行内「台账」按钮（带 `?skuId=` 自动查询）。
+ * 入口：菜单「库存对账」，以及商品列表的「台账」列（带 `?productId=`/`?skuId=` 自动查询）。
  */
 const route = useRoute()
 const router = useRouter()
-const activeTab = ref<'ledger' | 'gaps'>('ledger')
+const activeTab = ref<'ledger' | 'gaps' | 'drifts'>('ledger')
 
 // ===== 页签一：库存台账 =====
 /** 台账查询的 ID 维度：`sku`=SKU ID（最精确） / `product`=商品 ID（后端解析该商品唯一的启用 SKU） */
@@ -52,6 +53,20 @@ const gapsSize = ref(50)
 const gapsLoading = ref(false)
 const gapsLoaded = ref(false)
 const gapsUnavailable = ref(false)
+
+// ===== 页签三：冗余列偏离巡检 =====
+/**
+ * `product.total_stock` 是**只在「保存商品」时重算**的冗余列，下单/取消/退款回补等链路都不回写它；
+ * 而商品列表的 `totalStock` 自 2026-09-16 起已改为**查询时实时聚合**，所以本清单只是"偏离观测基线"
+ * （api-docs 原文：已知且无害，不是新的 bug）。它同时是"万一将来又有代码依赖该冗余列"的风险度量。
+ */
+const driftsList = ref<TotalStockDrift[]>([])
+const driftsTotal = ref(0)
+const driftsPage = ref(1)
+const driftsSize = ref(50)
+const driftsLoading = ref(false)
+const driftsLoaded = ref(false)
+const driftsUnavailable = ref(false)
 
 /** 统一的错误消息提取。 */
 function showError(error: unknown, fallback: string): void {
@@ -278,12 +293,73 @@ function resetGaps(): void {
   void loadGaps(true)
 }
 
+/** 页签三：加载「冗余列偏离」清单（只分页，无筛选条件）。 */
+async function loadDrifts(resetPage = false): Promise<void> {
+  if (resetPage) driftsPage.value = 1
+  driftsLoading.value = true
+  try {
+    const result = await getTotalStockDrifts({ page: driftsPage.value, size: driftsSize.value })
+    driftsList.value = result.list
+    driftsTotal.value = result.total
+    driftsPage.value = result.page
+    driftsLoaded.value = true
+    driftsUnavailable.value = false
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '冗余列偏离巡检失败'
+    if (isUnavailableError(message)) {
+      driftsUnavailable.value = true
+      driftsList.value = []
+      driftsTotal.value = 0
+      driftsLoaded.value = true
+    } else {
+      showError(error, '冗余列偏离巡检失败')
+    }
+  } finally {
+    driftsLoading.value = false
+  }
+}
+
+/** 页签三：翻页。 */
+function driftsPageChange(page: number): void {
+  driftsPage.value = page
+  void loadDrifts()
+}
+
+/** 页签三：切换每页条数。 */
+function driftsSizeChange(size: number): void {
+  driftsSize.value = size
+  void loadDrifts(true)
+}
+
+/** 页签三行样式：冗余列偏大标红（真实库存比冗余列少）、偏小标橙（可能误显示售罄）。 */
+function driftRowClass({ row }: { row: TotalStockDrift }): string {
+  if (row.diff > 0) return 'drift-over-row'
+  if (row.diff < 0) return 'drift-under-row'
+  return ''
+}
+
+/** 商品状态文案（0=下架 / 1=上架）。 */
+function productStatusText(status: number): string {
+  return Number(status) === 1 ? '上架' : '下架'
+}
+
+/** 从偏离清单点商品 ID：切到「库存台账」并按该商品维度查询（后端会解析其唯一启用 SKU）。 */
+function openLedgerByProduct(productId: string): void {
+  const id = String(productId || '').trim()
+  if (!/^[1-9]\d*$/.test(id)) return
+  activeTab.value = 'ledger'
+  ledgerIdType.value = 'product'
+  ledgerId.value = id
+  void queryLedger()
+}
+
 /**
  * 页头「刷新」按钮：按**当前页签**刷新对应数据。
  * （此前固定调 queryLedger，在「退款应补未补」页签下点刷新会去查台账，属于页签错配）
  */
 function refreshCurrent(): void {
   if (activeTab.value === 'gaps') void loadGaps()
+  else if (activeTab.value === 'drifts') void loadDrifts()
   else void queryLedger()
 }
 
@@ -330,9 +406,10 @@ function gapRowClass({ row }: { row: RefundRestockGap }): string {
   return ''
 }
 
-// 首次切到「应补未补」页签时懒加载
+// 首次切到「应补未补」「冗余列偏离」页签时懒加载
 watch(activeTab, (tab) => {
   if (tab === 'gaps' && !gapsLoaded.value) void loadGaps()
+  if (tab === 'drifts' && !driftsLoaded.value) void loadDrifts()
 })
 
 /** 从路由 query 取台账查询目标（`?skuId=` 优先，其次 `?productId=`）。 */
@@ -647,6 +724,69 @@ onMounted(() => {
           </DataTable>
         </el-card>
       </el-tab-pane>
+
+      <!-- ===== 冗余列偏离巡检 ===== -->
+      <el-tab-pane label="冗余列偏离" name="drifts">
+        <el-alert
+          v-if="driftsUnavailable"
+          type="warning"
+          :closable="false"
+          show-icon
+          class="stock-alert"
+          title="当前环境的「冗余列偏离巡检」接口尚未上线，暂时查不到数据；后端发版后本页即可使用。"
+        />
+        <el-card shadow="never" class="content-card">
+          <el-alert
+            type="info"
+            :closable="false"
+            show-icon
+            class="stock-alert"
+            title="product.total_stock 是「保存商品」时重算的冗余列，下单/取消/退款等链路不回写它；商品列表的库存自 2026-09-16 起已改为查询时实时聚合，所以本清单只作偏离观测基线（已知且无害）。需要人工对齐时取「建议对齐值」——本接口只读，不会自动改库。"
+          />
+
+          <div class="section-title">
+            <strong>冗余列偏离</strong>
+            <span class="section-sub">共 {{ driftsTotal }} 个商品；偏离 = 冗余列现值 − 真实可售合计（不含锁定库存）</span>
+            <el-button link type="primary" :loading="driftsLoading" @click="loadDrifts()">刷新</el-button>
+          </div>
+
+          <DataTable
+            :data="driftsList"
+            :loading="driftsLoading"
+            :total="driftsTotal"
+            :page="driftsPage"
+            :page-size="driftsSize"
+            :show-selection="false"
+            :row-class-name="driftRowClass"
+            row-key="productId"
+            empty-text="没有偏离的商品（冗余列与真实可售库存一致）"
+            @page-change="driftsPageChange"
+            @size-change="driftsSizeChange"
+          >
+            <el-table-column label="商品 ID" width="110">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="openLedgerByProduct(row.productId)">{{ row.productId }}</el-button>
+              </template>
+            </el-table-column>
+            <el-table-column prop="productName" label="商品名称" min-width="200" show-overflow-tooltip />
+            <el-table-column label="状态" width="90">
+              <template #default="{ row }">
+                <el-tag :type="Number(row.status) === 1 ? 'success' : 'info'" size="small">{{ productStatusText(row.status) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="totalStock" label="冗余列现值" width="110" />
+            <el-table-column prop="skuStockSum" label="真实可售合计" width="130" />
+            <el-table-column label="偏离" width="100">
+              <template #default="{ row }"><span :class="qtyClass(row.diff)">{{ signed(row.diff) }}</span></template>
+            </el-table-column>
+            <el-table-column prop="enabledSkuCount" label="启用 SKU" width="100" />
+            <el-table-column prop="suggestedTotalStock" label="建议对齐值" width="120" />
+            <el-table-column label="冗余列最后写入" min-width="170">
+              <template #default="{ row }">{{ formatTime(row.updateTime) }}</template>
+            </el-table-column>
+          </DataTable>
+        </el-card>
+      </el-tab-pane>
     </el-tabs>
   </section>
 </template>
@@ -683,4 +823,7 @@ onMounted(() => {
 /* 需补货 / 货已离店行 */
 :deep(.need-restock-row) td { background: var(--el-color-danger-light-9) !important; }
 :deep(.left-shop-row) td { color: var(--el-text-color-secondary); background: var(--el-fill-color-light) !important; }
+/* 冗余列偏离行：冗余列偏大红、偏小橙 */
+:deep(.drift-over-row) td { background: var(--el-color-danger-light-9) !important; }
+:deep(.drift-under-row) td { background: var(--el-color-warning-light-9) !important; }
 </style>

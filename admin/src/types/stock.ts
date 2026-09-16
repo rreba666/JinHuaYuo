@@ -199,3 +199,43 @@ export interface RefundRestockGapPage {
   pageSize: number
   list: RefundRestockGap[]
 }
+
+/**
+ * 冗余列偏离巡检（`GET /api/admin/stock/total-stock-drifts`）一行。
+ *
+ * 背景（api-docs 2026-09-16 18:41 版原文）：`product.total_stock` 是**只在「保存商品」时重算**的冗余列，
+ * 下单/取消/退款回补等链路只改 `product_sku.stock`，所以保存之后每发生一次库存变动就漂移一次；
+ * 而商品列表的 `totalStock` 自 2026-09-16 起已改为**查询时实时聚合**，因此本清单只作**观测基线**（已知且无害）。
+ */
+export interface TotalStockDrift {
+  productId: string
+  productName: string
+  /** 商品状态：0=下架 / 1=上架 */
+  status: number
+  /** 冗余列现值（`product.total_stock`），即「保存商品」那一刻算出的旧值 */
+  totalStock: number
+  /** 真实可售库存合计 = `SUM(product_sku.stock)`（enabled=1 且未软删，**不含** locked_stock），与台账 `currentStock` 同口径 */
+  skuStockSum: number
+  /** 偏离值 = `totalStock − skuStockSum`；正数=冗余列偏大，负数=偏小 */
+  diff: number
+  /** 参与统计的启用 SKU 个数；0 = 该商品没有任何可售 SKU（视为售罄） */
+  enabledSkuCount: number
+  /** 建议对齐值 = `skuStockSum`（接口只读，不会自动改库） */
+  suggestedTotalStock: number
+  /** 冗余列最后一次被写入的时间（`product.update_time`，**不等于**库存最后变动时间） */
+  updateTime: string
+}
+
+/** 冗余列偏离巡检查询参数。 */
+export interface TotalStockDriftQuery {
+  page: number
+  size: number
+}
+
+/** 冗余列偏离巡检分页结果。 */
+export interface TotalStockDriftPage {
+  total: number
+  page: number
+  pageSize: number
+  list: TotalStockDrift[]
+}

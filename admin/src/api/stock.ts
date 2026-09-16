@@ -7,14 +7,18 @@ import type {
   StockLedgerDetail,
   StockLedgerQuery,
   StockLedgerSummaryItem,
+  TotalStockDrift,
+  TotalStockDriftPage,
+  TotalStockDriftQuery,
 } from '@/types/stock'
 
 /**
  * 库存对账接口层（今华有肽后台）。
  *
- * 对应后端 2026-09-16 新增的两个**只读**接口（不会修改任何数据）：
- * - `GET /api/admin/stock/ledger`
- * - `GET /api/admin/stock/refund-restock-gaps`
+ * 对应后端 2026-09-16 新增的**三个只读**接口（不会修改任何数据）：
+ * - `GET /api/admin/stock/ledger`（库存台账，含期初/期末自动断言）
+ * - `GET /api/admin/stock/refund-restock-gaps`（退款应补未补核对）
+ * - `GET /api/admin/stock/total-stock-drifts`（冗余列 `product.total_stock` 偏离巡检）
  *
  * 统一返回 `{ code, message, data, traceId }`，HTTP 恒为 200，业务失败看 `code`（参数错 1000）。
  */
@@ -188,5 +192,41 @@ export async function getRefundRestockGaps(query: RefundRestockGapQuery): Promis
     page: toNumber(raw.page, query.page),
     pageSize: toNumber(raw.pageSize, query.size),
     list: list.map(normalizeGap),
+  }
+}
+
+/** 归一化冗余列偏离行（商品 ID 统一转字符串，数字字段兜底）。 */
+function normalizeDrift(value: unknown): TotalStockDrift {
+  const row = (value || {}) as Record<string, unknown>
+  return {
+    productId: String(row.productId ?? ''),
+    productName: String(row.productName ?? ''),
+    status: toNumber(row.status),
+    totalStock: toNumber(row.totalStock),
+    skuStockSum: toNumber(row.skuStockSum),
+    diff: toNumber(row.diff),
+    enabledSkuCount: toNumber(row.enabledSkuCount),
+    suggestedTotalStock: toNumber(row.suggestedTotalStock),
+    updateTime: String(row.updateTime ?? ''),
+  }
+}
+
+/**
+ * 冗余列偏离巡检（只读）：列出 `product.total_stock` 与**真实可售库存**不一致的商品。
+ *
+ * ⚠️ 这**不是**线上显示错误：商品列表的 `totalStock` 自 2026-09-16 起已改为**查询时实时聚合**
+ * （`SUM(启用 SKU 的 stock)`，不含锁定），不再读该冗余列；本清单只是"冗余列偏离的观测基线"，
+ * 需要人工对齐时取 `suggestedTotalStock`。接口只做 select，**不会自动修数**。
+ */
+export async function getTotalStockDrifts(query: TotalStockDriftQuery): Promise<TotalStockDriftPage> {
+  const params: Record<string, string | number> = { page: query.page, size: query.size }
+  const data = unwrap(await request.get<StockResponse<unknown>>('/api/admin/stock/total-stock-drifts', { params }), '冗余列偏离巡检失败')
+  const raw = (data || {}) as Record<string, unknown>
+  const list = Array.isArray(raw.list) ? raw.list : []
+  return {
+    total: toNumber(raw.total, list.length),
+    page: toNumber(raw.page, query.page),
+    pageSize: toNumber(raw.pageSize, query.size),
+    list: list.map(normalizeDrift),
   }
 }
