@@ -50,7 +50,7 @@ const bodyTop = computed(() => menuTop.value + menuHeight.value)
 /** 全部名次（后端已按 推广人数↓ / 推广金↓ / 用户ID↑ 排序，名次唯一无并列）。 */
 const rows = computed<LeaderboardRow[]>(() => board.value?.list || [])
 /** 领奖台三名（不足三名时对应位置留空）。 */
-const podium = computed<(LeaderboardRow | null)[]>([rows.value[0] || null, rows.value[1] || null, rows.value[2] || null])
+const podium = computed<(LeaderboardRow | null)[]>(() => [rows.value[0] || null, rows.value[1] || null, rows.value[2] || null])
 /** 是否显示领奖台：有任何一名上榜就显示。 */
 const podiumVisible = computed(() => podium.value.some(Boolean))
 /** 空榜：加载完成、未失败、总榜可用且没有任何名次。 */
