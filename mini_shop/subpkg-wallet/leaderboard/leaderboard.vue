@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import { getPromotionLeaderboard, type LeaderboardPeriod, type LeaderboardRow, type PromotionLeaderboard } from '@/api/promotion'
 import { isLoggedIn } from '@/utils/auth'
+import { DEFAULT_AVATAR } from '@/utils/avatar'
 import { useModuleGuard } from '@/utils/config'
 import LoginGuide from '@/components/LoginGuide.vue'
 
@@ -24,8 +25,6 @@ const periodTabs: { key: LeaderboardPeriod; label: string }[] = [
 ]
 /** 榜单轮询间隔：排名随支付实时变化，页面可见时每 60 秒静默刷新一次。 */
 const LEADERBOARD_POLL_INTERVAL = 60 * 1000
-/** 无头像时的默认头像：用平台 logo（避免出现「昵称首字」这类临时占位）。 */
-const DEFAULT_AVATAR = '/static/logo.png'
 /** 头像加载失败的记录：微信头像链接会过期/防盗链，失败后同样要回落到默认头像，否则是破图。 */
 const avatarErrors = ref<Record<string, boolean>>({})
 

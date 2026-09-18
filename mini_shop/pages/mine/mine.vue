@@ -7,6 +7,7 @@ import { getPromotionCode } from '@/api/promotion'
 import { getAnnouncementList, type Announcement } from '@/api/announcement'
 import { getPeptideAccount, type PeptideAccount } from '@/api/peptide'
 import { uploadFile } from '@/utils/request'
+import { resolveAvatar, resolveDefaultAvatarUrl } from '@/utils/avatar'
 import { loadPendingSettlementAmount } from '@/utils/promotion-freeze'
 import { resolvePromotionSettlement, syncPromotionSettlement } from '@/utils/promotion-settlement'
 import { createThrottle } from '@/utils/interaction'
@@ -519,6 +520,15 @@ async function saveProfile(): Promise<void> {
       avatarUploading.value = true
       avatarUrl = await uploadFile(avatarTempPath.value)
       avatarTempPath.value = ''
+    } else if (!avatarUrl) {
+      // 用户没上传头像：默认把平台 logo 作为头像提交（首次上传一次并缓存永久 URL）。
+      // 上传失败不阻塞保存：展示层仍会用 logo 兜底，用户可稍后重试。
+      avatarUploading.value = true
+      try {
+        avatarUrl = await resolveDefaultAvatarUrl()
+      } catch {
+        avatarUrl = ''
+      }
     }
     // 仅允许修改昵称和头像，电话不允许编辑，保存时不上传 phone
     user.value = await updateUserProfile({ nickname: nickname.value, avatarUrl })
@@ -552,7 +562,7 @@ onShow(() => { void refreshData() })
         <image class="hero-bg" src="/static/bg/个人bg.jpg" mode="aspectFill" />
         <view class="profile-row">
           <view class="u-avatar" @click="handleProfileTap">
-            <image v-if="user?.avatarUrl" class="u-avatar-image" :src="user.avatarUrl" mode="aspectFill" />
+            <image class="u-avatar-image" :src="resolveAvatar(user?.avatarUrl)" mode="aspectFill" />
           </view>
           <view class="u-info" @click="handleProfileTap">
             <text class="u-name">{{ user?.nickname || '我的姓名微信名' }}</text>
@@ -640,7 +650,7 @@ onShow(() => { void refreshData() })
       <view class="sheet" @click.stop>
         <view class="sheet-head"><text class="sheet-title">编辑资料</text><text class="sheet-close" @click="profileEditorVisible = false">×</text></view>
         <button class="avatar-picker" open-type="chooseAvatar" :disabled="avatarUploading || profileSaving" @chooseavatar="onChooseAvatar">
-          <image v-if="avatarTempPath || profileForm.avatarUrl" class="avatar-preview" :src="avatarTempPath || profileForm.avatarUrl" mode="aspectFill" />
+          <image class="avatar-preview" :src="avatarTempPath || resolveAvatar(profileForm.avatarUrl)" mode="aspectFill" />
           <text v-else class="avatar-placeholder">{{ avatarUploading ? '上传中...' : '点击选择头像' }}</text>
         </button>
         <text class="avatar-tip">点击可选择微信头像或相册图片</text>

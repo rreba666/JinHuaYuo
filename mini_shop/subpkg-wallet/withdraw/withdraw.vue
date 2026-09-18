@@ -7,6 +7,7 @@ import { getUserProfile, getWalletInfo, getWithdrawRules, searchUser, transferWa
 import RealnameVerifySheet from '@/components/RealnameVerifySheet.vue'
 import { clearAuth, getAuth, hasWalletNoticeSeen, isLoggedIn, isRegisteredUser, markWalletNoticeSeen } from '@/utils/auth'
 import { isApiRequestError } from '@/utils/request'
+import { resolveAvatar } from '@/utils/avatar'
 import { MERCHANT_TRANSFER_APP_ID, MERCHANT_TRANSFER_MCH_ID, TRANSFER_MIN_AMOUNT, WITHDRAW_MIN_AMOUNT } from '@/utils/wallet-config'
 import { validateAmount, validatePositiveInteger } from '@/utils/input-validation'
 import LoginGuide from '@/components/LoginGuide.vue'
@@ -773,7 +774,7 @@ onUnload(() => {
             </button>
           </view>
           <view v-if="recipient" class="recipient-card">
-            <image v-if="recipient.avatarUrl" class="recipient-avatar" :src="recipient.avatarUrl" mode="aspectFill" />
+            <image class="recipient-avatar" :src="resolveAvatar(recipient.avatarUrl)" mode="aspectFill" />
             <view v-else class="recipient-avatar placeholder" />
             <view class="recipient-info">
               <text class="recipient-name">{{ recipient.nickname }}</text>

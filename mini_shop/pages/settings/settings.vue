@@ -7,6 +7,7 @@ import { onMounted, ref } from 'vue'
 import { getUserProfile, updateUserProfile, type UserProfile } from '@/api/user'
 import { getRealnameStatus, type RealnameStatus } from '@/api/realname'
 import { uploadFile } from '@/utils/request'
+import { resolveAvatar } from '@/utils/avatar'
 import { validateText } from '@/utils/input-validation'
 import RealnameVerifySheet from '@/components/RealnameVerifySheet.vue'
 import PageWatermark from '@/components/PageWatermark.vue'
@@ -97,7 +98,7 @@ function todoFeature(feature: string): void {
       <!-- 个人信息卡 -->
       <view class="card">
         <button class="avatar-row" open-type="chooseAvatar" :disabled="avatarUploading" @chooseavatar="onChooseAvatar">
-          <image v-if="user?.avatarUrl" class="avatar-img" :src="user.avatarUrl" mode="aspectFill" />
+          <image class="avatar-img" :src="resolveAvatar(user?.avatarUrl)" mode="aspectFill" />
           <view v-else class="avatar-img avatar-empty" />
           <view class="avatar-info">
             <text class="avatar-name">{{ user?.nickname || '未设置昵称' }}</text>
