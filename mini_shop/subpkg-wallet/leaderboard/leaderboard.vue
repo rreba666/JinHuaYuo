@@ -24,6 +24,8 @@ const periodTabs: { key: LeaderboardPeriod; label: string }[] = [
 ]
 /** 榜单轮询间隔：排名随支付实时变化，页面可见时每 60 秒静默刷新一次。 */
 const LEADERBOARD_POLL_INTERVAL = 60 * 1000
+/** 无头像时的默认头像：用平台 logo（避免出现「昵称首字」这类临时占位）。 */
+const DEFAULT_AVATAR = '/static/logo.png'
 
 /** 当前统计周期：设计稿默认高亮第一个（日榜）。 */
 const period = ref<LeaderboardPeriod>('DAY')
@@ -66,12 +68,6 @@ function formatAsOf(value?: string | null): string {
   if (!value) return ''
   const matched = String(value).match(/^(\d{4})-(\d{2}-\d{2})[ T](\d{2}:\d{2})/)
   return matched ? `${matched[2]} ${matched[3]}` : ''
-}
-
-/** 昵称首字，用作无头像时的占位文字。 */
-function avatarText(row: LeaderboardRow | null): string {
-  const name = String(row?.nickname || '').trim()
-  return name ? name.slice(0, 1) : '用'
 }
 
 /** 领奖台徽章图（设计切图：金 1 / 银 2 / 铜 3 六边形徽章）。 */
@@ -186,8 +182,9 @@ onMounted(() => {
 
 <template>
   <view class="page">
-    <!-- 页面背景：设计切图（SVG 矢量，放在分包内不占主包体积） -->
-    <image class="page-bg" src="/subpkg-wallet/static/leaderboard/bg.svg" mode="aspectFill" />
+    <!-- 页面背景：设计切图（放在分包内不占主包体积）。用位图而非 SVG：
+         小程序渲染 SVG 不支持 filter(模糊)，光斑会变成硬边色块导致整页偏色 -->
+    <image class="page-bg" src="/subpkg-wallet/static/leaderboard/bg-glow.jpg" mode="aspectFill" />
 
     <view class="nav" :style="navStyle">
       <view class="nav-back" @click="goBack"><text class="back-icon">‹</text></view>
@@ -219,8 +216,7 @@ onMounted(() => {
         <image class="podium-art" src="/subpkg-wallet/static/leaderboard/podium.png" mode="scaleToFill" />
         <template v-for="(item, index) in podium" :key="index">
           <view v-if="item" class="podium-avatar" :class="'podium-avatar-' + (index + 1)">
-            <image v-if="item.avatarUrl" class="podium-avatar-img" :src="item.avatarUrl" mode="aspectFill" />
-            <text v-else class="podium-avatar-text">{{ avatarText(item) }}</text>
+            <image class="podium-avatar-img" :src="item.avatarUrl || DEFAULT_AVATAR" mode="aspectFill" />
           </view>
           <image v-if="item" class="podium-badge" :class="'podium-badge-' + (index + 1)" :src="badgeSrc(index)" mode="aspectFit" />
         </template>
@@ -237,8 +233,7 @@ onMounted(() => {
           <view v-for="row in rows" :key="row.promoterUserId + '-' + row.rank" class="list-row" :class="{ me: row.isMe }">
             <view class="row-left">
               <text class="row-rank">{{ row.rank }}</text>
-              <image v-if="row.avatarUrl" class="row-avatar" :src="row.avatarUrl" mode="aspectFill" />
-              <view v-else class="row-avatar row-avatar-placeholder"><text class="row-avatar-text">{{ avatarText(row) }}</text></view>
+              <image class="row-avatar" :src="row.avatarUrl || DEFAULT_AVATAR" mode="aspectFill" />
               <text class="row-name">{{ displayName(row) }}</text>
               <text v-if="row.isMe" class="row-me">我</text>
             </view>
@@ -281,7 +276,6 @@ onMounted(() => {
 .podium-avatar-2 { top: 190rpx; left: 33rpx; width: 129rpx; height: 129rpx; border-color: #618dff; }
 .podium-avatar-3 { top: 196rpx; left: 448rpx; width: 127rpx; height: 127rpx; border-color: #f68467; }
 .podium-avatar-img { width: 100%; height: 100%; }
-.podium-avatar-text { color: #ffffff; font-size: 44rpx; }
 .podium-badge { position: absolute; }
 .podium-badge-1 { top: 240rpx; left: 283rpx; width: 46rpx; height: 46rpx; }
 .podium-badge-2 { top: 302rpx; left: 79rpx; width: 38rpx; height: 38rpx; }
@@ -296,8 +290,6 @@ onMounted(() => {
 .row-left { display: flex; min-width: 0; align-items: center; gap: 23rpx; }
 .row-rank { width: 38rpx; flex-shrink: 0; color: #1d2129; font-size: 29rpx; font-weight: 600; text-align: center; }
 .row-avatar { width: 92rpx; height: 92rpx; flex-shrink: 0; background: #d8d8d8; border-radius: 50%; }
-.row-avatar-placeholder { display: flex; align-items: center; justify-content: center; }
-.row-avatar-text { color: #ffffff; font-size: 34rpx; }
 .row-name { max-width: 144rpx; overflow: hidden; color: #1d2129; font-size: 29rpx; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .row-me { flex-shrink: 0; padding: 0 8rpx; color: #ff5c1e; font-size: 22rpx; line-height: 30rpx; }
 .row-count { flex-shrink: 0; color: #86909c; font-size: 29rpx; font-weight: 400; }
