@@ -114,6 +114,12 @@ function requestInternal<T = unknown>(options: UniApp.RequestOptions, allowPubli
         }
         if (response.statusCode < 200 || response.statusCode >= 300) {
           handleUnauthorized(response.statusCode, body.code)
+          // 404/405 常见于「后端尚未上线该接口」：给出业务可读文案，避免被误报成网络异常而让用户反复重试。
+          // 注意：后端未上线时通常不返回 message，所以这里不能再用 body.message 兜底。
+          if (response.statusCode === 404 || response.statusCode === 405) {
+            reject(new ApiRequestError('该功能暂未开放，请稍后再试', response.statusCode))
+            return
+          }
           reject(new ApiRequestError(body.message || '网络异常，请稍后重试', body.code))
           return
         }
