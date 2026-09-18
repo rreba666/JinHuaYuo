@@ -77,8 +77,12 @@ export function getPromotionRecords(params: PromotionRecordQuery = {}): Promise<
   return request<PromotionPageResult>({ url: `/api/promotion/records?${query}`, method: 'GET' })
 }
 
-/** 排行榜统计周期：`DAY`=今日 / `WEEK`=本周 / `MONTH`=本月 / `YEAR`=本年。 */
-export type LeaderboardPeriod = 'DAY' | 'WEEK' | 'MONTH' | 'YEAR'
+/**
+ * 排行榜统计周期：`DAY`=日 / `WEEK`=周 / `MONTH`=月 / `YEAR`=年 / `ALL`=**总榜**（全时段累计）。
+ * ⚠️ `ALL` 需要后端支持（api-docs 当前仅 DAY/WEEK/MONTH/YEAR），需求见
+ * `docs/后端文档/排行榜总榜-后端需求-2026-09-18.md`；后端上线后前端**无需改动**即生效。
+ */
+export type LeaderboardPeriod = 'DAY' | 'WEEK' | 'MONTH' | 'YEAR' | 'ALL'
 
 /** 排行榜单行（对应后端 LeaderboardRow）。 */
 export interface LeaderboardRow {
