@@ -74,9 +74,9 @@ function avatarText(row: LeaderboardRow | null): string {
   return name ? name.slice(0, 1) : '用'
 }
 
-/** 领奖台徽章图（设计稿：金 1 / 银 2 / 铜 3 六边形徽章）。 */
+/** 领奖台徽章图（设计切图：金 1 / 银 2 / 铜 3 六边形徽章）。 */
 function badgeSrc(index: number): string {
-  return `/static/leaderboard/badge-${index + 1}.png`
+  return `/subpkg-wallet/static/leaderboard/medal-${index + 1}.png`
 }
 
 /** 昵称展示兜底：后端可能不下发昵称。 */
@@ -186,8 +186,8 @@ onMounted(() => {
 
 <template>
   <view class="page">
-    <!-- 页面背景：设计稿的三色柔光装饰层 -->
-    <image class="page-bg" src="/static/leaderboard/bg-glow.jpg" mode="aspectFill" />
+    <!-- 页面背景：设计切图（SVG 矢量，放在分包内不占主包体积） -->
+    <image class="page-bg" src="/subpkg-wallet/static/leaderboard/bg.svg" mode="aspectFill" />
 
     <view class="nav" :style="navStyle">
       <view class="nav-back" @click="goBack"><text class="back-icon">‹</text></view>
@@ -216,7 +216,7 @@ onMounted(() => {
 
       <!-- 前三名领奖台（设计稿：日落领奖台插图 + 三张头像 + 金/银/铜徽章） -->
       <view v-if="podiumVisible" class="podium">
-        <image class="podium-art" src="/static/leaderboard/podium.jpg" mode="scaleToFill" />
+        <image class="podium-art" src="/subpkg-wallet/static/leaderboard/podium.png" mode="scaleToFill" />
         <template v-for="(item, index) in podium" :key="index">
           <view v-if="item" class="podium-avatar" :class="'podium-avatar-' + (index + 1)">
             <image v-if="item.avatarUrl" class="podium-avatar-img" :src="item.avatarUrl" mode="aspectFill" />

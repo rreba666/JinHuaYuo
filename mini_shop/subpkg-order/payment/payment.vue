@@ -209,6 +209,8 @@ const peptideRowVisible = computed(() => !existingOrder.value && Boolean(peptide
 const peptideUsageTip = computed(() => normalizePeptideWording(peptideUsable.value?.usageTip))
 /** 应付合计：实付减去肽金券抵扣，兜底不为负。 */
 const payableTotal = computed(() => Math.max(0, total.value - peptideDeduction.value))
+/** 历史订单已使用的肽金券抵扣金额（元）：只读展示，保证明细行与小计/合计对得上。 */
+const existingPeptideAmount = computed(() => Math.max(0, Number(existingOrder.value?.peptideAmount || 0)))
 
 /** 拉取本单肽金券可用额度；历史订单或商品未就绪时不请求，失败时静默隐藏抵扣行。 */
 async function loadPeptideUsable(): Promise<void> {
@@ -1042,6 +1044,11 @@ function backToCart(): void {
         <view class="amount-row"><text>小计</text><text>¥{{ formatMoney(subtotal) }}</text></view>
         <view class="amount-row"><text>优惠券</text><text class="discount-text">-¥{{ formatMoney(discountAmount) }}</text></view>
         <view class="amount-row"><text>配送费</text><text>{{ pickupType === 1 ? '(门店自提) ' : '' }}¥{{ formatMoney(deliveryFee) }}</text></view>
+        <!-- 历史订单：肽金券抵扣已发生，只读展示（否则明细各相加与合计对不上） -->
+        <view v-if="existingPeptideAmount > 0" class="amount-row">
+          <text>肽金券抵扣</text>
+          <text class="peptide-text">-¥{{ formatMoney(existingPeptideAmount) }}</text>
+        </view>
         <!-- 肽金券抵扣：仅新建订单可用（订单创建后无法再抵扣），点击整行切换是否使用 -->
         <view v-if="peptideRowVisible" class="amount-row peptide-row" @click="usePeptide = !usePeptide">
           <view class="peptide-left">

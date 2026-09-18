@@ -37,6 +37,12 @@ export interface OrderSummary {
   totalAmount?: number
   /** 减免额（优惠券抵扣，元），支付页优惠券行展示。 */
   discountAmount?: number
+  /**
+   * 本单使用的肽金券抵扣金额（元）。
+   * 实付口径：`payAmount = totalAmount - discountAmount - peptideAmount + freightAmount`，
+   * 因此明细里必须展示该行，否则各明细相加与合计对不上。
+   */
+  peptideAmount?: number
   totalQuantity: number
   firstProductImage: string
   createTime: string
