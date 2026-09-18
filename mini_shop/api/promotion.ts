@@ -77,6 +77,64 @@ export function getPromotionRecords(params: PromotionRecordQuery = {}): Promise<
   return request<PromotionPageResult>({ url: `/api/promotion/records?${query}`, method: 'GET' })
 }
 
+/** 排行榜统计周期：`DAY`=今日 / `WEEK`=本周 / `MONTH`=本月 / `YEAR`=本年。 */
+export type LeaderboardPeriod = 'DAY' | 'WEEK' | 'MONTH' | 'YEAR'
+
+/** 排行榜单行（对应后端 LeaderboardRow）。 */
+export interface LeaderboardRow {
+  /** 名次，从 1 开始；后端口径下名次唯一、没有并列。 */
+  rank: number
+  promoterUserId: string
+  nickname: string
+  /** 头像地址；用户未设置头像时为 null，前端需兜底占位。 */
+  avatarUrl: string | null
+  /** 统计周期内推广的人数（去重：同一个人下多单只算 1 人）。 */
+  promotedUserCount: number
+  /** 统计周期内产生的推广金（元）。 */
+  promotionAmount: number
+  /** 是否当前登录用户本人（用于列表高亮）。 */
+  isMe: boolean
+}
+
+/**
+ * 推广排行榜（对应后端 PromotionLeaderboardVO）。
+ * 口径：只统计「推广金已生成」（被推广人支付成功）且未退款作废的记录，时间锚点 = 支付时间 `pay_time`。
+ */
+export interface PromotionLeaderboard {
+  period: LeaderboardPeriod
+  /** 周期中文标签（如「本周」），直接取后端下发值展示。 */
+  periodLabel: string
+  /** 周期起点（含）。 */
+  periodStart: string
+  /** 周期**理论**终点（含）；滚动口径下真实数据上界是 `asOf`，不要拿它当截止时间。 */
+  periodEnd: string
+  /** 统计截止时刻（= 请求时刻），页面需据此标注「数据截至 xx:xx」。 */
+  asOf: string
+  /** 当前周期是否已走完；滚动口径（含未走完的当前周期）下**恒为 false**。 */
+  periodComplete: boolean
+  /** 本次返回的榜单条数上限。 */
+  limit: number
+  /** 我的名次；本周期没有有效推广时为 null（人数与金额均为 0）。 */
+  myRank: number | null
+  /** 我本周期推广的人数（去重）。 */
+  myPromotedUserCount: number
+  /** 我本周期产生的推广金（元）。 */
+  myPromotionAmount: number
+  /** 我是否已出现在 list 中；false 表示我不在前 limit 名内，页面需单独展示「我的排名」。 */
+  myRankInList: boolean
+  list: LeaderboardRow[]
+}
+
+/**
+ * 获取推广排行榜。
+ * 滚动口径：周期终点恒为「此刻」，`periodComplete` 恒为 false，
+ * 展示时必须用 `asOf` 标注「数据截至」，不要当成完整周期的定稿数字。
+ */
+export function getPromotionLeaderboard(period: LeaderboardPeriod = 'WEEK', limit = 20): Promise<PromotionLeaderboard> {
+  const query = buildQuery({ period, limit })
+  return request<PromotionLeaderboard>({ url: `/api/promotion/leaderboard?${query}`, method: 'GET' })
+}
+
 /** 推广码落地页：非 tabBar 中转页，扫码后解析推广关系再跳首页（tabBar 页不能直接作为小程序码 page）。 */
 export const PROMOTION_LANDING_PAGE = 'pages/promo/landing'
 

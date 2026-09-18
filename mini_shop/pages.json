@@ -188,6 +188,14 @@
             "navigationBarTitleText": "我的收藏",
             "navigationBarBackgroundColor": "#FFFFFF"
           }
+        },
+        {
+          "path": "leaderboard/leaderboard",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTitleText": "推广排行榜",
+            "navigationBarBackgroundColor": "#FFFFFF"
+          }
         }
       ]
     }

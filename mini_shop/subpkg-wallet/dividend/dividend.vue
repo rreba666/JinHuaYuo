@@ -269,6 +269,16 @@ function goWallet(): void {
   uni.navigateTo({ url: '/subpkg-wallet/withdraw/withdraw' })
 }
 
+/** 进入推广排行榜（推广中心二级页）；门槛与推广中心其他功能保持一致。 */
+function goLeaderboard(): void {
+  if (!navigationThrottle()) return
+  if (!registeredUser.value) {
+    denyGuestAccess()
+    return
+  }
+  uni.navigateTo({ url: '/subpkg-wallet/leaderboard/leaderboard' })
+}
+
 /** 拦截游客访问推广中心，并返回个人中心等待后端身份升级。 */
 function denyGuestAccess(): void {
   if (accessDenied.value) return
@@ -416,6 +426,12 @@ onShow(() => {
           </view>
         </view>
 
+        <!-- 排行榜入口：进入「推广排行榜」二级页 -->
+        <view class="leaderboard-entry" @click="goLeaderboard">
+          <text class="leaderboard-label">排行榜</text>
+          <view class="leaderboard-arrow" />
+        </view>
+
         <view class="promotion-section">
           <text class="promotion-title">推广数据</text>
           <view class="table-head">
@@ -490,6 +506,11 @@ onShow(() => {
 .stat-copy { display: flex; min-width: 0; height: 88rpx; flex-direction: column; justify-content: space-between; margin-left: 28rpx; }
 .stat-value { color: #4f4f4f; font-size: 45.8rpx; font-weight: 600; line-height: 54.96rpx; }
 .stat-label { color: #959595; font-size: 22.9rpx; line-height: 28rpx; white-space: nowrap; }
+/* 排行榜入口行 */
+.leaderboard-entry { display: flex; align-items: center; justify-content: space-between; height: 96rpx; margin: 32rpx 40rpx 0; padding: 0 32rpx; box-sizing: border-box; background: #f6f6f6; }
+.leaderboard-label { color: #010101; font-size: 26rpx; line-height: 36rpx; }
+.leaderboard-arrow { position: relative; width: 28rpx; height: 1rpx; background: #000; }
+.leaderboard-arrow::after { position: absolute; top: -4rpx; right: 0; width: 8rpx; height: 8rpx; border-top: 1rpx solid #000; border-right: 1rpx solid #000; content: ''; transform: rotate(45deg); }
 .promotion-section { margin-top: 94rpx; }
 .promotion-title { display: block; margin-left: 56rpx; color: #000; font-size: 26.72rpx; line-height: 40rpx; }
 .table-head { display: grid; grid-template-columns: 200rpx 194rpx 212rpx 72rpx; width: 678rpx; margin: 32rpx 0 0 56rpx; color: #959595; font-size: 22.9rpx; line-height: 34rpx; }
