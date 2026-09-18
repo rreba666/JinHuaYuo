@@ -1,5 +1,5 @@
 import { request } from './request'
-import type { AdminDividendSlot, BonusInjectDTO, DailyContributionUser, DividendContribution, DividendContributionPage, DividendRecordTestItem, DividendRecordTestResult, DividendSlotTestItem, DividendSlotTestResult, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, ProfitResponse, PromotionBinding, PromotionBindingPage, PromotionBindingQuery, PromotionPage, PendingPromotionRecord, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
+import type { AdminDividendSlot, BonusInjectDTO, DailyContributionUser, DividendContribution, DividendContributionPage, DividendRecordTestItem, DividendRecordTestResult, DividendSlotTestItem, DividendSlotTestResult, LeaderboardPeriod, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, ProfitLeaderboard, ProfitLeaderboardRow, ProfitResponse, PromotionBinding, PromotionBindingPage, PromotionBindingQuery, PromotionPage, PendingPromotionRecord, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
 
 function unwrap<T>(response: { data: ProfitResponse<T> }, fallback: string): T {
   const result = response.data
@@ -28,6 +28,31 @@ function normalizeBindingPage(value: unknown, page: number, pageSize: number): P
   const raw = (value || {}) as Record<string, unknown>
   const list = Array.isArray(raw.list) ? raw.list : []
   return { total: Number(raw.total ?? list.length) || 0, page: Number(raw.page ?? page) || page, pageSize: Number(raw.pageSize ?? pageSize) || pageSize, list: list.map(normalizeBinding) }
+}
+
+function normalizeLeaderboardRow(value: unknown): ProfitLeaderboardRow {
+  const row = (value || {}) as Partial<ProfitLeaderboardRow>
+  return { ...row, rank: Number(row.rank ?? 0), promoterUserId: String(row.promoterUserId ?? ''), nickname: String(row.nickname ?? ''), avatarUrl: row.avatarUrl == null ? null : String(row.avatarUrl), promotedUserCount: Number(row.promotedUserCount ?? 0), promotionAmount: Number(row.promotionAmount ?? 0), isMe: row.isMe === true }
+}
+
+/** 归一化排行榜响应：list 缺失按空榜兜底、名次缺失按 0 处理，避免表格渲染 undefined。 */
+function normalizeLeaderboard(value: unknown, period: LeaderboardPeriod, limit: number): ProfitLeaderboard {
+  const raw = (value || {}) as Record<string, unknown>
+  const list = Array.isArray(raw.list) ? raw.list : []
+  return {
+    period: (raw.period as LeaderboardPeriod) || period,
+    periodLabel: String(raw.periodLabel ?? ''),
+    periodStart: String(raw.periodStart ?? ''),
+    periodEnd: String(raw.periodEnd ?? ''),
+    asOf: String(raw.asOf ?? ''),
+    periodComplete: raw.periodComplete === true,
+    limit: Number(raw.limit ?? limit) || limit,
+    myRank: raw.myRank == null ? null : Number(raw.myRank),
+    myPromotedUserCount: Number(raw.myPromotedUserCount ?? 0),
+    myPromotionAmount: Number(raw.myPromotionAmount ?? 0),
+    myRankInList: raw.myRankInList === true,
+    list: list.map(normalizeLeaderboardRow),
+  }
 }
 
 function normalizePool(value: unknown): SevenDayBonusPool {
@@ -149,6 +174,18 @@ export async function getPendingPromotion(params: { page: number; size: number }
 
 export async function getPromotionRelations(query: PromotionBindingQuery): Promise<PromotionBindingPage> {
   return normalizeBindingPage(unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/relations', { params: query }), '推广关系查询失败'), query.page, query.size)
+}
+
+/**
+ * 后台推广排行榜（GET /api/admin/profit/promotion-leaderboard）。
+ * 与 C 端 `GET /api/promotion/leaderboard` 同源同口径：只算「推广金已生成」（被推广人支付成功）
+ * 且未退款作废的推广，按去重人数排名，时间锚点 = 支付时间 `pay_time`。
+ * B 端不返回「我的排名」（管理员不是推广员），接口也**不返回手机号**。
+ * 滚动口径：周期终点恒为「此刻」，`periodComplete` 恒为 false，展示须用 `asOf` 标注「数据截至」。
+ */
+export async function getPromotionLeaderboard(period: LeaderboardPeriod = 'WEEK', limit = 20): Promise<ProfitLeaderboard> {
+  const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/promotion-leaderboard', { params: { period, limit } }), '推广排行榜查询失败')
+  return normalizeLeaderboard(data, period, limit)
 }
 
 /**

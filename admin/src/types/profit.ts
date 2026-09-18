@@ -38,6 +38,53 @@ export interface PromotionBindingQuery {
   size: number
 }
 
+/** 推广排行榜统计周期：DAY=今日 / WEEK=本周 / MONTH=本月 / YEAR=本年。 */
+export type LeaderboardPeriod = 'DAY' | 'WEEK' | 'MONTH' | 'YEAR'
+
+/** 推广排行榜单行（B 端，对应后端 LeaderboardRow）。 */
+export interface ProfitLeaderboardRow {
+  /** 名次，从 1 开始；后端口径下名次唯一、没有并列。 */
+  rank: number
+  /** 推广员用户 ID（B 端专用，供后台核对用户；接口不返回手机号）。 */
+  promoterUserId: string
+  nickname: string
+  /** 头像地址；未设置时为 null。 */
+  avatarUrl: string | null
+  /** 周期内推广的人数（去重：同一人下多单只算 1 人）。 */
+  promotedUserCount: number
+  /** 周期内产生的推广金（元）。 */
+  promotionAmount: number
+  /** 仅 C 端有意义，B 端恒为 false。 */
+  isMe: boolean
+}
+
+/**
+ * 推广排行榜（B 端，对应后端 PromotionLeaderboardVO）。
+ * 与 C 端 `GET /api/promotion/leaderboard` **同源同口径**，差别：
+ * - B 端 `myRank` / `myPromotedUserCount` / `myPromotionAmount` 恒为空（管理员不是推广员），`myRankInList` 恒 false；
+ * - 接口**不返回手机号**（两端同结构，放进 C 端会泄漏）。
+ */
+export interface ProfitLeaderboard {
+  period: LeaderboardPeriod
+  /** 周期中文标签（如「本周」），直接取后端下发值展示。 */
+  periodLabel: string
+  /** 周期起点（含）。 */
+  periodStart: string
+  /** 周期**理论**终点（含）；滚动口径下真实数据上界是 `asOf`。 */
+  periodEnd: string
+  /** 统计截止时刻（= 请求时刻），页面据此标注「数据截至」。 */
+  asOf: string
+  /** 恒为 false（滚动口径含尚未走完的当前周期）。 */
+  periodComplete: boolean
+  /** 本次返回的榜单条数上限。 */
+  limit: number
+  myRank: number | null
+  myPromotedUserCount: number
+  myPromotionAmount: number
+  myRankInList: boolean
+  list: ProfitLeaderboardRow[]
+}
+
 export interface SevenDayBonusPool {
   id: string
   startDate: string

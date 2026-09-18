@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'elem
 import { Delete, Edit, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { getUsers } from '@/api/user'
 import { useProfitStore } from '@/stores/profit'
-import type { PromotionBinding, PromotionBindingSource } from '@/types/profit'
+import type { LeaderboardPeriod, PromotionBinding, PromotionBindingSource } from '@/types/profit'
 import type { User } from '@/types/user'
 
 /**
@@ -116,13 +116,42 @@ async function unbindPromotionRelation(row: PromotionBinding): Promise<void> {
   } catch (error) { if (error !== 'cancel' && error !== 'close') showError(error, '解除绑定失败') }
 }
 
+/** 排行榜周期选项（与后端 period 枚举一致，默认本周与后端默认值对齐）。 */
+const leaderboardPeriods: { label: string; value: LeaderboardPeriod }[] = [
+  { label: '今日', value: 'DAY' },
+  { label: '本周', value: 'WEEK' },
+  { label: '本月', value: 'MONTH' },
+  { label: '本年', value: 'YEAR' },
+]
+
+/**
+ * 加载推广排行榜（B 端）。与 C 端同源同口径，但不返回「我的排名」；
+ * 滚动口径下周期含尚未走完的当前周期，提示里用 asOf 标注数据上界。
+ */
+async function loadLeaderboard(): Promise<void> {
+  try { await store.fetchLeaderboard() } catch (error) { showError(error, '推广排行榜加载失败') }
+}
+
+/** 懒加载：切到「推广排行榜」页签时才拉取榜单，避免首屏多打一次请求。 */
+function handleTabChange(name: string | number): void {
+  if (name === 'leaderboard') void loadLeaderboard()
+}
+
+/** 名次标签样式：前三名用醒目色，其余为普通信息色（B 端名次唯一、无并列）。 */
+function rankType(rank: number): 'danger' | 'warning' | 'success' | 'info' {
+  if (rank === 1) return 'danger'
+  if (rank === 2) return 'warning'
+  if (rank === 3) return 'success'
+  return 'info'
+}
+
 onMounted(() => { void load(); void loadRelations() })
 </script>
 
 <template>
   <section class="page-container page-enter">
     <div class="page-heading"><div><h1>推广管理</h1><p>待推广金明细与用户推广绑定关系；红包相关功能请前往「红包管理」。</p></div><el-button :loading="store.loading" @click="load"><el-icon><Refresh /></el-icon>刷新</el-button></div>
-    <el-tabs v-model="activeTab" class="module-tabs">
+    <el-tabs v-model="activeTab" class="module-tabs" @tab-change="handleTabChange">
       <el-tab-pane label="待推广金" name="promotion">
         <el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>待推广金</strong><span class="toolbar-count">共 {{ store.pendingTotal }} 条</span></div></div>
           <el-table :data="store.pendingPromotion" v-loading="store.loading" border stripe><el-table-column prop="id" label="记录 ID" width="110" /><el-table-column prop="orderNo" label="订单号" min-width="180" /><el-table-column prop="promoterUserId" label="推广用户" width="120" /><el-table-column prop="buyerUserId" label="购买用户" width="120" /><el-table-column label="金额" width="120"><template #default="{ row }">{{ money(row.amount) }}</template></el-table-column><el-table-column prop="createdAt" label="创建时间" min-width="180" /></el-table>
@@ -133,6 +162,12 @@ onMounted(() => { void load(); void loadRelations() })
         <el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>推广关系</strong><span class="toolbar-count">共 {{ store.relationTotal }} 条</span></div><div class="toolbar-actions"><el-input v-model="relationKeyword" placeholder="买家或推广员关键词" clearable class="relationKeyword" @keyup.enter="searchRelations" /><el-select v-model="relationSource" clearable placeholder="来源" class="relationSource"><el-option label="扫码绑定" value="SCAN" /><el-option label="手动绑定" value="MANUAL" /><el-option label="未知来源" value="UNKNOWN" /></el-select><el-button :icon="Search" @click="searchRelations">搜索</el-button><el-button type="primary" :icon="Plus" :loading="store.relationActionLoading" @click="openBind">新增绑定</el-button></div></div>
           <el-table :data="store.relations" v-loading="store.relationLoading" border stripe><el-table-column prop="buyerUserId" label="买家 ID" width="110" /><el-table-column prop="buyerName" label="买家" min-width="130" /><el-table-column prop="promoterUserId" label="推广员 ID" width="120" /><el-table-column prop="promoterName" label="推广员" min-width="130" /><el-table-column prop="bindTime" label="绑定时间" min-width="170" /><el-table-column prop="sourceDesc" label="来源" width="110" /><el-table-column label="状态" width="95"><template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.statusDesc || statusText(row.status) }}</el-tag></template></el-table-column><el-table-column label="操作" width="190" fixed="right"><template #default="{ row }"><div class="operator-actions"><el-button size="small" type="primary" :loading="store.relationActionLoading" @click="openRebind(row)"><el-icon><Edit /></el-icon>重新绑定</el-button><el-button size="small" type="danger" :loading="store.relationActionLoading" @click="unbindPromotionRelation(row)"><el-icon><Delete /></el-icon>解除绑定</el-button></div></template></el-table-column></el-table>
           <div class="table-pagination"><span>共 {{ store.relationTotal }} 条</span><el-pagination background layout="total, sizes, prev, pager, next" :current-page="store.relationPage" :page-size="store.relationSize" :total="store.relationTotal" @current-change="relationPageChange" @size-change="relationSizeChange" /></div>
+        </el-card>
+      </el-tab-pane>
+      <el-tab-pane label="推广排行榜" name="leaderboard">
+        <el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>推广排行榜</strong><span class="toolbar-count">{{ store.leaderboard?.periodLabel || '' }}按推广人数排名</span></div><div class="toolbar-actions"><el-radio-group v-model="store.leaderboardPeriod" @change="loadLeaderboard"><el-radio-button v-for="opt in leaderboardPeriods" :key="opt.value" :value="opt.value">{{ opt.label }}</el-radio-button></el-radio-group><el-button :loading="store.leaderboardLoading" @click="loadLeaderboard"><el-icon><Refresh /></el-icon>刷新</el-button></div></div>
+          <p class="leaderboard-tip">只统计「推广金已生成」（被推广人支付成功）且未退款作废的推广，按去重人数排名，时间锚点为支付时间。<template v-if="store.leaderboard?.asOf">数据截至 {{ store.leaderboard.asOf }}（本周期尚未结束）。</template></p>
+          <el-table :data="store.leaderboard?.list || []" v-loading="store.leaderboardLoading" border stripe empty-text="本周期暂无推广数据"><el-table-column label="名次" width="90"><template #default="{ row }"><el-tag :type="rankType(row.rank)" effect="dark" round>{{ row.rank }}</el-tag></template></el-table-column><el-table-column label="用户" min-width="200"><template #default="{ row }"><div class="leaderboard-user"><el-avatar :size="28" :src="row.avatarUrl || undefined">{{ (row.nickname || '用').slice(0, 1) }}</el-avatar><span>{{ row.nickname || '微信用户' }}</span></div></template></el-table-column><el-table-column prop="promoterUserId" label="用户 ID" width="120" /><el-table-column label="推广人数" width="120"><template #default="{ row }">{{ row.promotedUserCount }} 人</template></el-table-column><el-table-column label="推广金" width="140"><template #default="{ row }">{{ money(row.promotionAmount) }}</template></el-table-column></el-table>
         </el-card>
       </el-tab-pane>
     </el-tabs>
@@ -169,5 +204,7 @@ onMounted(() => { void load(); void loadRelations() })
 .bind-alert { margin-bottom: 16px; }
 .bind-buyer-select { width: 100%; }
 .bind-tip { margin: 0; color: var(--el-text-color-secondary); font-size: 12px; line-height: 18px; }
+.leaderboard-tip { margin: 0 0 12px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 18px; }
+.leaderboard-user { display: flex; align-items: center; gap: 8px; }
 @media (max-width: 900px) { .toolbar-actions, .table-pagination { align-items: stretch; flex-direction: column; } .relationKeyword, .relationSource { width: 100%; } }
 </style>

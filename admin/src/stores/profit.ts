@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
-import { adjustDaily, adjustPool, confirmPool, createPromotionRelation, getAdminDividendSlots, getBonusDetails, getBonusPools, getDailyUsers, getDividendLimits, getPendingPromotion, getProfitContributions, getPromotionRelations, getUnsettledDailyDetails, getSettledDailyDetails, injectBonusPool, rebindPromotionRelation, settleProfit, unbindPromotionRelation } from '@/api/profit'
-import type { AdminDividendSlot, BonusInjectDTO, DailyContributionUser, DividendContribution, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, PromotionBinding, PromotionBindingSource, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit } from '@/types/profit'
+import { adjustDaily, adjustPool, confirmPool, createPromotionRelation, getAdminDividendSlots, getBonusDetails, getBonusPools, getDailyUsers, getDividendLimits, getPendingPromotion, getProfitContributions, getPromotionLeaderboard, getPromotionRelations, getUnsettledDailyDetails, getSettledDailyDetails, injectBonusPool, rebindPromotionRelation, settleProfit, unbindPromotionRelation } from '@/api/profit'
+import type { AdminDividendSlot, BonusInjectDTO, DailyContributionUser, DividendContribution, LeaderboardPeriod, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, ProfitLeaderboard, PromotionBinding, PromotionBindingSource, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit } from '@/types/profit'
 
 export const useProfitStore = defineStore('profit', () => {
   const pendingPromotion = ref<import('@/types/profit').PendingPromotionRecord[]>([])
@@ -30,6 +30,10 @@ export const useProfitStore = defineStore('profit', () => {
   const contributionLoading = ref(false)
   const loading = ref(false)
   const actionLoading = ref(false)
+  /** 推广排行榜（B 端）：数据快照 / 当前周期 / 加载态。 */
+  const leaderboard = ref<ProfitLeaderboard | null>(null)
+  const leaderboardPeriod = ref<LeaderboardPeriod>('WEEK')
+  const leaderboardLoading = ref(false)
 
   /** 加载推广金、红包和用户额度数据。 */
   async function fetchAll(): Promise<void> {
@@ -74,6 +78,17 @@ export const useProfitStore = defineStore('profit', () => {
       relations.value = result.list
       relationTotal.value = result.total
     } finally { relationLoading.value = false }
+  }
+
+  /**
+   * 加载推广排行榜（B 端）。与 C 端同源同口径，但不返回「我的排名」（管理员不是推广员）；
+   * 滚动口径下周期含尚未走完的当前周期，页面须展示 `asOf` 作为数据上界。
+   */
+  async function fetchLeaderboard(): Promise<void> {
+    leaderboardLoading.value = true
+    try {
+      leaderboard.value = await getPromotionLeaderboard(leaderboardPeriod.value)
+    } finally { leaderboardLoading.value = false }
   }
 
   async function fetchContributions(): Promise<void> {
@@ -124,5 +139,5 @@ export const useProfitStore = defineStore('profit', () => {
     }
   }
 
-  return { pendingPromotion, pendingTotal, pendingPage, pendingSize, relations, relationTotal, relationPage, relationSize, relationLoading, relationActionLoading, relationFilters, sevenDayPools, poolDetails, unsettledDaily, settledDaily, dividendLimits, adminSlots, dailyUsers, contributions, contributionTotal, contributionPage, contributionSize, contributionStatus, contributionLoading, loading, actionLoading, fetchAll, fetchPendingPromotion, fetchRedPacketData, fetchRelations, fetchContributions, fetchPoolDetails, fetchAdminSlots, fetchDailyUsers, rebindRelation, createRelation, unbindRelation, inject, settle, confirm, adjust, adjustDetail }
+  return { pendingPromotion, pendingTotal, pendingPage, pendingSize, relations, relationTotal, relationPage, relationSize, relationLoading, relationActionLoading, relationFilters, sevenDayPools, poolDetails, unsettledDaily, settledDaily, dividendLimits, adminSlots, dailyUsers, contributions, contributionTotal, contributionPage, contributionSize, contributionStatus, contributionLoading, loading, actionLoading, leaderboard, leaderboardPeriod, leaderboardLoading, fetchAll, fetchPendingPromotion, fetchRedPacketData, fetchRelations, fetchLeaderboard, fetchContributions, fetchPoolDetails, fetchAdminSlots, fetchDailyUsers, rebindRelation, createRelation, unbindRelation, inject, settle, confirm, adjust, adjustDetail }
 })
