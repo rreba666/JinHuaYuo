@@ -165,7 +165,7 @@ onMounted(() => {
           <text class="rule-title">使用说明</text>
           <text class="rule-line">· 肽金券不可提现、不可转赠，仅能在下单时抵扣「支持肽金券」的商品</text>
           <text class="rule-line">· 无门槛、无上限，攒够即可 0 元购</text>
-          <text class="rule-line">· 下单后会随机产生肽金券，与红包同时发放</text>
+          <text class="rule-line">· 下单后会产生肽金券，与红包同时发放</text>
         </view>
 
         <view class="log-section">
