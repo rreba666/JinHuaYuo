@@ -47,6 +47,16 @@ export interface SlotCountConfig {
   remark: string
 }
 
+/**
+ * 排行榜显示人数配置（后台控制 C 端小程序与后台榜单显示前几名）。
+ * 未配置时默认 20（与后端接口 limit 默认值一致），取值范围 1~100。
+ */
+export interface LeaderboardLimitConfig {
+  /** 榜单显示前几名（1~100）。 */
+  limit: number
+  remark: string
+}
+
 /** 商品资金比例配置。 */
 export interface ProfitRatesConfig {
   promotionRate: number

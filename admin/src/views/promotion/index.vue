@@ -2,8 +2,12 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Delete, Edit, Plus, Refresh, Search } from '@element-plus/icons-vue'
+import { getLeaderboardLimitConfig, saveLeaderboardLimitConfig } from '@/api/setting'
 import { getUsers } from '@/api/user'
+import { useAuthStore } from '@/stores/auth'
 import { useProfitStore } from '@/stores/profit'
+import { isSuperAdmin } from '@/utils/permission'
+import type { AdminRole } from '@/types/auth'
 import type { LeaderboardPeriod, PromotionBinding, PromotionBindingSource } from '@/types/profit'
 import type { User } from '@/types/user'
 
@@ -12,6 +16,7 @@ import type { User } from '@/types/user'
  * 仅保留「待推广金」与「推广关系」两个能力；红包相关能力已迁至「红包管理」页（仅超级管理员可见）。
  */
 const store = useProfitStore()
+const authStore = useAuthStore()
 const activeTab = ref('promotion')
 const rebindVisible = ref(false)
 const rebindRow = ref<PromotionBinding | null>(null)
@@ -158,10 +163,35 @@ function startLeaderboardPolling(): void {
   leaderboardTimer = setInterval(() => { if (activeTab.value === 'leaderboard') void loadLeaderboard(true) }, LEADERBOARD_POLL_INTERVAL)
 }
 
-/** 切页签：进入排行榜才加载并开始轮询，切走立即停止（懒加载 + 省请求）。 */
+/** 切页签：进入排行榜才加载榜单与显示人数配置并开始轮询，切走立即停止（懒加载 + 省请求）。 */
 function handleTabChange(name: string | number): void {
-  if (name === 'leaderboard') { void loadLeaderboard(); startLeaderboardPolling(); return }
+  if (name === 'leaderboard') { void loadLeaderboard(); void loadLeaderboardLimit(); startLeaderboardPolling(); return }
   stopLeaderboardPolling()
+}
+
+/** 排行榜显示人数（后台配置，控制 C 端小程序与后台榜单显示前几名，1~100）。 */
+const leaderboardLimit = ref(20)
+const leaderboardLimitSaving = ref(false)
+/** 仅超级管理员可改：这是平台级参数，商户管理员/财务只读。 */
+const canEditLeaderboardLimit = computed(() => isSuperAdmin(authStore.role as AdminRole))
+
+/** 读取排行榜显示人数配置；未配置或值非法时回落到默认 20。 */
+async function loadLeaderboardLimit(): Promise<void> {
+  try {
+    const config = await getLeaderboardLimitConfig()
+    leaderboardLimit.value = config.limit
+  } catch (error) { showError(error, '排行榜显示人数读取失败') }
+}
+
+/** 保存排行榜显示人数，并重新拉取榜单以便立刻确认条数是否按配置返回。 */
+async function saveLeaderboardLimit(): Promise<void> {
+  if (!canEditLeaderboardLimit.value) return
+  leaderboardLimitSaving.value = true
+  try {
+    await saveLeaderboardLimitConfig({ limit: leaderboardLimit.value, remark: '推广管理页设置排行榜显示人数' })
+    ElMessage.success('已保存排行榜显示人数')
+    await loadLeaderboard()
+  } catch (error) { showError(error, '排行榜显示人数保存失败') } finally { leaderboardLimitSaving.value = false }
 }
 
 /** 名次标签样式：前三名用醒目色，其余为普通信息色（B 端名次唯一、无并列）。 */
@@ -201,6 +231,7 @@ onUnmounted(() => stopLeaderboardPolling())
       <el-tab-pane label="推广排行榜" name="leaderboard">
         <el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>推广排行榜</strong><span class="toolbar-count">{{ store.leaderboard?.periodLabel || '' }}按本周期推广人数排名</span></div><div class="toolbar-actions"><el-radio-group v-model="store.leaderboardPeriod" @change="() => loadLeaderboard()"><el-radio-button v-for="opt in leaderboardPeriods" :key="opt.value" :value="opt.value">{{ opt.label }}</el-radio-button></el-radio-group><el-button :loading="store.leaderboardLoading" @click="loadLeaderboard()"><el-icon><Refresh /></el-icon>刷新</el-button></div></div>
           <p class="leaderboard-tip">只统计「推广金已生成」（被推广人支付成功）且未退款作废的推广，按去重人数排名，时间锚点为支付时间。<template v-if="store.leaderboard">{{ store.leaderboard.periodLabel }}（{{ periodRange }}）· 数据截至 {{ store.leaderboard.asOf }}；按自然周/月/年统计，含尚未走完的当前周期，排名随支付实时变化（页面每 60 秒自动刷新）。</template></p>
+          <div class="leaderboard-config"><span class="leaderboard-config-label">显示人数</span><el-input-number v-model="leaderboardLimit" :min="1" :max="100" :step="10" :controls="false" :disabled="!canEditLeaderboardLimit" class="leaderboard-limit-input" /><el-button type="primary" :loading="leaderboardLimitSaving" :disabled="!canEditLeaderboardLimit" @click="saveLeaderboardLimit">保存</el-button><span class="leaderboard-config-hint">{{ canEditLeaderboardLimit ? '控制小程序与后台榜单显示前几名（1~100）' : '仅超级管理员可修改' }}</span></div>
           <el-table :data="store.leaderboard?.list || []" v-loading="store.leaderboardLoading" border stripe empty-text="本周期暂无推广数据"><el-table-column label="名次" width="90"><template #default="{ row }"><el-tag :type="rankType(row.rank)" effect="dark" round>{{ row.rank }}</el-tag></template></el-table-column><el-table-column label="用户" min-width="180"><template #default="{ row }"><div class="leaderboard-user"><el-avatar :size="28" :src="row.avatarUrl || undefined">{{ (row.nickname || '用').slice(0, 1) }}</el-avatar><span>{{ row.nickname || '微信用户' }}</span></div></template></el-table-column><el-table-column prop="promoterUserId" label="用户 ID" width="110" /><el-table-column label="本周期推广人数" width="140"><template #default="{ row }">{{ row.promotedUserCount }} 人</template></el-table-column><el-table-column label="本周期推广金" width="140"><template #default="{ row }">{{ money(row.promotionAmount) }}</template></el-table-column><el-table-column label="累计推广人数" width="130"><template #default="{ row }">{{ totalText(row.totalPromotedUserCount, ' 人') }}</template></el-table-column><el-table-column label="累计推广金" width="130"><template #default="{ row }">{{ row.totalPromotionAmount == null ? '—' : money(row.totalPromotionAmount) }}</template></el-table-column></el-table>
         </el-card>
       </el-tab-pane>
@@ -240,5 +271,10 @@ onUnmounted(() => stopLeaderboardPolling())
 .bind-tip { margin: 0; color: var(--el-text-color-secondary); font-size: 12px; line-height: 18px; }
 .leaderboard-tip { margin: 0 0 12px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 18px; }
 .leaderboard-user { display: flex; align-items: center; gap: 8px; }
+/* 排行榜显示人数配置：与工具栏同一视觉层级 */
+.leaderboard-config { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.leaderboard-config-label { color: var(--el-text-color-regular); font-size: 13px; }
+.leaderboard-limit-input { width: 120px; }
+.leaderboard-config-hint { color: var(--el-text-color-secondary); font-size: 12px; }
 @media (max-width: 900px) { .toolbar-actions, .table-pagination { align-items: stretch; flex-direction: column; } .relationKeyword, .relationSource { width: 100%; } }
 </style>

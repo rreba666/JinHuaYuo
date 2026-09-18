@@ -1,6 +1,6 @@
 import { request } from './request'
 import type { ApiResponse } from './request'
-import type { DividendCap, DividendCapSaveDTO, ProfitRatesConfig, ProfitRatesSaveDTO, RandomDividendConfig, RandomFloatConfig, SlotCountConfig, SysConfig, SysConfigSaveDTO, WithdrawRulesConfig, WithdrawRulesSaveDTO } from '@/types/setting'
+import type { DividendCap, DividendCapSaveDTO, LeaderboardLimitConfig, ProfitRatesConfig, ProfitRatesSaveDTO, RandomDividendConfig, RandomFloatConfig, SlotCountConfig, SysConfig, SysConfigSaveDTO, WithdrawRulesConfig, WithdrawRulesSaveDTO } from '@/types/setting'
 import { DEFAULT_DIVIDEND_RATE, DEFAULT_PROMOTION_RATE } from '@/utils/productPricing'
 
 const CUSTOMER_SERVICE_KEY = 'customer_service_phone'
@@ -139,6 +139,41 @@ export async function saveSlotCountConfig(payload: { slotCount: number; remark?:
     remark: payload.remark,
   })
   ensureSuccess(response.data, '槽位数量保存失败')
+}
+
+/** 排行榜显示人数配置键、默认值与取值范围（与后端接口 limit 的 1~100 对齐）。 */
+const LEADERBOARD_LIMIT_KEY = 'leaderboard_limit'
+const DEFAULT_LEADERBOARD_LIMIT = 20
+const LEADERBOARD_LIMIT_MIN = 1
+const LEADERBOARD_LIMIT_MAX = 100
+
+/**
+ * 读取排行榜显示人数配置。
+ * 未配置（后端返回 data=null）或值非法（非 1~100 整数）时回落到默认 20，避免把脏值写回页面。
+ */
+export async function getLeaderboardLimitConfig(): Promise<LeaderboardLimitConfig> {
+  const response = await request.get<ApiResponse<SysConfig | null>>(`/api/admin/setting/${LEADERBOARD_LIMIT_KEY}`, { skipAuthRedirect: true })
+  const result = response.data
+  try { ensureSuccess(result, '排行榜显示人数查询失败') } catch { /* 未配置时用默认值 */ }
+  const value = Number(result?.data?.configValue)
+  const valid = Number.isInteger(value) && value >= LEADERBOARD_LIMIT_MIN && value <= LEADERBOARD_LIMIT_MAX
+  return {
+    limit: valid ? value : DEFAULT_LEADERBOARD_LIMIT,
+    remark: String(result?.data?.remark ?? ''),
+  }
+}
+
+/** 保存排行榜显示人数（通用配置接口 POST /api/admin/setting/{configKey}；后端接口 limit 上限为 100）。 */
+export async function saveLeaderboardLimitConfig(payload: { limit: number; remark?: string }): Promise<void> {
+  const limit = Number(payload.limit)
+  if (!Number.isInteger(limit) || limit < LEADERBOARD_LIMIT_MIN || limit > LEADERBOARD_LIMIT_MAX) {
+    throw new Error(`排行榜显示人数必须为 ${LEADERBOARD_LIMIT_MIN}~${LEADERBOARD_LIMIT_MAX} 的整数`)
+  }
+  const response = await request.post<ApiResponse<null>>(`/api/admin/setting/${LEADERBOARD_LIMIT_KEY}`, {
+    configValue: String(limit),
+    remark: payload.remark,
+  })
+  ensureSuccess(response.data, '排行榜显示人数保存失败')
 }
 
 /** 读取商品资金比例。ADMIN 无权限访问时按业务错误处理，不触发登录跳转。 */

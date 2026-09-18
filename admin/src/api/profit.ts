@@ -181,11 +181,14 @@ export async function getPromotionRelations(query: PromotionBindingQuery): Promi
  * 与 C 端 `GET /api/promotion/leaderboard` 同源同口径：只算「推广金已生成」（被推广人支付成功）
  * 且未退款作废的推广，按去重人数排名，时间锚点 = 支付时间 `pay_time`。
  * B 端不返回「我的排名」（管理员不是推广员），接口也**不返回手机号**。
+ * `limit` **不传**时由后台配置（`leaderboard_limit`）决定显示人数，前端不写死。
  * 滚动口径：周期终点恒为「此刻」，`periodComplete` 恒为 false，展示须用 `asOf` 标注「数据截至」。
  */
-export async function getPromotionLeaderboard(period: LeaderboardPeriod = 'WEEK', limit = 20): Promise<ProfitLeaderboard> {
-  const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/promotion-leaderboard', { params: { period, limit } }), '推广排行榜查询失败')
-  return normalizeLeaderboard(data, period, limit)
+export async function getPromotionLeaderboard(period: LeaderboardPeriod = 'WEEK', limit?: number): Promise<ProfitLeaderboard> {
+  const params: Record<string, string | number> = { period }
+  if (limit !== undefined) params.limit = limit
+  const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/promotion-leaderboard', { params }), '推广排行榜查询失败')
+  return normalizeLeaderboard(data, period, limit ?? 0)
 }
 
 /**

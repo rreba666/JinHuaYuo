@@ -22,8 +22,6 @@ const periodTabs: { key: LeaderboardPeriod; label: string }[] = [
   { key: 'YEAR', label: '年榜' },
   { key: 'ALL', label: '总榜' },
 ]
-/** 榜单最多取多少名（后端限制 1~100）。 */
-const LEADERBOARD_LIMIT = 20
 /** 榜单轮询间隔：排名随支付实时变化，页面可见时每 60 秒静默刷新一次。 */
 const LEADERBOARD_POLL_INTERVAL = 60 * 1000
 
@@ -87,7 +85,8 @@ function displayName(row: LeaderboardRow): string {
 }
 
 /**
- * 加载当前周期的排行榜。
+ * 加载当前周期的排行榜。榜单显示人数由**后台配置**（`leaderboard_limit`，后台「推广管理 → 推广排行榜」可改）：
+ * 这里刻意**不传 `limit`、不写死人数**，运营调整后小程序无需重新发版。
  * @param silent 轮询触发时为 true：失败不弹提示、保留上一份数据，避免每分钟打扰用户。
  */
 async function load(silent = false): Promise<void> {
@@ -103,7 +102,7 @@ async function load(silent = false): Promise<void> {
   loading.value = true
   failed.value = false
   try {
-    const result = await getPromotionLeaderboard(period.value, LEADERBOARD_LIMIT)
+    const result = await getPromotionLeaderboard(period.value)
     if (token !== requestToken) return
     board.value = result
     totalUnavailable.value = false

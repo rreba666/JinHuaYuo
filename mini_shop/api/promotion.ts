@@ -138,10 +138,11 @@ export interface PromotionLeaderboard {
 
 /**
  * 获取推广排行榜。
+ * `limit` **不传**时由后台配置（`leaderboard_limit`）决定显示人数，前端不写死；
  * 滚动口径：周期终点恒为「此刻」，`periodComplete` 恒为 false，
  * 展示时必须用 `asOf` 标注「数据截至」，不要当成完整周期的定稿数字。
  */
-export function getPromotionLeaderboard(period: LeaderboardPeriod = 'WEEK', limit = 20): Promise<PromotionLeaderboard> {
+export function getPromotionLeaderboard(period: LeaderboardPeriod = 'WEEK', limit?: number): Promise<PromotionLeaderboard> {
   const query = buildQuery({ period, limit })
   return request<PromotionLeaderboard>({ url: `/api/promotion/leaderboard?${query}`, method: 'GET' })
 }
