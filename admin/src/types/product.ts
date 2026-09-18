@@ -15,6 +15,11 @@ export interface ProductListItem {
   /** 平台红包（红包资金，元）。列表接口可能不返回，此时为 undefined。 */
   dividendFund?: number
   dividendEnabled: ProductFundStatusValue
+  /**
+   * 是否允许该商品使用肽金券抵扣：0=否（默认）/ 1=是。
+   * 与 dividendEnabled（是否分红，决定**能否获得**肽金券）是**两个独立开关**，不要合并。
+   */
+  peptideEnabled?: ProductFundStatusValue
   /** 是否开启抽应急红包池：0/1。 */
   emergencyPoolEnabled?: ProductFundStatusValue
   /** 每单抽取应急红包池金额（元）。 */
@@ -69,6 +74,8 @@ export interface AdminProductSaveDTO {
   promotionEnabled: ProductStatus
   dividendFund: number
   dividendEnabled: ProductStatus
+  /** 是否允许该商品使用肽金券抵扣：0=否（默认）, 1=是。肽金券不可提现，仅可用于下单抵扣。 */
+  peptideEnabled: ProductStatus
   /** 是否开启抽应急红包池：0/1。 */
   emergencyPoolEnabled: ProductStatus
   /** 每单抽取应急红包池金额（元）。 */

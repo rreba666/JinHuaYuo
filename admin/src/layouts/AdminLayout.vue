@@ -11,6 +11,7 @@ import {
   Fold,
   House,
   List,
+  Money,
   Moon,
   Promotion,
   Present,
@@ -62,6 +63,11 @@ const isFinance = computed(() => authStore.role === 'FINANCE' || isPlatformOrAdm
 const isPromotion = computed(() => isFinance.value)
 /** 红包管理：仅超级管理员可见（红包贡献/结算/用户额度）。 */
 const isRedPacket = computed(() => isSuper.value)
+/**
+ * 肽金券管理：超管 + 财务可见（与后端 `/api/admin/peptide/*` 的角色口径一致）。
+ * ⚠️ 不能复用 isFinance（含商户管理员 ADMIN），否则商户管理员会出现「有菜单、接口 403」的不一致。
+ */
+const isPeptide = computed(() => isSuper.value || authStore.role === 'FINANCE')
 /** 库存对账：财务 + 超管 + 商户管理员可见（库存台账 + 退款应补未补核对，均为只读）。 */
 const isStock = computed(() => isFinance.value)
 /** 核销日志：超管 + 客服 + 财务 + 商户管理员 均可见。 */
@@ -267,6 +273,10 @@ onUnmounted(() => {
         <el-menu-item v-if="isRedPacket" index="/redpacket">
           <el-icon><Present /></el-icon>
           <template #title>红包管理</template>
+        </el-menu-item>
+        <el-menu-item v-if="isPeptide" index="/peptide">
+          <el-icon><Money /></el-icon>
+          <template #title>肽金券管理</template>
         </el-menu-item>
         <el-menu-item v-if="isFinance" index="/wallets">
           <el-icon><WalletFilled /></el-icon>

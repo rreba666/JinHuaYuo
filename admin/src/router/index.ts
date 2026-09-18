@@ -142,6 +142,13 @@ const router = createRouter({
         // 旧的「推广资金」地址兼容：统一跳转到推广管理
         { path: 'profit', redirect: '/promotion' },
         {
+          // 肽金券管理：总览（平台待履约负债）+ 账户列表 + 全平台流水 + 发放配置（超管 / 财务可见；人工调整仅超管）
+          path: 'peptide',
+          name: 'Peptide',
+          component: () => import('@/views/peptide/index.vue'),
+          meta: { title: '肽金券管理', permission: ['profit:read'], roles: SUPER_AND_FINANCE, requiresAuth: true },
+        },
+        {
           path: 'wallets',
           name: 'Wallets',
           component: () => import('@/views/wallet/index.vue'),
