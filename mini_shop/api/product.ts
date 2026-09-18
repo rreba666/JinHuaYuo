@@ -17,6 +17,11 @@ export interface ProductDetail {
   promotionEnabled?: 0 | 1 | '0' | '1' | boolean
   dividendFund?: number
   dividendEnabled?: 0 | 1 | '0' | '1' | boolean
+  /**
+   * 是否支持用「肽金券」抵扣：0=否 / 1=是（兼容字符串与布尔）。
+   * ⚠️ 只有**商品详情**接口返回该字段，商品列表/购物车列表不返回，所以只在详情页做标识。
+   */
+  peptideEnabled?: 0 | 1 | '0' | '1' | boolean
   minPrice: number
   maxPrice: number
   /** 商品最低划线价/原价（订前价，元），纯展示不参与扣款，为 null 表示无划线价。 */

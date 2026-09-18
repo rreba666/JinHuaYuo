@@ -25,6 +25,8 @@ export interface CartItem {
   stock: number
   /** 前端根据商品详情补齐的补贴周期资格，不是购物车接口原始字段。 */
   dividendEligible?: boolean
+  /** 前端根据商品详情补齐的「支持肽金券抵扣」标识（CartListVO 不返回该字段）。 */
+  peptideEnabled?: boolean
 }
 
 /** 加入购物车请求体（对应 CartAddDTO） */
@@ -72,8 +74,8 @@ async function getCachedProductDetail(productId: number): Promise<ProductDetail 
 }
 
 /**
- * CartListVO 没有 dividendEnabled，因此只在需要做购买限制时按商品 ID 补查详情。
- * 失败时保留后端购物车数据，最终订单创建仍由后端做资格和并发校验。
+ * CartListVO 没有 dividendEnabled / peptideEnabled，因此只在需要做购买限制与肽金券抵扣时按商品 ID 补查详情
+ * （两者复用同一份详情缓存，不额外增加请求）。失败时保留后端购物车数据，最终订单创建仍由后端做资格和并发校验。
  */
 export async function resolveDividendEligibility(items: CartItem[]): Promise<CartItem[]> {
   const productIds = Array.from(new Set(items.map((item) => Number(item.productId)).filter((id) => Number.isFinite(id) && id > 0)))
@@ -83,11 +85,16 @@ export async function resolveDividendEligibility(items: CartItem[]): Promise<Car
   return items.map((item) => {
     const detail = detailMap.get(Number(item.productId))
     const sku = detail?.skuList?.find((candidate) => Number(candidate.id) === Number(item.skuId))
+    const peptideFlag = detail?.peptideEnabled
     return {
       ...item,
       dividendEligible: sku
         ? isDividendEligible({ dividendEnabled: detail?.dividendEnabled, price: sku.price })
         : Boolean(item.dividendEligible),
+      // 详情查不到时保留原值，避免把「支持肽金券」误判成不支持
+      peptideEnabled: detail
+        ? peptideFlag === 1 || peptideFlag === '1' || peptideFlag === true
+        : Boolean(item.peptideEnabled),
     }
   })
 }

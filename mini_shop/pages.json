@@ -196,6 +196,14 @@
             "navigationBarTitleText": "推广排行榜",
             "navigationBarBackgroundColor": "#FFFFFF"
           }
+        },
+        {
+          "path": "peptide/peptide",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTitleText": "肽金券",
+            "navigationBarBackgroundColor": "#FFFFFF"
+          }
         }
       ]
     }

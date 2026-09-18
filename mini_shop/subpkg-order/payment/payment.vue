@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getCartList, type CartItem } from '@/api/cart'
 import { cancelOrder, createOrder, getOrderDetail, type OrderDetail } from '@/api/order'
+import { getPeptideUsable, normalizePeptideWording, type PeptideUsable } from '@/api/peptide'
 import { createPrepay, requestPayment, payByBalance, switchToBalance } from '@/api/payment'
 import { getEnabledShops, type EnabledShop } from '@/api/shop'
 import { submitInvoice } from '@/api/invoice'
@@ -186,8 +187,47 @@ const total = computed(() => {
   const goodsPay = items.value.reduce((sum, item) => sum + Number(item.price ?? 0) * item.quantity, 0)
   return goodsPay + deliveryFee.value
 })
+
+/** 肽金券可用额度（后端按本单「启用肽金券」的商品小计计算，需登录）。 */
+const peptideUsable = ref<PeptideUsable | null>(null)
+/** 是否使用肽金券抵扣：默认开启（无门槛无上限，抵扣对买家只有好处），买家可手动关闭。 */
+const usePeptide = ref(true)
+/** 本单「启用肽金券」的商品小计（元）= Σ 支持抵扣商品的现价 × 数量，作为抵扣上限的入参。 */
+const peptideEnabledAmount = computed(() => items.value.reduce((sum, item) => sum + (item.peptideEnabled ? Number(item.price ?? 0) * item.quantity : 0), 0))
+/**
+ * 本单实际抵扣金额：历史订单**不可用**（订单已创建，肽金券只能在下单时抵扣）；
+ * 新建订单在平台启用、后端返回可用额度且买家未关闭开关时生效。
+ */
+const peptideDeduction = computed(() => {
+  if (existingOrder.value) return 0
+  if (!usePeptide.value || !peptideUsable.value?.enabled) return 0
+  return Math.max(0, Number(peptideUsable.value.usableAmount || 0))
+})
+/** 是否展示肽金券抵扣行：新建订单、平台已启用且有可抵扣额度（余额为 0 或商品不支持时不展示）。 */
+const peptideRowVisible = computed(() => !existingOrder.value && Boolean(peptideUsable.value?.enabled) && Number(peptideUsable.value?.usableAmount || 0) > 0)
+/** 肽金券使用说明（后端下发文案，展示前把「肽金」归一化为「肽金券」）。 */
+const peptideUsageTip = computed(() => normalizePeptideWording(peptideUsable.value?.usageTip))
+/** 应付合计：实付减去肽金券抵扣，兜底不为负。 */
+const payableTotal = computed(() => Math.max(0, total.value - peptideDeduction.value))
+
+/** 拉取本单肽金券可用额度；历史订单或商品未就绪时不请求，失败时静默隐藏抵扣行。 */
+async function loadPeptideUsable(): Promise<void> {
+  if (existingOrder.value || !items.value.length) {
+    peptideUsable.value = null
+    return
+  }
+  try {
+    peptideUsable.value = await getPeptideUsable(peptideEnabledAmount.value)
+  } catch {
+    peptideUsable.value = null
+  }
+}
+
+/** 可抵扣小计变化（商品/数量/模式切换）后重新取额度；最终抵扣以下单时服务端校验为准。 */
+watch(peptideEnabledAmount, () => { void loadPeptideUsable() }, { immediate: true })
+
 /** 余额是否足够全额支付当前订单（不足时余额支付不可选）。 */
-const balanceEnough = computed(() => walletBalance.value >= total.value)
+const balanceEnough = computed(() => walletBalance.value >= payableTotal.value)
 const itemCount = computed(() => items.value.reduce((sum, item) => sum + item.quantity, 0))
 const canRenderCheckout = computed(() => !loading.value && !loadError.value && (items.value.length > 0 || Boolean(existingOrder.value)))
 const invoiceSummary = computed(() => {
@@ -273,6 +313,7 @@ async function loadDirectItem(): Promise<void> {
       checked: true,
       stock: Number(sku.stock || 0),
       dividendEligible: isDividendEligible({ dividendEnabled: product.dividendEnabled, price: sku.price }),
+      peptideEnabled: product.peptideEnabled === 1 || product.peptideEnabled === '1' || product.peptideEnabled === true,
     }]
     selectedCartIds.value = []
   } catch (error) {
@@ -821,6 +862,8 @@ async function submitPayment(): Promise<void> {
         } : {}),
         ...(pickupType.value === 1 && selectedShop.value ? { pickupShopId: selectedShop.value.id, receiverName: contactName.value.trim(), receiverPhone: contactPhone.value.trim() } : {}),
         ...(remark.value.trim() ? { remark: remark.value.trim() } : {}),
+        // 肽金券抵扣：仅在买家使用且后端给出可用额度时提交（下单即扣，取消/退款幂等返还）
+        ...(peptideDeduction.value > 0 ? { usePeptideAmount: peptideDeduction.value } : {}),
       })
       const id = created.orderId ?? created.id
       if (id == null) throw new Error('创建订单未返回订单 ID')
@@ -999,7 +1042,16 @@ function backToCart(): void {
         <view class="amount-row"><text>小计</text><text>¥{{ formatMoney(subtotal) }}</text></view>
         <view class="amount-row"><text>优惠券</text><text class="discount-text">-¥{{ formatMoney(discountAmount) }}</text></view>
         <view class="amount-row"><text>配送费</text><text>{{ pickupType === 1 ? '(门店自提) ' : '' }}¥{{ formatMoney(deliveryFee) }}</text></view>
-        <view class="amount-row total-row"><text>合计</text><text>¥{{ formatMoney(total) }}</text></view>
+        <!-- 肽金券抵扣：仅新建订单可用（订单创建后无法再抵扣），点击整行切换是否使用 -->
+        <view v-if="peptideRowVisible" class="amount-row peptide-row" @click="usePeptide = !usePeptide">
+          <view class="peptide-left">
+            <view class="peptide-check" :class="{ active: usePeptide }"><view v-if="usePeptide" class="peptide-check-dot" /></view>
+            <text>肽金券抵扣</text>
+          </view>
+          <text class="peptide-text">-¥{{ formatMoney(peptideDeduction) }}</text>
+        </view>
+        <view v-if="peptideRowVisible && peptideUsageTip" class="peptide-tip">{{ peptideUsageTip }}</view>
+        <view class="amount-row total-row"><text>合计</text><text>¥{{ formatMoney(payableTotal) }}</text></view>
       </view>
 
       <view class="section pay-method-section">
@@ -1169,6 +1221,13 @@ function backToCart(): void {
 .amount-row { display: flex; align-items: center; justify-content: space-between; min-height: 58rpx; color: #999; font-size: 24rpx; }
 .amount-row .discount-text { color: #d40000; }
 .amount-row.total-row { color: #222; font-size: 26rpx; font-weight: 700; }
+/* 肽金券抵扣行：整行可点击切换，左侧自绘勾选框与项目其他选择控件保持一致 */
+.peptide-row .peptide-left { display: flex; align-items: center; }
+.peptide-check { display: flex; align-items: center; justify-content: center; width: 28rpx; height: 28rpx; margin-right: 10rpx; border: 1rpx solid #b4772f; box-sizing: border-box; }
+.peptide-check.active { background: #b4772f; }
+.peptide-check-dot { width: 10rpx; height: 10rpx; background: #fff; }
+.peptide-row .peptide-text { color: #b4772f; }
+.peptide-tip { margin: 6rpx 0 0; color: #b4772f; font-size: 20rpx; line-height: 28rpx; }
 .invoice-section, .remark-section { padding: 0; }
 .compact-row { min-height: 94rpx; }
 .row-summary { display: flex; align-items: center; max-width: 68%; color: #333; font-size: 24rpx; text-align: right; }

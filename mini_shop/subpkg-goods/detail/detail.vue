@@ -62,6 +62,12 @@ const promotionVisible = computed(() => {
     && Number(product.value?.promotionFund || 0) > 0
 })
 
+/** 是否支持肽金券抵扣：仅详情接口返回 peptideEnabled，故肽金券标识只在详情页展示。 */
+const peptideEnabled = computed(() => {
+  const enabled = product.value?.peptideEnabled
+  return enabled === 1 || enabled === '1' || enabled === true
+})
+
 /** 将金额格式化为设计稿使用的紧凑形式。 */
 function formatAmount(value: number): string {
   return Number(value || 0).toFixed(2).replace(/\.00$/, '')
@@ -288,6 +294,12 @@ onShow(() => {
             <text class="promotion-label">推广金</text>
           </view>
 
+          <!-- 肽金券抵扣标识：肽金券不可提现，仅可在支持的商品上下单抵扣（无门槛、无上限） -->
+          <view v-show="peptideEnabled" class="peptide-row">
+            <text class="peptide-label">支持肽金券抵扣</text>
+            <text class="peptide-value">无门槛 · 无上限</text>
+          </view>
+
           <view class="tag-row">
             <view class="tag"><image class="tag-icon" src="/static/ProductDetails/包邮_slices/包邮.png" mode="aspectFit" /><text>包邮</text></view>
             <view class="tag"><image class="tag-icon" src="/static/ProductDetails/七天无理由_slices/七天无理由.png" mode="aspectFit" /><text>七天无理由</text></view>
@@ -344,6 +356,9 @@ onShow(() => {
 .promotion-row { display: flex; align-items: center; min-height: 74rpx; margin-top: 24rpx; padding: 0 18rpx; background: #fff0e6; box-sizing: border-box; }
 .promotion-label { color: #444; font-size: 23rpx; white-space: nowrap; }
 .promotion-value { margin: 0 10rpx; color: #df1919; font-size: 34rpx; font-weight: 700; line-height: 1; }
+.peptide-row { display: flex; align-items: center; min-height: 74rpx; margin-top: 24rpx; padding: 0 18rpx; background: #fff8ec; box-sizing: border-box; }
+.peptide-label { color: #8a5a1f; font-size: 23rpx; white-space: nowrap; }
+.peptide-value { margin-left: 12rpx; color: #b4772f; font-size: 23rpx; font-weight: 700; white-space: nowrap; }
 .tag-row { display: flex; align-items: center; gap: 32rpx; padding: 24rpx 0 28rpx; border-bottom: 1px solid #eee; }
 .tag { display: flex; align-items: center; color: #555; font-size: 23rpx; }
 .tag-icon { width: 36rpx; height: 36rpx; margin-right: 12rpx; flex-shrink: 0; }

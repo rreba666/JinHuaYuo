@@ -5,6 +5,7 @@ import { getUserProfile, getWalletInfo, updateUserProfile, type UserProfile, typ
 import { clearAuth, getAuth, isLoggedIn, isRegisteredUser } from '@/utils/auth'
 import { getPromotionCode } from '@/api/promotion'
 import { getAnnouncementList, type Announcement } from '@/api/announcement'
+import { getPeptideAccount, type PeptideAccount } from '@/api/peptide'
 import { uploadFile } from '@/utils/request'
 import { loadPendingSettlementAmount } from '@/utils/promotion-freeze'
 import { resolvePromotionSettlement, syncPromotionSettlement } from '@/utils/promotion-settlement'
@@ -24,6 +25,17 @@ const moduleConfig = ref<ModuleConfig[] | null>(null)
 
 const user = ref<UserProfile | null>(null)
 const wallet = ref<WalletInfo | null>(null)
+/** 肽金券账户（收益卡第 4 格；肽金券不可提现，仅可抵扣「启用肽金券」的商品）。 */
+const peptideAccount = ref<PeptideAccount | null>(null)
+/**
+ * 肽金券格是否展示：平台启用发放时展示；**暂停发放时只要还有余额也必须展示**，
+ * 否则用户查不到自己的余额（接口说明：停发不影响历史余额，仍可继续抵扣）。
+ */
+const peptideVisible = computed(() => {
+  const account = peptideAccount.value
+  if (!account) return false
+  return account.enabled === true || Number(account.balance || 0) > 0
+})
 const profileEditorVisible = ref(false)
 const profileSaving = ref(false)
 const avatarUploading = ref(false)
@@ -94,13 +106,14 @@ const visibleMenuItems = computed(() => {
 /** 收益卡可见性按模块开关过滤：推广收益/平台红包→promotion，我的余额→basic（停用 wallet 后余额仍展示）。 */
 const incomeEntries = computed(() => {
   const modules = moduleConfig.value
-  const all: { label: string; value?: number; settling?: boolean }[] = [
+  const all: { label: string; value?: number; settling?: boolean; visible?: boolean }[] = [
     { label: '我的余额', value: wallet.value?.balance },
     { label: '推广收益', value: promotionDisplayAmount.value, settling: promotionSettling.value },
     { label: '平台红包', value: wallet.value?.pendingBonus },
+    { label: '肽金券', value: peptideAccount.value?.balance, visible: peptideVisible.value },
   ]
   const moduleOf: Record<number, string> = { 0: 'basic', 1: 'promotion', 2: 'promotion' }
-  return all.filter((_, index) => isModuleEnabled(modules, moduleOf[index] || 'basic'))
+  return all.filter((item, index) => item.visible !== false && isModuleEnabled(modules, moduleOf[index] || 'basic'))
 })
 
 /** 待领取红包积分（红包金额）。 */
@@ -148,12 +161,14 @@ async function loadData(): Promise<void> {
   if (!isLoggedIn()) {
     user.value = null
     wallet.value = null
+    peptideAccount.value = null
     promotionPendingAmount.value = 0
     return
   }
   try { user.value = await getUserProfile() } catch { user.value = null /* 资料失败按游客处理 */ }
   if (!registeredUser.value) {
     wallet.value = null
+    peptideAccount.value = null
     promotionPendingAmount.value = 0
     return
   }
@@ -172,6 +187,12 @@ async function loadData(): Promise<void> {
   } catch {
     wallet.value = null
     promotionPendingAmount.value = 0
+  }
+  // 肽金券账户：收益卡第 4 格的金额与可见性；失败时静默隐藏该格，不影响其他收益数据展示
+  try {
+    peptideAccount.value = await getPeptideAccount()
+  } catch {
+    peptideAccount.value = null
   }
 }
 
@@ -277,6 +298,10 @@ function goIncome(index: number): void {
     } else {
       openRedPacketPage()
     }
+    return
+  }
+  if (label === '肽金券') {
+    goPeptide()
   }
 }
 
@@ -428,6 +453,15 @@ function goWallet(): void {
     return
   }
   uni.navigateTo({ url: '/subpkg-wallet/withdraw/withdraw' })
+}
+
+/** 进入肽金券页（余额、流水与使用规则）；肽金券不要求「完成订单」身份，只要求登录。 */
+function goPeptide(): void {
+  if (!isLoggedIn()) {
+    showLoginGuide()
+    return
+  }
+  uni.navigateTo({ url: '/subpkg-wallet/peptide/peptide' })
 }
 
 function goPromotionCenter(): void {

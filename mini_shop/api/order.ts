@@ -20,6 +20,11 @@ export interface CreateOrderDTO {
   remark?: string
   pickupType: PickupType
   pickupShopId?: number
+  /**
+   * 本单使用的肽金券抵扣金额（元），不传或 0 = 不使用。
+   * 肽金券不可提现，仅可抵扣「启用肽金券」的商品，无门槛无上限；下单即扣，订单取消/超时/退款时自动幂等返还。
+   */
+  usePeptideAmount?: number
 }
 
 export interface OrderSummary {
