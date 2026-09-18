@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { onLoad, onShow } from '@dcloudio/uni-app'
+import { onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import { getPromotionLeaderboard, type LeaderboardPeriod, type LeaderboardRow, type PromotionLeaderboard } from '@/api/promotion'
 import { isLoggedIn } from '@/utils/auth'
 import { useModuleGuard } from '@/utils/config'
@@ -9,7 +9,7 @@ import LoginGuide from '@/components/LoginGuide.vue'
 /** promotion 模块守卫：模块停用时拦截页面（深链防护）。 */
 const { moduleEnabled: promotionEnabled, loadModuleConfig: loadPromotionModule } = useModuleGuard('promotion')
 
-/** 周期切换项：与后端 period 枚举一一对应。 */
+/** 周期切换项：与后端 period 枚举一一对应，后端按**自然**周期统计（本周一 00:00 起 / 本月 1 日 00:00 起 / 本年 1 月 1 日 00:00 起）。 */
 const periodTabs: { key: LeaderboardPeriod; label: string }[] = [
   { key: 'DAY', label: '今日' },
   { key: 'WEEK', label: '本周' },
@@ -18,6 +18,8 @@ const periodTabs: { key: LeaderboardPeriod; label: string }[] = [
 ]
 /** 榜单最多取多少名（后端限制 1~100，默认 20）。 */
 const LEADERBOARD_LIMIT = 20
+/** 榜单轮询间隔：排名随支付实时变化，页面可见时每 60 秒静默刷新一次。 */
+const LEADERBOARD_POLL_INTERVAL = 60 * 1000
 
 /** 当前统计周期，默认与后端默认值保持一致（本周）。 */
 const period = ref<LeaderboardPeriod>('WEEK')
@@ -30,6 +32,8 @@ const failed = ref(false)
 const loginGuideVisible = ref(false)
 /** 请求竞态 token：快速切换周期时丢弃过期响应，避免旧周期数据覆盖新周期。 */
 let requestToken = 0
+/** 轮询定时器：页面隐藏 / 卸载时清理，避免后台空跑请求。 */
+let pollTimer: ReturnType<typeof setInterval> | null = null
 
 /** 微信胶囊按钮位置，用于自定义导航栏精确定位。 */
 const menuTop = ref(0)
@@ -43,6 +47,8 @@ const rows = computed<LeaderboardRow[]>(() => board.value?.list || [])
 const showMyRank = computed(() => board.value?.myRank !== null && board.value?.myRank !== undefined)
 /** 空榜：加载完成、未失败且没有任何名次。 */
 const empty = computed(() => loaded.value && !loading.value && !failed.value && !rows.value.length)
+/** 当前周期的起止区间（如「09-14 ~ 09-20」），让「自然周/月/年」覆盖哪几天一目了然。 */
+const periodRange = computed(() => formatPeriodRange(board.value?.periodStart, board.value?.periodEnd))
 
 /** 将金额显示为最多两位小数，整数时省略小数位。 */
 function formatAmount(value: unknown): string {
@@ -52,9 +58,24 @@ function formatAmount(value: unknown): string {
 }
 
 /**
- * 把 `asOf`（2026-09-18 11:57:30）格式化为「09-18 11:57」。
+ * 取出 `YYYY-MM-DD ...` 中的 `MM-DD`。
  * 按字符串截取而不用 new Date：iOS 无法解析 `YYYY-MM-DD HH:mm:ss` 这种带空格的格式。
  */
+function pickMonthDay(value?: string | null): string {
+  if (!value) return ''
+  const matched = String(value).match(/^\d{4}-(\d{2}-\d{2})/)
+  return matched ? matched[1] : ''
+}
+
+/** 周期区间文案：同一天（今日榜）只显示一次，跨天显示「09-14 ~ 09-20」。 */
+function formatPeriodRange(start?: string | null, end?: string | null): string {
+  const from = pickMonthDay(start)
+  const to = pickMonthDay(end)
+  if (!from || !to) return ''
+  return from === to ? from : `${from} ~ ${to}`
+}
+
+/** 把 `asOf`（2026-09-18 11:57:30）格式化为「09-18 11:57」（同样不用 new Date）。 */
 function formatAsOf(value?: string | null): string {
   if (!value) return '--'
   const matched = String(value).match(/^\d{4}-(\d{2}-\d{2})[ T](\d{2}:\d{2})/)
@@ -72,8 +93,16 @@ function rankClass(row: LeaderboardRow): string {
   return row.rank >= 1 && row.rank <= 3 ? `rank-${row.rank}` : ''
 }
 
-/** 加载当前周期的排行榜；未登录时不请求接口，直接弹登录引导。 */
-async function load(): Promise<void> {
+/** 该行是否有累计数据（后端补字段后才有；缺失时整行不展示，避免出现假的 0）。 */
+function hasTotal(row: LeaderboardRow): boolean {
+  return row.totalPromotedUserCount != null || row.totalPromotionAmount != null
+}
+
+/**
+ * 加载当前周期的排行榜。
+ * @param silent 轮询触发时为 true：失败不弹提示、保留上一份数据，避免每分钟打扰用户。
+ */
+async function load(silent = false): Promise<void> {
   if (!isLoggedIn()) {
     board.value = null
     loaded.value = true
@@ -81,6 +110,7 @@ async function load(): Promise<void> {
     loginGuideVisible.value = true
     return
   }
+  if (silent && loading.value) return
   const token = ++requestToken
   loading.value = true
   failed.value = false
@@ -91,6 +121,8 @@ async function load(): Promise<void> {
     loaded.value = true
   } catch (error) {
     if (token !== requestToken) return
+    // 轮询失败静默处理：保留已有榜单，等待下一次轮询自愈
+    if (silent) return
     board.value = null
     loaded.value = true
     failed.value = true
@@ -100,13 +132,28 @@ async function load(): Promise<void> {
   }
 }
 
-/** 切换统计周期并重新拉取榜单，清空旧数据避免跨周期串台。 */
+/** 启动轮询（重复调用不会叠加定时器）。 */
+function startPolling(): void {
+  stopPolling()
+  pollTimer = setInterval(() => { void load(true) }, LEADERBOARD_POLL_INTERVAL)
+}
+
+/** 停止轮询并清理定时器。 */
+function stopPolling(): void {
+  if (pollTimer !== null) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+/** 切换统计周期并重新拉取榜单，清空旧数据避免跨周期串台；同时重置轮询计时。 */
 function switchPeriod(next: LeaderboardPeriod): void {
   if (period.value === next || loading.value) return
   period.value = next
   board.value = null
   loaded.value = false
   void load()
+  startPolling()
 }
 
 /** 返回上一页；没有历史页面时回个人中心。 */
@@ -119,10 +166,18 @@ function goBack(): void {
   uni.switchTab({ url: '/pages/mine/mine' })
 }
 
-onLoad(() => { void load() })
+onLoad(() => { void load(); startPolling() })
 
-/** 从后台切回或身份升级后重新拉取，保证榜单不过期。 */
-onShow(() => { if (loaded.value) void load() })
+/** 页面可见时刷新一次并恢复轮询；从后台切回也能立刻拿到最新排名。 */
+onShow(() => {
+  if (loaded.value) void load(true)
+  startPolling()
+})
+
+/** 页面隐藏（切后台/跳走）立即停止轮询。 */
+onHide(() => stopPolling())
+/** 页面卸载清理定时器，避免内存泄漏与无效请求。 */
+onUnload(() => stopPolling())
 
 onMounted(() => {
   try {
@@ -150,10 +205,10 @@ onMounted(() => {
       <view class="content">
         <view class="heading">
           <text class="heading-title">推广排行榜</text>
-          <text class="heading-subtitle">按推广人数排名</text>
+          <text class="heading-subtitle">按本周期推广人数排名</text>
         </view>
 
-        <!-- 周期切换：滚动口径，周期终点恒为「此刻」 -->
+        <!-- 周期切换：后端按自然周期统计（本周=本周一 00:00 起） -->
         <view class="period-tabs">
           <view
             v-for="tab in periodTabs"
@@ -166,8 +221,11 @@ onMounted(() => {
           </view>
         </view>
 
-        <!-- 滚动口径提示：periodComplete 恒为 false，数据真实上界是 asOf -->
-        <text v-if="board" class="as-of">数据截至 {{ formatAsOf(board.asOf) }}（本周期尚未结束）</text>
+        <!-- 周期区间 + 滚动口径：明确覆盖范围，并说明数字会实时变化 -->
+        <view v-if="board" class="period-note">
+          <text class="period-range">{{ board.periodLabel }}（{{ periodRange }}）· 数据截至 {{ formatAsOf(board.asOf) }}</text>
+          <text class="period-explain">按自然周/月/年统计，含尚未走完的当前周期，排名随支付实时变化</text>
+        </view>
 
         <!-- 我的战绩：未上榜时也展示，让用户知道自己在哪个周期没成绩 -->
         <view v-if="board" class="my-card">
@@ -176,9 +234,9 @@ onMounted(() => {
             <text class="my-rank-value">{{ showMyRank ? '第 ' + board.myRank + ' 名' : '暂未上榜' }}</text>
           </view>
           <view class="my-stats">
-            <text class="my-stat">推广 {{ board.myPromotedUserCount || 0 }} 人</text>
+            <text class="my-stat">本周期推广 {{ board.myPromotedUserCount || 0 }} 人</text>
             <text class="my-divider">·</text>
-            <text class="my-stat">推广金 ¥{{ formatAmount(board.myPromotionAmount) }}</text>
+            <text class="my-stat">¥{{ formatAmount(board.myPromotionAmount) }}</text>
           </view>
           <!-- myRankInList=false 表示我未进入前 limit 名，需说明「列表里为什么找不到自己」 -->
           <text v-if="showMyRank && !board.myRankInList" class="my-tip">你暂未进入前 {{ board.limit }} 名，继续分享即可冲榜</text>
@@ -186,7 +244,7 @@ onMounted(() => {
         </view>
 
         <view v-show="loading" class="state">加载中...</view>
-        <view v-show="!loading && failed" class="state state-retry" @click="load">加载失败，点击重试</view>
+        <view v-show="!loading && failed" class="state state-retry" @click="load()">加载失败，点击重试</view>
         <view v-show="!loading && empty" class="state">本周期暂无推广数据</view>
 
         <!-- 榜单列表 -->
@@ -207,9 +265,9 @@ onMounted(() => {
                 <text class="nickname">{{ row.nickname || '微信用户' }}</text>
                 <text v-if="row.isMe" class="me-tag">我</text>
               </view>
-              <text class="promoted">推广 {{ row.promotedUserCount }} 人</text>
+              <text class="promoted">本周期 {{ row.promotedUserCount }} 人 · ¥{{ formatAmount(row.promotionAmount) }}</text>
+              <text v-if="hasTotal(row)" class="promoted-total">累计 {{ row.totalPromotedUserCount ?? 0 }} 人 · ¥{{ formatAmount(row.totalPromotionAmount) }}</text>
             </view>
-            <text class="amount">¥{{ formatAmount(row.promotionAmount) }}</text>
           </view>
         </view>
       </view>
@@ -244,8 +302,10 @@ onMounted(() => {
 .period-label { color: #4f4f4f; font-size: 24rpx; line-height: 64rpx; }
 .period-tab.active .period-label { color: #fbd69d; }
 
-/* 滚动口径提示 */
-.as-of { display: block; margin: 20rpx 40rpx 0; color: #959595; font-size: 20rpx; line-height: 28rpx; }
+/* 周期区间与滚动口径说明 */
+.period-note { margin: 20rpx 40rpx 0; }
+.period-range { display: block; color: #4f4f4f; font-size: 22.9rpx; line-height: 34rpx; }
+.period-explain { display: block; margin-top: 6rpx; color: #959595; font-size: 20rpx; line-height: 28rpx; }
 
 /* 我的战绩卡 */
 .my-card { margin: 24rpx 40rpx 0; padding: 28rpx 32rpx; background: #000; }
@@ -259,7 +319,7 @@ onMounted(() => {
 
 /* 榜单列表 */
 .board { margin-top: 32rpx; }
-.board-row { display: flex; align-items: center; min-height: 120rpx; margin: 0 40rpx; border-bottom: 1rpx solid #f6f6f6; }
+.board-row { display: flex; align-items: center; min-height: 140rpx; margin: 0 40rpx; border-bottom: 1rpx solid #f6f6f6; }
 .board-row.me { background: #fffaf0; }
 .rank-badge { display: flex; align-items: center; justify-content: center; width: 44rpx; height: 44rpx; flex-shrink: 0; background: #f6f6f6; }
 .rank-badge.rank-1 { background: #fbd69d; }
@@ -270,12 +330,12 @@ onMounted(() => {
 .avatar { width: 72rpx; height: 72rpx; flex-shrink: 0; margin-left: 24rpx; background: #d8d8d8; border-radius: 50%; }
 .avatar-placeholder { display: flex; align-items: center; justify-content: center; }
 .avatar-text { color: #fff; font-size: 28rpx; line-height: 36rpx; }
-.board-main { display: flex; flex: 1; min-width: 0; flex-direction: column; margin-left: 20rpx; }
+.board-main { display: flex; flex: 1; min-width: 0; flex-direction: column; margin-left: 20rpx; padding: 16rpx 0; }
 .nick-line { display: flex; align-items: center; }
 .nickname { max-width: 300rpx; overflow: hidden; color: #0a0a0a; font-size: 26rpx; line-height: 36rpx; text-overflow: ellipsis; white-space: nowrap; }
 .me-tag { margin-left: 10rpx; padding: 2rpx 10rpx; color: #b4772f; background: #fff4e5; font-size: 18rpx; line-height: 24rpx; }
-.promoted { margin-top: 10rpx; color: #959595; font-size: 20rpx; line-height: 28rpx; }
-.amount { flex-shrink: 0; margin-left: 16rpx; color: #010101; font-size: 26rpx; line-height: 36rpx; }
+.promoted { margin-top: 8rpx; color: #4f4f4f; font-size: 22rpx; line-height: 30rpx; }
+.promoted-total { margin-top: 4rpx; color: #b4772f; font-size: 20rpx; line-height: 28rpx; }
 
 /* 状态位 */
 .state { padding: 120rpx 0; color: #959595; font-size: 24rpx; text-align: center; }

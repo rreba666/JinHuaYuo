@@ -54,6 +54,13 @@ export interface ProfitLeaderboardRow {
   promotedUserCount: number
   /** 周期内产生的推广金（元）。 */
   promotionAmount: number
+  /**
+   * 该推广员**累计**推广人数（全时段去重，不受 `period` 影响）。
+   * ⚠️ 后端尚未下发（已提需求），缺失时为 null，页面用「—」占位。
+   */
+  totalPromotedUserCount?: number | null
+  /** 该推广员**累计**推广金（元，全时段）；同样待后端下发。 */
+  totalPromotionAmount?: number | null
   /** 仅 C 端有意义，B 端恒为 false。 */
   isMe: boolean
 }

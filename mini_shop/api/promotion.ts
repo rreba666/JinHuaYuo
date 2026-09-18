@@ -92,6 +92,13 @@ export interface LeaderboardRow {
   promotedUserCount: number
   /** 统计周期内产生的推广金（元）。 */
   promotionAmount: number
+  /**
+   * 该推广员**累计**推广人数（全时段去重，不受 `period` 影响）。
+   * ⚠️ 后端尚未下发该字段（已提需求），缺失时页面不展示累计行。
+   */
+  totalPromotedUserCount?: number | null
+  /** 该推广员**累计**推广金（元，全时段）；同样待后端下发。 */
+  totalPromotionAmount?: number | null
   /** 是否当前登录用户本人（用于列表高亮）。 */
   isMe: boolean
 }

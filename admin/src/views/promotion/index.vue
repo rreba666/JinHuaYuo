@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Delete, Edit, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { getUsers } from '@/api/user'
@@ -124,17 +124,44 @@ const leaderboardPeriods: { label: string; value: LeaderboardPeriod }[] = [
   { label: '本年', value: 'YEAR' },
 ]
 
+/** 排行榜轮询间隔（60s）：榜单按自然周期滚动统计、随支付实时变化，页签可见时定时刷新。 */
+const LEADERBOARD_POLL_INTERVAL = 60 * 1000
+/** 轮询定时器：切走页签或离开页面时清理，避免后台空跑请求。 */
+let leaderboardTimer: ReturnType<typeof setInterval> | null = null
+
+/** 当前周期区间文案（如「2026-09-14 ~ 2026-09-20」），让自然周/月/年覆盖哪几天一目了然。 */
+const periodRange = computed(() => {
+  const board = store.leaderboard
+  if (!board) return ''
+  const from = String(board.periodStart || '').slice(0, 10)
+  const to = String(board.periodEnd || '').slice(0, 10)
+  if (!from || !to) return ''
+  return from === to ? from : `${from} ~ ${to}`
+})
+
 /**
- * 加载推广排行榜（B 端）。与 C 端同源同口径，但不返回「我的排名」；
- * 滚动口径下周期含尚未走完的当前周期，提示里用 asOf 标注数据上界。
+ * 加载推广排行榜（B 端）。与 C 端同源同口径，但不返回「我的排名」。
+ * @param silent 轮询触发时为 true：失败不弹提示、保留上一份数据，避免每分钟打扰。
  */
-async function loadLeaderboard(): Promise<void> {
-  try { await store.fetchLeaderboard() } catch (error) { showError(error, '推广排行榜加载失败') }
+async function loadLeaderboard(silent = false): Promise<void> {
+  try { await store.fetchLeaderboard() } catch (error) { if (!silent) showError(error, '推广排行榜加载失败') }
 }
 
-/** 懒加载：切到「推广排行榜」页签时才拉取榜单，避免首屏多打一次请求。 */
+/** 停止排行榜轮询。 */
+function stopLeaderboardPolling(): void {
+  if (leaderboardTimer !== null) { clearInterval(leaderboardTimer); leaderboardTimer = null }
+}
+
+/** 启动排行榜轮询（仅在「推广排行榜」页签可见时；重复调用不会叠加定时器）。 */
+function startLeaderboardPolling(): void {
+  stopLeaderboardPolling()
+  leaderboardTimer = setInterval(() => { if (activeTab.value === 'leaderboard') void loadLeaderboard(true) }, LEADERBOARD_POLL_INTERVAL)
+}
+
+/** 切页签：进入排行榜才加载并开始轮询，切走立即停止（懒加载 + 省请求）。 */
 function handleTabChange(name: string | number): void {
-  if (name === 'leaderboard') void loadLeaderboard()
+  if (name === 'leaderboard') { void loadLeaderboard(); startLeaderboardPolling(); return }
+  stopLeaderboardPolling()
 }
 
 /** 名次标签样式：前三名用醒目色，其余为普通信息色（B 端名次唯一、无并列）。 */
@@ -145,7 +172,14 @@ function rankType(rank: number): 'danger' | 'warning' | 'success' | 'info' {
   return 'info'
 }
 
+/** 累计数据缺失时用「—」占位（后端尚未下发累计字段，避免显示成 0）。 */
+function totalText(value: number | null | undefined, suffix = ''): string {
+  return value == null ? '—' : `${value}${suffix}`
+}
+
 onMounted(() => { void load(); void loadRelations() })
+/** 离开页面清理轮询定时器。 */
+onUnmounted(() => stopLeaderboardPolling())
 </script>
 
 <template>
@@ -165,9 +199,9 @@ onMounted(() => { void load(); void loadRelations() })
         </el-card>
       </el-tab-pane>
       <el-tab-pane label="推广排行榜" name="leaderboard">
-        <el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>推广排行榜</strong><span class="toolbar-count">{{ store.leaderboard?.periodLabel || '' }}按推广人数排名</span></div><div class="toolbar-actions"><el-radio-group v-model="store.leaderboardPeriod" @change="loadLeaderboard"><el-radio-button v-for="opt in leaderboardPeriods" :key="opt.value" :value="opt.value">{{ opt.label }}</el-radio-button></el-radio-group><el-button :loading="store.leaderboardLoading" @click="loadLeaderboard"><el-icon><Refresh /></el-icon>刷新</el-button></div></div>
-          <p class="leaderboard-tip">只统计「推广金已生成」（被推广人支付成功）且未退款作废的推广，按去重人数排名，时间锚点为支付时间。<template v-if="store.leaderboard?.asOf">数据截至 {{ store.leaderboard.asOf }}（本周期尚未结束）。</template></p>
-          <el-table :data="store.leaderboard?.list || []" v-loading="store.leaderboardLoading" border stripe empty-text="本周期暂无推广数据"><el-table-column label="名次" width="90"><template #default="{ row }"><el-tag :type="rankType(row.rank)" effect="dark" round>{{ row.rank }}</el-tag></template></el-table-column><el-table-column label="用户" min-width="200"><template #default="{ row }"><div class="leaderboard-user"><el-avatar :size="28" :src="row.avatarUrl || undefined">{{ (row.nickname || '用').slice(0, 1) }}</el-avatar><span>{{ row.nickname || '微信用户' }}</span></div></template></el-table-column><el-table-column prop="promoterUserId" label="用户 ID" width="120" /><el-table-column label="推广人数" width="120"><template #default="{ row }">{{ row.promotedUserCount }} 人</template></el-table-column><el-table-column label="推广金" width="140"><template #default="{ row }">{{ money(row.promotionAmount) }}</template></el-table-column></el-table>
+        <el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>推广排行榜</strong><span class="toolbar-count">{{ store.leaderboard?.periodLabel || '' }}按本周期推广人数排名</span></div><div class="toolbar-actions"><el-radio-group v-model="store.leaderboardPeriod" @change="() => loadLeaderboard()"><el-radio-button v-for="opt in leaderboardPeriods" :key="opt.value" :value="opt.value">{{ opt.label }}</el-radio-button></el-radio-group><el-button :loading="store.leaderboardLoading" @click="loadLeaderboard()"><el-icon><Refresh /></el-icon>刷新</el-button></div></div>
+          <p class="leaderboard-tip">只统计「推广金已生成」（被推广人支付成功）且未退款作废的推广，按去重人数排名，时间锚点为支付时间。<template v-if="store.leaderboard">{{ store.leaderboard.periodLabel }}（{{ periodRange }}）· 数据截至 {{ store.leaderboard.asOf }}；按自然周/月/年统计，含尚未走完的当前周期，排名随支付实时变化（页面每 60 秒自动刷新）。</template></p>
+          <el-table :data="store.leaderboard?.list || []" v-loading="store.leaderboardLoading" border stripe empty-text="本周期暂无推广数据"><el-table-column label="名次" width="90"><template #default="{ row }"><el-tag :type="rankType(row.rank)" effect="dark" round>{{ row.rank }}</el-tag></template></el-table-column><el-table-column label="用户" min-width="180"><template #default="{ row }"><div class="leaderboard-user"><el-avatar :size="28" :src="row.avatarUrl || undefined">{{ (row.nickname || '用').slice(0, 1) }}</el-avatar><span>{{ row.nickname || '微信用户' }}</span></div></template></el-table-column><el-table-column prop="promoterUserId" label="用户 ID" width="110" /><el-table-column label="本周期推广人数" width="140"><template #default="{ row }">{{ row.promotedUserCount }} 人</template></el-table-column><el-table-column label="本周期推广金" width="140"><template #default="{ row }">{{ money(row.promotionAmount) }}</template></el-table-column><el-table-column label="累计推广人数" width="130"><template #default="{ row }">{{ totalText(row.totalPromotedUserCount, ' 人') }}</template></el-table-column><el-table-column label="累计推广金" width="130"><template #default="{ row }">{{ row.totalPromotionAmount == null ? '—' : money(row.totalPromotionAmount) }}</template></el-table-column></el-table>
         </el-card>
       </el-tab-pane>
     </el-tabs>

@@ -32,7 +32,7 @@ function normalizeBindingPage(value: unknown, page: number, pageSize: number): P
 
 function normalizeLeaderboardRow(value: unknown): ProfitLeaderboardRow {
   const row = (value || {}) as Partial<ProfitLeaderboardRow>
-  return { ...row, rank: Number(row.rank ?? 0), promoterUserId: String(row.promoterUserId ?? ''), nickname: String(row.nickname ?? ''), avatarUrl: row.avatarUrl == null ? null : String(row.avatarUrl), promotedUserCount: Number(row.promotedUserCount ?? 0), promotionAmount: Number(row.promotionAmount ?? 0), isMe: row.isMe === true }
+  return { ...row, rank: Number(row.rank ?? 0), promoterUserId: String(row.promoterUserId ?? ''), nickname: String(row.nickname ?? ''), avatarUrl: row.avatarUrl == null ? null : String(row.avatarUrl), promotedUserCount: Number(row.promotedUserCount ?? 0), promotionAmount: Number(row.promotionAmount ?? 0), totalPromotedUserCount: row.totalPromotedUserCount == null ? null : Number(row.totalPromotedUserCount), totalPromotionAmount: row.totalPromotionAmount == null ? null : Number(row.totalPromotionAmount), isMe: row.isMe === true }
 }
 
 /** 归一化排行榜响应：list 缺失按空榜兜底、名次缺失按 0 处理，避免表格渲染 undefined。 */
