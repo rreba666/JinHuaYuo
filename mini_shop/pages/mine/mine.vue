@@ -7,7 +7,7 @@ import { getPromotionCode } from '@/api/promotion'
 import { getAnnouncementList, type Announcement } from '@/api/announcement'
 import { getPeptideAccount, type PeptideAccount } from '@/api/peptide'
 import { uploadFile } from '@/utils/request'
-import { resolveAvatar, resolveDefaultAvatarUrl } from '@/utils/avatar'
+import { resolveAvatar } from '@/utils/avatar'
 import { loadPendingSettlementAmount } from '@/utils/promotion-freeze'
 import { resolvePromotionSettlement, syncPromotionSettlement } from '@/utils/promotion-settlement'
 import { createThrottle } from '@/utils/interaction'
@@ -520,16 +520,8 @@ async function saveProfile(): Promise<void> {
       avatarUploading.value = true
       avatarUrl = await uploadFile(avatarTempPath.value)
       avatarTempPath.value = ''
-    } else if (!avatarUrl) {
-      // 用户没上传头像：默认把平台 logo 作为头像提交（首次上传一次并缓存永久 URL）。
-      // 上传失败不阻塞保存：展示层仍会用 logo 兜底，用户可稍后重试。
-      avatarUploading.value = true
-      try {
-        avatarUrl = await resolveDefaultAvatarUrl()
-      } catch {
-        avatarUrl = ''
-      }
     }
+    // 没上传头像时不写回资料（后端约定未设置即 null），展示层统一用平台 logo 兜底
     // 仅允许修改昵称和头像，电话不允许编辑，保存时不上传 phone
     user.value = await updateUserProfile({ nickname: nickname.value, avatarUrl })
     profileEditorVisible.value = false
