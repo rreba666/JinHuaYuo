@@ -26,6 +26,24 @@ const periodTabs: { key: LeaderboardPeriod; label: string }[] = [
 const LEADERBOARD_POLL_INTERVAL = 60 * 1000
 /** 无头像时的默认头像：用平台 logo（避免出现「昵称首字」这类临时占位）。 */
 const DEFAULT_AVATAR = '/static/logo.png'
+/** 头像加载失败的记录：微信头像链接会过期/防盗链，失败后同样要回落到默认头像，否则是破图。 */
+const avatarErrors = ref<Record<string, boolean>>({})
+
+/** 头像失败记录的键：优先用户 ID，缺失时用昵称 + 名次兜底。 */
+function avatarKey(row: LeaderboardRow): string {
+  return row.promoterUserId || `${row.nickname || 'unknown'}-${row.rank}`
+}
+
+/** 头像地址：无头像、或该用户头像加载失败时，统一回落到平台 logo。 */
+function avatarSrc(row: LeaderboardRow): string {
+  if (!row.avatarUrl || avatarErrors.value[avatarKey(row)]) return DEFAULT_AVATAR
+  return row.avatarUrl
+}
+
+/** 头像加载失败（image 的 error 事件）：记录该用户，模板随即回落到默认头像。 */
+function handleAvatarError(row: LeaderboardRow): void {
+  avatarErrors.value = { ...avatarErrors.value, [avatarKey(row)]: true }
+}
 
 /** 当前统计周期：设计稿默认高亮第一个（日榜）。 */
 const period = ref<LeaderboardPeriod>('DAY')
@@ -216,7 +234,7 @@ onMounted(() => {
         <image class="podium-art" src="/subpkg-wallet/static/leaderboard/podium.png" mode="scaleToFill" />
         <template v-for="(item, index) in podium" :key="index">
           <view v-if="item" class="podium-avatar" :class="'podium-avatar-' + (index + 1)">
-            <image class="podium-avatar-img" :src="item.avatarUrl || DEFAULT_AVATAR" mode="aspectFill" />
+            <image class="podium-avatar-img" :src="avatarSrc(item)" mode="aspectFill" @error="handleAvatarError(item)" />
           </view>
           <image v-if="item" class="podium-badge" :class="'podium-badge-' + (index + 1)" :src="badgeSrc(index)" mode="aspectFit" />
         </template>
@@ -233,7 +251,7 @@ onMounted(() => {
           <view v-for="row in rows" :key="row.promoterUserId + '-' + row.rank" class="list-row" :class="{ me: row.isMe }">
             <view class="row-left">
               <text class="row-rank">{{ row.rank }}</text>
-              <image class="row-avatar" :src="row.avatarUrl || DEFAULT_AVATAR" mode="aspectFill" />
+              <image class="row-avatar" :src="avatarSrc(row)" mode="aspectFill" @error="handleAvatarError(row)" />
               <text class="row-name">{{ displayName(row) }}</text>
               <text v-if="row.isMe" class="row-me">我</text>
             </view>
