@@ -4,7 +4,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import DataTable from '@/components/DataTable.vue'
 import { useUserStore } from '@/stores/user'
 import { useAuthStore } from '@/stores/auth'
-import { resolveAvatar } from '@/utils/avatar'
 import type { AdminWalletUpsertDTO, User, UserBanStatus, UserBanStatusValue, UserDetail } from '@/types/user'
 import { Delete, Lock, RefreshLeft, Unlock, View } from '@element-plus/icons-vue'
 
@@ -228,7 +227,7 @@ onMounted(() => { void loadList() })
         <el-table-column label="用户信息" min-width="210">
           <template #default="{ row }">
             <div class="user-cell">
-              <el-avatar :size="34" :src="resolveAvatar(row.avatarUrl)" />
+              <el-avatar :size="34" :src="row.avatarUrl">{{ row.nickname?.slice(0, 1) }}</el-avatar>
               <div><div>{{ row.nickname }}</div><small>{{ row.phone || '未绑定手机' }}</small></div>
             </div>
           </template>
