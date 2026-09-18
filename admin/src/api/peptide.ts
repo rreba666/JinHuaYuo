@@ -23,12 +23,16 @@ import type {
  * - POST /api/admin/setting/{configKey} 发放配置写入（通用配置接口）
  */
 
-/** 发放配置对应的三个系统配置键（英文标识符保持后端原样）。 */
-const PEPTIDE_ENABLED_KEY = 'dividend_peptide_enabled'
-const PEPTIDE_AMOUNT_KEY = 'dividend_peptide_amount'
-const PEPTIDE_START_DATE_KEY = 'dividend_peptide_start_date'
+/**
+ * 肽金发放配置的专用接口路径（2026-09-18 后端新增）。
+ * 一次读写「启用开关 / 每单金额 / 生效起始成交日」三项：
+ * - 写入是**原子**的（任一校验失败则一个键都不落库），优于逐个键走通用接口；
+ * - 读取会额外返回 `started`（生效日是否已到），便于提示「已保存但未生效」；
+ * - 鉴权：`/api/admin/setting/**` **仅超级管理员**。
+ */
+const PEPTIDE_GRANT_PATH = '/api/admin/setting/dividend-peptide'
 
-/** 生效起始成交日的格式（后端该配置键有格式校验，非法值会被直接拒绝）。 */
+/** 生效起始成交日的格式（后端有格式校验，非法值会被直接拒绝）。 */
 const START_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
 /**
@@ -184,33 +188,45 @@ function isRealDate(value: string): boolean {
 }
 
 /**
- * 保存肽金券发放配置（三个系统配置键，走通用接口 POST /api/admin/setting/{configKey}）。
- * `dividend_peptide_start_date` 后端有格式校验，这里提交前先校验 `yyyy-MM-dd` 且为真实日期。
+ * 读取肽金发放配置（GET /api/admin/setting/dividend-peptide）。
+ * 返回启用开关 / 每单金额 / 生效起始成交日，以及 `started`（生效日是否已到）。
+ */
+export async function getPeptideGrantConfig(): Promise<PeptideGrantConfig> {
+  const data = unwrap(await request.get<ApiResponse<unknown>>(PEPTIDE_GRANT_PATH), '肽金发放配置查询失败')
+  const row = (data || {}) as Record<string, unknown>
+  return {
+    enabled: row.enabled === true,
+    amount: toNumber(row.amount),
+    startDate: String(row.startDate ?? ''),
+    started: row.started === true,
+  }
+}
+
+/**
+ * 保存肽金发放配置（POST /api/admin/setting/dividend-peptide，**一次提交三项且原子**）。
+ * 前端先做一次校验（金额 > 0 且最多 2 位小数、生效日为真实日期），避免无效请求；
+ * 后端校验失败返回 `code=1000` 且**一个键都不落库**（不会出现「开关改了、金额没改」的半成品状态）。
  */
 export async function savePeptideGrantConfig(payload: PeptideGrantConfig): Promise<void> {
+  const amount = Number(payload.amount)
   const startDate = String(payload.startDate || '').trim()
-  const perOrderAmount = Number(payload.perOrderAmount)
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error('每单肽金券金额必须大于 0')
+  }
+  // 后端要求最多 2 位小数：比较「取整到分」的差值，避免浮点误差误判
+  if (Math.abs(Math.round(amount * 100) - amount * 100) > 1e-6) {
+    throw new Error('每单肽金券金额最多 2 位小数')
+  }
   if (!START_DATE_PATTERN.test(startDate) || !isRealDate(startDate)) {
     throw new Error('生效起始成交日必须为 yyyy-MM-dd 格式的真实日期')
   }
-  if (!Number.isFinite(perOrderAmount) || perOrderAmount <= 0) {
-    throw new Error('每单肽金券金额必须大于 0')
-  }
-  const remark = '肽金券管理页保存'
-  // 顺序提交：任一键失败即中断，便于定位是哪个配置保存失败
-  const enabledResponse = await request.post<ApiResponse<null>>(`/api/admin/setting/${PEPTIDE_ENABLED_KEY}`, {
-    configValue: payload.enabled ? '1' : '0',
-    remark,
-  })
-  unwrap(enabledResponse, '肽金券发放开关保存失败')
-  const amountResponse = await request.post<ApiResponse<null>>(`/api/admin/setting/${PEPTIDE_AMOUNT_KEY}`, {
-    configValue: String(perOrderAmount),
-    remark,
-  })
-  unwrap(amountResponse, '每单肽金券金额保存失败')
-  const startDateResponse = await request.post<ApiResponse<null>>(`/api/admin/setting/${PEPTIDE_START_DATE_KEY}`, {
-    configValue: startDate,
-    remark,
-  })
-  unwrap(startDateResponse, '肽金券生效起始成交日保存失败')
+  unwrap(
+    await request.post<ApiResponse<null>>(PEPTIDE_GRANT_PATH, {
+      enabled: payload.enabled,
+      amount: Number(amount.toFixed(2)),
+      startDate,
+      remark: '肽金券管理页保存',
+    }),
+    '肽金发放配置保存失败',
+  )
 }

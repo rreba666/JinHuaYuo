@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
-import { adjustPeptide, getPeptideAccounts, getPeptideLogs, getPeptideSummary, savePeptideGrantConfig } from '@/api/peptide'
+import { adjustPeptide, getPeptideAccounts, getPeptideGrantConfig, getPeptideLogs, getPeptideSummary, savePeptideGrantConfig } from '@/api/peptide'
 import type { PeptideAccount, PeptideAdjustDTO, PeptideGrantConfig, PeptideLog, PeptideSummary } from '@/types/peptide'
 
 /**
@@ -13,6 +13,9 @@ export const usePeptideStore = defineStore('peptide', () => {
   // ===== 总览 =====
   const summary = ref<PeptideSummary | null>(null)
   const summaryLoading = ref(false)
+  /** 发放配置（专用接口返回值，含 `started` 生效状态）。 */
+  const grantConfig = ref<PeptideGrantConfig | null>(null)
+  const grantLoading = ref(false)
 
   // ===== 账户列表 =====
   const accounts = ref<PeptideAccount[]>([])
@@ -45,6 +48,19 @@ export const usePeptideStore = defineStore('peptide', () => {
       summary.value = await getPeptideSummary()
     } finally {
       summaryLoading.value = false
+    }
+  }
+
+  /**
+   * 加载发放配置（专用接口 `GET /api/admin/setting/dividend-peptide`）。
+   * 用它而不是总览字段：总览只给「当前生效值」，缺少 `started`，无法提示「已保存但未生效」。
+   */
+  async function fetchGrantConfig(): Promise<void> {
+    grantLoading.value = true
+    try {
+      grantConfig.value = await getPeptideGrantConfig()
+    } finally {
+      grantLoading.value = false
     }
   }
 
@@ -96,12 +112,12 @@ export const usePeptideStore = defineStore('peptide', () => {
     }
   }
 
-  /** 保存发放配置：成功后重新拉取总览，让卡片区与配置区保持一致。 */
+  /** 保存发放配置（一次提交三项、原子）；成功后刷新配置与总览，让卡片区与表单保持一致。 */
   async function saveGrantConfig(payload: PeptideGrantConfig): Promise<void> {
     configSaving.value = true
     try {
       await savePeptideGrantConfig(payload)
-      await fetchSummary()
+      await Promise.all([fetchGrantConfig(), fetchSummary()])
     } finally {
       configSaving.value = false
     }
@@ -109,9 +125,10 @@ export const usePeptideStore = defineStore('peptide', () => {
 
   return {
     summary, summaryLoading,
+    grantConfig, grantLoading,
     accounts, accountTotal, accountPage, accountSize, accountUserId, accountLoading,
     logs, logTotal, logPage, logSize, logFilters, logLoading,
     actionLoading, configSaving,
-    fetchSummary, fetchAccounts, fetchLogs, adjust, saveGrantConfig,
+    fetchSummary, fetchGrantConfig, fetchAccounts, fetchLogs, adjust, saveGrantConfig,
   }
 })

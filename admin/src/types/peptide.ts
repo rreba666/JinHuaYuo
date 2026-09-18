@@ -113,14 +113,19 @@ export interface PeptideAdjustResult {
   balance: number
 }
 
-/** 发放配置（对应三个系统配置键，走通用接口 POST /api/admin/setting/{configKey}）。 */
+/**
+ * 发放配置（对应后端 `DividendPeptideConfigVO`，走专用接口 `GET|POST /api/admin/setting/dividend-peptide`）。
+ * ⚠️ `enabled` 只决定**是否发放**肽金券；「能不能用肽金券抵扣」由商品的 `peptideEnabled` 控制，两者独立。
+ */
 export interface PeptideGrantConfig {
-  /** 发放开关：dividend_peptide_enabled（0=停用 / 1=启用）。 */
+  /** 发放开关（dividend_peptide_enabled）。 */
   enabled: boolean
-  /** 每单金额（元）：dividend_peptide_amount。 */
-  perOrderAmount: number
-  /** 生效起始成交日（yyyy-MM-dd）：dividend_peptide_start_date。 */
+  /** 每单切出的金额（元，dividend_peptide_amount，默认 52.80）；后端要求 > 0 且最多 2 位小数。 */
+  amount: number
+  /** 生效起始成交日（yyyy-MM-dd，dividend_peptide_start_date）。 */
   startDate: string
+  /** 生效日是否已到（仅 GET 返回，按服务器当天判断）；false 表示「配置已保存但尚未生效」。 */
+  started?: boolean
 }
 
 /** 后端业务码：回收时用户余额不足（HTTP 200 + code=7100）。 */

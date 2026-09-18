@@ -59,42 +59,42 @@ const overviewStats = computed<OverviewStat[]>(() => {
 
 // ===== 发放配置 =====
 /** 发放配置表单（默认值与后端约定默认值一致：启用 / 52.80 元 / 2026-09-21）。 */
-const grantForm = reactive<PeptideGrantConfig>({ enabled: true, perOrderAmount: 52.8, startDate: '2026-09-21' })
+const grantForm = reactive<PeptideGrantConfig>({ enabled: true, amount: 52.8, startDate: '2026-09-21' })
 
-/** 用总览返回的配置值回填表单（总览的 perOrderAmount/enabled/startDate 即三个配置键的当前值）。 */
+/** 用专用接口返回的配置值回填表单（含 `started` 生效状态，用于提示「已保存但未生效」）。 */
 function syncGrantForm(): void {
-  const summary = store.summary
-  if (!summary) return
-  grantForm.enabled = summary.enabled
-  grantForm.perOrderAmount = summary.perOrderAmount
-  grantForm.startDate = summary.startDate || grantForm.startDate
+  const config = store.grantConfig
+  if (!config) return
+  grantForm.enabled = config.enabled
+  grantForm.amount = config.amount
+  grantForm.startDate = config.startDate || grantForm.startDate
 }
 
-/** 加载总览并回填配置表单。 */
+/** 加载总览与发放配置并回填表单。 */
 async function loadSummary(): Promise<void> {
   try {
-    await store.fetchSummary()
+    await Promise.all([store.fetchSummary(), store.fetchGrantConfig()])
     syncGrantForm()
   } catch (error) {
     showError(error, '肽金券总览加载失败')
   }
 }
 
-/** 保存发放配置（开关 / 每单金额 / 生效起始成交日），保存成功后刷新总览与卡片区。 */
+/** 保存发放配置（开关 / 每单金额 / 生效起始成交日）——一次提交三项，后端原子写入。 */
 async function saveConfig(): Promise<void> {
   // 生效起始成交日后端有格式校验，前端先校验一次，避免无谓的失败请求
   if (!/^\d{4}-\d{2}-\d{2}$/.test(grantForm.startDate)) {
     ElMessage.warning('生效起始成交日必须为 yyyy-MM-dd 格式')
     return
   }
-  const amount = Number(grantForm.perOrderAmount)
+  const amount = Number(grantForm.amount)
   if (!Number.isFinite(amount) || amount <= 0) {
     ElMessage.warning('每单肽金券金额必须大于 0')
     return
   }
   try {
     await ElMessageBox.confirm(
-      `将保存发放配置：发放${grantForm.enabled ? '启用' : '停用'}、每单 ¥ ${amount.toFixed(2)}、生效起始成交日 ${grantForm.startDate}。确认保存吗？`,
+      `将保存发放配置：发放${grantForm.enabled ? '启用' : '停用'}、每单 ¥ ${amount.toFixed(2)}、生效起始成交日 ${grantForm.startDate}。\n注意：改金额会同步改变进分红大池的金额（用户现金红包随之变化）。确认保存吗？`,
       '确认保存发放配置',
       { type: 'warning' },
     )
@@ -103,7 +103,7 @@ async function saveConfig(): Promise<void> {
     if (error === 'cancel' || error === 'close') return
   }
   try {
-    await store.saveGrantConfig({ enabled: grantForm.enabled, perOrderAmount: amount, startDate: grantForm.startDate })
+    await store.saveGrantConfig({ enabled: grantForm.enabled, amount, startDate: grantForm.startDate })
     syncGrantForm()
     ElMessage.success('发放配置已保存')
   } catch (error) {
@@ -333,22 +333,25 @@ onMounted(() => {
           <span class="toolbar-count">停用只影响新发放，用户已获得余额仍可继续抵扣</span>
         </div>
         <div class="toolbar-actions">
-          <el-button type="primary" :loading="store.configSaving" @click="saveConfig">保存配置</el-button>
+          <el-button v-if="isSuper" type="primary" :loading="store.configSaving" @click="saveConfig">保存配置</el-button>
+          <span v-else class="grant-readonly-hint">发放配置仅超级管理员可修改</span>
         </div>
       </div>
       <el-form class="grant-form" label-width="140px" @submit.prevent>
         <el-form-item label="发放开关">
-          <el-switch v-model="grantForm.enabled" active-text="启用发放" inactive-text="停用发放" />
+          <el-switch v-model="grantForm.enabled" :disabled="!isSuper" active-text="启用发放" inactive-text="停用发放" />
         </el-form-item>
         <el-form-item label="每单金额（元）">
-          <el-input-number v-model="grantForm.perOrderAmount" :min="0.01" :precision="2" :step="10" />
-          <span class="form-hint">默认 52.80；实际切出 min(本值, 该单红包资金)</span>
+          <el-input-number v-model="grantForm.amount" :min="0.01" :max="100000" :precision="2" :step="10" :disabled="!isSuper" />
+          <span class="form-hint">默认 52.80；实际切出 min(本值, 该单红包资金)。改金额会同步改变进分红大池的金额</span>
         </el-form-item>
         <el-form-item label="生效起始成交日">
-          <el-date-picker v-model="grantForm.startDate" type="date" value-format="YYYY-MM-DD" placeholder="yyyy-MM-dd" />
-          <span class="form-hint">成交日早于该日期的订单不切肽金券；后端有格式校验，需为 yyyy-MM-dd</span>
+          <el-date-picker v-model="grantForm.startDate" type="date" value-format="YYYY-MM-DD" placeholder="yyyy-MM-dd" :disabled="!isSuper" />
+          <span class="form-hint">成交日早于该日期的订单不切肽金券；需为 yyyy-MM-dd 的真实日期</span>
         </el-form-item>
       </el-form>
+      <!-- 生效状态提示：生效日未到时说明「已保存但未生效」，避免误以为配置没生效 -->
+      <el-alert v-if="store.grantConfig && store.grantConfig.started === false" class="grant-alert" type="warning" :closable="false" show-icon :title="`配置已保存，将于成交日 ${store.grantConfig.startDate} 起生效；在此之前成交的订单不切肽金券`" />
     </el-card>
 
     <el-tabs v-model="activeTab" class="module-tabs" @tab-change="handleTabChange">
@@ -499,6 +502,8 @@ onMounted(() => {
 .filter-order { width: 200px; }
 .table-pagination { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-top: 16px; }
 .grant-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); column-gap: 24px; }
+.grant-readonly-hint { color: var(--el-text-color-secondary); font-size: 12px; }
+.grant-alert { margin-top: 12px; }
 .grant-form :deep(.el-form-item__content) { flex-wrap: wrap; gap: 8px; }
 .form-hint { color: var(--el-text-color-secondary); font-size: 12px; line-height: 18px; }
 .adjust-alert { margin-bottom: 16px; }
