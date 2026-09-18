@@ -643,7 +643,6 @@ onShow(() => { void refreshData() })
         <view class="sheet-head"><text class="sheet-title">编辑资料</text><text class="sheet-close" @click="profileEditorVisible = false">×</text></view>
         <button class="avatar-picker" open-type="chooseAvatar" :disabled="avatarUploading || profileSaving" @chooseavatar="onChooseAvatar">
           <image class="avatar-preview" :src="avatarTempPath || resolveAvatar(profileForm.avatarUrl)" mode="aspectFill" />
-          <text v-else class="avatar-placeholder">{{ avatarUploading ? '上传中...' : '点击选择头像' }}</text>
         </button>
         <text class="avatar-tip">点击可选择微信头像或相册图片</text>
         <input v-model="profileForm.nickname" class="sheet-input" type="nickname" placeholder="请输入昵称（可点选微信昵称）" />

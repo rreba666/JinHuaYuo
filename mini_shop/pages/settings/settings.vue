@@ -99,7 +99,6 @@ function todoFeature(feature: string): void {
       <view class="card">
         <button class="avatar-row" open-type="chooseAvatar" :disabled="avatarUploading" @chooseavatar="onChooseAvatar">
           <image class="avatar-img" :src="resolveAvatar(user?.avatarUrl)" mode="aspectFill" />
-          <view v-else class="avatar-img avatar-empty" />
           <view class="avatar-info">
             <text class="avatar-name">{{ user?.nickname || '未设置昵称' }}</text>
             <text class="avatar-tip">{{ avatarUploading ? '上传中...' : '点击更换头像' }}</text>

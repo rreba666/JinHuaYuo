@@ -775,7 +775,6 @@ onUnload(() => {
           </view>
           <view v-if="recipient" class="recipient-card">
             <image class="recipient-avatar" :src="resolveAvatar(recipient.avatarUrl)" mode="aspectFill" />
-            <view v-else class="recipient-avatar placeholder" />
             <view class="recipient-info">
               <text class="recipient-name">{{ recipient.nickname }}</text>
               <text class="recipient-id">ID: {{ recipient.id }}</text>
