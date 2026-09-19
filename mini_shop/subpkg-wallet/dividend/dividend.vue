@@ -8,11 +8,26 @@ import { bindStoredPromotionIfLoggedIn, buildPromotionSharePath, capturePromotio
 import { formatPromotionQueryDate, getPendingSettlementAmount, isPendingSettlementRecord, PROMOTION_SETTLEMENT_MAX_PAGES, PROMOTION_SETTLEMENT_PAGE_SIZE, PROMOTION_SETTLEMENT_QUERY_MS } from '@/utils/promotion-freeze'
 import { resolvePromotionSettlement, savePromotionSettlement, syncPromotionSettlement } from '@/utils/promotion-settlement'
 import { createThrottle } from '@/utils/interaction'
+import { ApiRequestError } from '@/utils/request'
+import { useConvertRealnameGate } from '@/utils/realname-gate'
 import LoginGuide from '@/components/LoginGuide.vue'
+import RealnameVerifySheet from '@/components/RealnameVerifySheet.vue'
 import { FEATURE_FLAGS, useModuleGuard } from '@/utils/config'
 
 /** promotion 模块守卫：停用则拦截推广/红包（深链防护）。 */
 const { moduleEnabled: promotionEnabled, loadModuleConfig: loadPromotionModule } = useModuleGuard('promotion')
+
+/**
+ * 转余额实名门禁（2026-09-19 多账号套现风控）。
+ * 推广金与红包共用同一接口 `/api/wallet/convert`，后端已加实名校验：未实名 → `8601`。
+ * 这里做**前置拦截**（未实名不白发请求）+ **`8601` 兜底**（保证任何路径都不漏）。
+ */
+const {
+  sheetVisible: realnameVisible,
+  ensureRealname,
+  handleVerified,
+  handleConvertDenied,
+} = useConvertRealnameGate()
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
@@ -210,6 +225,8 @@ async function handleConvertPromotion(): Promise<void> {
     uni.showToast({ title: '暂无可转余额', icon: 'none' })
     return
   }
+  // 转余额前实名门禁：未实名则弹实名，认证成功后自动续跑本次转账
+  if (!(await ensureRealname(() => { void handleConvertPromotion() }))) return
   converting.value = true
   try {
     // 转账前的展示合计与余额：用于计算"本次实际转入余额的金额"（余额增量最可信）
@@ -226,6 +243,11 @@ async function handleConvertPromotion(): Promise<void> {
     syncPromotionSettlement(displayedPromotionAmount.value, user.value?.id)
     uni.showToast({ title: '已转入余额', icon: 'success' })
   } catch (error) {
+    // 后端兜底：8601 = 未实名（前置查询失败/状态过期时走到这里），引导实名并自动续跑
+    if (error instanceof ApiRequestError && error.code === 8601) {
+      handleConvertDenied(() => { void handleConvertPromotion() })
+      return
+    }
     uni.showToast({ title: error instanceof Error ? error.message : '转余额失败', icon: 'none' })
   } finally {
     converting.value = false
@@ -467,6 +489,9 @@ onShow(() => {
     </view>
 
     <LoginGuide v-model="loginGuideVisible" />
+
+    <!-- 转余额实名门禁（2026-09-19 多账号套现风控）：未实名时弹出，认证成功后自动续跑转余额 -->
+    <RealnameVerifySheet v-model="realnameVisible" @verified="handleVerified" />
 
   </view>
 </template>

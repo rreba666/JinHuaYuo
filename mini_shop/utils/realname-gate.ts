@@ -58,5 +58,18 @@ export function useConvertRealnameGate() {
     action?.()
   }
 
-  return { sheetVisible, checking, ensureRealname, handleVerified }
+  /**
+   * 后端返回 **`8601 未实名`** 时调用（`/api/wallet/convert` 与 `/api/wallet/withdraw` 共用该码）。
+   *
+   * 与 `ensureRealname()` 的分工：
+   * - `ensureRealname()` 是**前置拦截**（先查状态，未实名就不发请求）——体验好，省一次无效请求；
+   * - 本函数是**后端兜底**（前置查询失败、状态过期、或别处直接调接口时）——保证任何路径都不会漏。
+   * 两者都指向同一个实名弹层，认证成功后都会续跑原动作。
+   */
+  function handleConvertDenied(onVerified?: () => void): void {
+    resumeAction = onVerified || null
+    sheetVisible.value = true
+  }
+
+  return { sheetVisible, checking, ensureRealname, handleVerified, handleConvertDenied }
 }

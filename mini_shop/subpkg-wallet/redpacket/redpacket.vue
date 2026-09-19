@@ -3,8 +3,11 @@ import { computed, onMounted, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { convertWallet, getDividendRecords, getWalletInfo, getUserProfile, type DividendRecord, type UserProfile, type WalletInfo } from '@/api/user'
 import { isLoggedIn, isRegisteredUser } from '@/utils/auth'
+import { ApiRequestError } from '@/utils/request'
+import { useConvertRealnameGate } from '@/utils/realname-gate'
 import RequestState from '@/components/RequestState.vue'
 import LoginGuide from '@/components/LoginGuide.vue'
+import RealnameVerifySheet from '@/components/RealnameVerifySheet.vue'
 import { useModuleGuard } from '@/utils/config'
 
 /** promotion 模块守卫：停用则拦截平台红包（深链防护）。 */
@@ -23,6 +26,18 @@ const converting = ref(false)
 const user = ref<UserProfile | null>(null)
 const registeredUser = computed(() => isRegisteredUser(user.value?.identity))
 const loginGuideVisible = ref(false)
+
+/**
+ * 转余额实名门禁（2026-09-19 多账号套现风控）。
+ * 红包与推广金共用同一接口 `/api/wallet/convert`，后端已加实名校验：未实名 → `8601`。
+ * 这里做**前置拦截**（体验：先查状态、未实名不白发请求）+ **`8601` 兜底**（保证任何路径都不漏）。
+ */
+const {
+  sheetVisible: realnameVisible,
+  ensureRealname,
+  handleVerified,
+  handleConvertDenied,
+} = useConvertRealnameGate()
 let pageLoadPromise: Promise<void> | null = null
 
 /** 自定义导航栏样式。 */
@@ -114,6 +129,8 @@ async function convertBonus(): Promise<void> {
     uni.showToast({ title: '暂无可转余额', icon: 'none' })
     return
   }
+  // 转余额前实名门禁：未实名则弹实名，认证成功后自动续跑本次转账
+  if (!(await ensureRealname(() => { void convertBonus() }))) return
   converting.value = true
   try {
     await convertWallet('BONUS')
@@ -122,6 +139,11 @@ async function convertBonus(): Promise<void> {
     await loadData()
     uni.showToast({ title: '已转入余额', icon: 'success' })
   } catch (error) {
+    // 后端兜底：8601 = 未实名（前置查询失败/状态过期时走到这里），引导实名并自动续跑
+    if (error instanceof ApiRequestError && error.code === 8601) {
+      handleConvertDenied(() => { void convertBonus() })
+      return
+    }
     uni.showToast({ title: error instanceof Error ? error.message : '转余额失败', icon: 'none' })
   } finally {
     converting.value = false
@@ -208,6 +230,9 @@ onShow(() => { void refreshData() })
     </view>
 
     <LoginGuide v-model="loginGuideVisible" />
+
+    <!-- 转余额实名门禁（2026-09-19 多账号套现风控）：未实名时弹出，认证成功后自动续跑转余额 -->
+    <RealnameVerifySheet v-model="realnameVisible" @verified="handleVerified" />
   </view>
 </template>
 
