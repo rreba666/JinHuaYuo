@@ -151,7 +151,7 @@ function waitForCanvasPaint(canvas: PosterCanvasNode): Promise<void> {
   })
 }
 
-/** 把海报背景和二维码合成一张 1242x2400 图片，保存/分享时保持设计稿完整。 */
+/** 把海报背景和二维码合成一张 1242x2400 图片，保存时保持设计稿完整。 */
 async function createPosterFile(): Promise<string> {
   if (!props.codeUrl) throw new Error('推广码尚未生成')
   console.log('[Poster] 开始生成海报 codeUrl=', props.codeUrl)
@@ -256,29 +256,6 @@ async function saveToPhone(): Promise<void> {
     actionLoading.value = false
   }
 }
-
-async function shareToFriend(): Promise<void> {
-  if (actionLoading.value || props.loading) return
-  actionLoading.value = true
-  try {
-    const filePath = await getPosterFile()
-    // @ts-ignore 微信小程序分享图片 API
-    const wxApi = typeof wx !== 'undefined' ? wx : null
-    if (!wxApi || typeof wxApi.showShareImageMenu !== 'function') {
-      uni.showToast({ title: '当前微信版本不支持发送图片', icon: 'none' })
-      return
-    }
-    wxApi.showShareImageMenu({
-      path: filePath,
-      fail: () => uni.showToast({ title: '发送失败，请重试', icon: 'none' }),
-    })
-  } catch (error) {
-    console.error('[PromotionCodePoster] share poster export failed:', error)
-    uni.showToast({ title: '图片生成失败，请重试', icon: 'none' })
-  } finally {
-    actionLoading.value = false
-  }
-}
 </script>
 
 <template>
@@ -291,8 +268,8 @@ async function shareToFriend(): Promise<void> {
         <image v-show="!loading && codeUrl" class="promotion-code-image" :src="codeUrl" mode="aspectFit" />
       </view>
       <view v-show="!loading && codeUrl" class="poster-actions">
+        <!-- 只保留「保存到手机」；「发送给好友」已下线（推广码海报不再走微信分享图片菜单） -->
         <button class="poster-action poster-save" :disabled="actionLoading" @click="saveToPhone">保存到手机</button>
-        <button class="poster-action poster-share" :disabled="actionLoading" @click="shareToFriend">发送给好友</button>
       </view>
       <canvas type="2d" id="promotion-code-poster-canvas" class="poster-canvas" />
     </view>
@@ -311,6 +288,5 @@ async function shareToFriend(): Promise<void> {
 .poster-action { flex: 1; height: 76rpx; margin: 0; padding: 0; border-radius: 38rpx; color: #fff; font-size: 25rpx; line-height: 76rpx; }
 .poster-action::after { border: 0; }
 .poster-save { background: #1677ff; }
-.poster-share { background: #07c160; }
 .poster-canvas { position: fixed; left: -9999px; top: 0; width: 310px; height: 600px; }
 </style>

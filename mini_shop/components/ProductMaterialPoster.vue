@@ -225,19 +225,6 @@ async function saveToPhone(path: string): Promise<void> {
     uni.showToast({ title: message.includes('auth deny') ? '请允许访问相册后重试' : '保存失败，请重试', icon: 'none' })
   } finally { actionLoading.value = false }
 }
-
-async function shareToFriend(path: string): Promise<void> {
-  if (actionLoading.value || props.loading) return
-  actionLoading.value = true
-  try {
-    // @ts-ignore
-    const wxApi = typeof wx !== 'undefined' ? wx : null
-    if (!wxApi || typeof wxApi.showShareImageMenu !== 'function') { uni.showToast({ title: '当前微信版本不支持发送图片', icon: 'none' }); return }
-    wxApi.showShareImageMenu({ path, fail: () => uni.showToast({ title: '发送失败，请重试', icon: 'none' }) })
-  } catch (error) {
-    uni.showToast({ title: '图片生成失败，请重试', icon: 'none' })
-  } finally { actionLoading.value = false }
-}
 </script>
 
 <template>
@@ -254,8 +241,8 @@ async function shareToFriend(path: string): Promise<void> {
         <view v-for="(item, index) in posterList" :key="item.path" class="poster-card">
           <image class="poster-image" :src="item.path" mode="widthFix" />
           <view class="poster-actions">
+            <!-- 只保留「保存到手机」；「发送给好友」已下线（素材海报含推广码，统一走保存后自行转发） -->
             <button class="poster-action poster-save" :disabled="actionLoading" @click="saveToPhone(item.path)">保存到手机</button>
-            <button class="poster-action poster-share" :disabled="actionLoading" @click="shareToFriend(item.path)">发送给好友</button>
           </view>
         </view>
         <view v-if="!posterList.length" class="poster-empty">该商品暂无轮播图素材</view>
@@ -280,7 +267,6 @@ async function shareToFriend(path: string): Promise<void> {
 .poster-action { flex: 1; height: 68rpx; margin: 0; padding: 0; border-radius: 34rpx; color: #fff; font-size: 24rpx; line-height: 68rpx; }
 .poster-action::after { border: 0; }
 .poster-save { background: #1677ff; }
-.poster-share { background: #07c160; }
 .poster-empty { padding: 100rpx 0; color: #959595; font-size: 26rpx; text-align: center; }
 .poster-canvas { position: fixed; left: -9999px; top: 0; width: 188px; height: 250px; }
 </style>
