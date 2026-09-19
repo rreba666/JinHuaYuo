@@ -4,14 +4,15 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { CopyDocument, Refresh, Search, Warning } from '@element-plus/icons-vue'
 import DataTable from '@/components/DataTable.vue'
-import { getRefundRestockGaps, getStockLedger, getTotalStockDrifts } from '@/api/stock'
-import type { RefundRestockGap, StockLedger, StockLedgerDetail, TotalStockDrift } from '@/types/stock'
+import { getRefundRestockGaps, getStockLedger, getStockOverview, getTotalStockDrifts } from '@/api/stock'
+import type { RefundRestockGap, StockLedger, StockLedgerDetail, StockOverview, TotalStockDrift } from '@/types/stock'
 import { copyToClipboard } from '@/utils/clipboard'
 
 /**
- * 库存对账页（今华有肽后台，三个只读页签）。
+ * 库存对账页（今华有肽后台，四个只读页签）。
  *
- * 数据源为后端 2026-09-16 新增的三个**只读**接口：
+ * 数据源为后端的四个**只读**接口：
+ * - 库存概览：`GET /api/admin/stock/overview` —— 每个启用 SKU 的**可售 / 锁定 / 在途 / 合计**（2026-09-18 新增，解决「锁定库存不可见导致对账对不上」）；
  * - 库存台账：`GET /api/admin/stock/ledger` —— 期初/期末/实际三值对照 + 「期初+变动=期末」自动断言；
  * - 退款应补未补：`GET /api/admin/stock/refund-restock-gaps` —— 已退款但库存未回补的订单项；
  * - 冗余列偏离：`GET /api/admin/stock/total-stock-drifts` —— `product.total_stock` 冗余列与真实可售库存的偏离基线。
@@ -20,7 +21,69 @@ import { copyToClipboard } from '@/utils/clipboard'
  */
 const route = useRoute()
 const router = useRouter()
-const activeTab = ref<'ledger' | 'gaps' | 'drifts'>('ledger')
+const activeTab = ref<'overview' | 'ledger' | 'gaps' | 'drifts'>('overview')
+
+// ===== 页签零：库存概览（可售 / 锁定 / 在途 / 合计） =====
+/**
+ * 库存概览列表。接口**无分页**，一次拉全量、筛选在前端做。
+ * 解决的核心盲区：**锁定库存**（下单占用但货未出库）此前在前端完全不可见，对账时对不上。
+ */
+const overviewList = ref<StockOverview[]>([])
+const overviewLoading = ref(false)
+const overviewLoaded = ref(false)
+/** 接口未上线（404）时置 true：页内提示，避免看起来像参数或权限问题 */
+const overviewUnavailable = ref(false)
+/** 本地筛选关键词：商品名 / 商品 ID / SKU ID / SKU 名 */
+const overviewKeyword = ref('')
+/** 只看有锁定库存的 SKU（对账时通常最关心这部分） */
+const overviewLockedOnly = ref(false)
+
+/** 前端筛选后的概览行（接口无分页，全量在手）。 */
+const overviewRows = computed(() => {
+  const keyword = overviewKeyword.value.trim().toLowerCase()
+  return overviewList.value.filter((row) => {
+    if (overviewLockedOnly.value && row.lockedStock <= 0) return false
+    if (!keyword) return true
+    return String(row.productName).toLowerCase().includes(keyword)
+      || String(row.productId).includes(keyword)
+      || String(row.skuId).includes(keyword)
+      || String(row.skuName).toLowerCase().includes(keyword)
+  })
+})
+
+/** 概览汇总（按当前筛选结果）：SKU 数 / 可售 / 锁定 / 在途 合计。 */
+const overviewSummary = computed(() => {
+  const rows = overviewRows.value
+  return {
+    skuCount: rows.length,
+    available: rows.reduce((sum, row) => sum + row.availableStock, 0),
+    locked: rows.reduce((sum, row) => sum + row.lockedStock, 0),
+    shipping: rows.reduce((sum, row) => sum + row.shipping, 0),
+  }
+})
+
+/** 有锁定库存的行标黄：对账时最需要盯的部分。 */
+function overviewRowClass({ row }: { row: StockOverview }): string {
+  return row.lockedStock > 0 ? 'overview-locked-row' : ''
+}
+
+/** 加载库存实时概览（只读、无分页）。 */
+async function loadOverview(): Promise<void> {
+  overviewLoading.value = true
+  try {
+    overviewList.value = await getStockOverview()
+    overviewLoaded.value = true
+    overviewUnavailable.value = false
+  } catch (error) {
+    overviewList.value = []
+    const message = error instanceof Error ? error.message : ''
+    // 接口未上线（404 / 尚未上线）单独提示，避免与参数、权限问题混淆
+    overviewUnavailable.value = /404|不存在|未上线|尚未上线/.test(message)
+    ElMessage.error(message || '库存概览查询失败')
+  } finally {
+    overviewLoading.value = false
+  }
+}
 
 // ===== 页签一：库存台账 =====
 /** 台账查询的 ID 维度：`sku`=SKU ID（最精确） / `product`=商品 ID（后端解析该商品唯一的启用 SKU） */
@@ -358,7 +421,8 @@ function openLedgerByProduct(productId: string): void {
  * （此前固定调 queryLedger，在「退款应补未补」页签下点刷新会去查台账，属于页签错配）
  */
 function refreshCurrent(): void {
-  if (activeTab.value === 'gaps') void loadGaps()
+  if (activeTab.value === 'overview') void loadOverview()
+  else if (activeTab.value === 'gaps') void loadGaps()
   else if (activeTab.value === 'drifts') void loadDrifts()
   else void queryLedger()
 }
@@ -406,8 +470,9 @@ function gapRowClass({ row }: { row: RefundRestockGap }): string {
   return ''
 }
 
-// 首次切到「应补未补」「冗余列偏离」页签时懒加载
+// 首次切到「库存概览」「应补未补」「冗余列偏离」页签时懒加载
 watch(activeTab, (tab) => {
+  if (tab === 'overview' && !overviewLoaded.value) void loadOverview()
   if (tab === 'gaps' && !gapsLoaded.value) void loadGaps()
   if (tab === 'drifts' && !driftsLoaded.value) void loadDrifts()
 })
@@ -437,7 +502,11 @@ watch(() => `${route.query.skuId ?? ''}|${route.query.productId ?? ''}`, () => {
 onMounted(() => {
   // 支持从商品列表带 ID 直接进入：`/stock?skuId=24`（SKU 维度）或 `/stock?productId=900009`（商品维度）
   const target = ledgerTargetFromQuery()
-  if (!target) return
+  if (!target) {
+    // 没带 query：停在默认页签「库存概览」，先看清货的去向
+    void loadOverview()
+    return
+  }
   ledgerIdType.value = target.type
   ledgerId.value = target.id
   void queryLedger()
@@ -451,10 +520,89 @@ onMounted(() => {
         <h1>库存对账</h1>
         <p>按 SKU 或商品核对库存变动流水（期初 → 期末 → 实际），并排查「已退款但库存未回补」的订单。</p>
       </div>
-      <el-button :loading="ledgerLoading || gapsLoading" @click="refreshCurrent"><el-icon><Refresh /></el-icon>刷新</el-button>
+      <el-button :loading="ledgerLoading || gapsLoading || overviewLoading || driftsLoading" @click="refreshCurrent"><el-icon><Refresh /></el-icon>刷新</el-button>
     </div>
 
     <el-tabs v-model="activeTab" class="stock-tabs">
+      <!-- ===== 库存概览（可售 / 锁定 / 在途 / 合计） ===== -->
+      <el-tab-pane label="库存概览" name="overview">
+        <el-alert
+          v-if="overviewUnavailable"
+          type="warning"
+          :closable="false"
+          show-icon
+          class="stock-alert"
+          title="当前环境的「库存实时概览」接口尚未上线，暂时查不到数据；后端发版后本页即可使用。"
+        />
+        <el-card shadow="never" class="content-card">
+          <el-alert
+            type="info"
+            :closable="false"
+            show-icon
+            class="stock-alert"
+            title="货的去向一次看全：可售 = 可下单卖出（不含锁定）；锁定 = 下单占用但货未出库（超时自动释放，自提单最长 30 天）；在途 = 已发货未确认收货（货已出库、不在库）；合计 = 可售 + 锁定（账面在库）。⚠️ 锁定库存含 2026-09-16 流水留痕上线前的历史遗留，无法逐单追溯，需人工盘点确认。"
+          />
+
+          <div class="overview-summary">
+            <div class="overview-stat"><span class="overview-stat-value">{{ overviewSummary.skuCount }}</span><span class="overview-stat-label">SKU 数</span></div>
+            <div class="overview-stat"><span class="overview-stat-value">{{ overviewSummary.available }}</span><span class="overview-stat-label">可售合计</span></div>
+            <div class="overview-stat"><span class="overview-stat-value overview-stat-warn">{{ overviewSummary.locked }}</span><span class="overview-stat-label">锁定合计</span></div>
+            <div class="overview-stat"><span class="overview-stat-value">{{ overviewSummary.shipping }}</span><span class="overview-stat-label">在途合计</span></div>
+          </div>
+
+          <div class="section-title">
+            <strong>库存概览</strong>
+            <span class="section-sub">按启用 SKU 展示可售 / 锁定 / 在途 / 合计（口径与库存台账 currentStock 一致）</span>
+            <el-button link type="primary" :loading="overviewLoading" @click="loadOverview()">刷新</el-button>
+          </div>
+
+          <div class="overview-filters">
+            <el-input v-model="overviewKeyword" placeholder="商品名 / 商品 ID / SKU ID / SKU 名" clearable class="overview-keyword" />
+            <el-checkbox v-model="overviewLockedOnly">只看有锁定库存的 SKU</el-checkbox>
+            <span class="section-sub">显示 {{ overviewRows.length }} 行 / 已加载 {{ overviewList.length }} 行</span>
+          </div>
+
+          <el-table
+            :data="overviewRows"
+            v-loading="overviewLoading"
+            border
+            stripe
+            :row-class-name="overviewRowClass"
+            empty-text="没有匹配的 SKU"
+          >
+            <el-table-column label="商品" min-width="200">
+              <template #default="{ row }">
+                <div class="overview-cell"><span>{{ row.productName }}</span><small>ID {{ row.productId }}</small></div>
+              </template>
+            </el-table-column>
+            <el-table-column label="SKU" min-width="180">
+              <template #default="{ row }">
+                <div class="overview-cell"><span>{{ row.skuName || '—' }}</span><small>SKU {{ row.skuId }}</small></div>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="90">
+              <template #default="{ row }">
+                <el-tag :type="Number(row.status) === 1 ? 'success' : 'info'" size="small">{{ productStatusText(row.status) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="availableStock" label="可售库存" width="110" />
+            <el-table-column label="锁定库存" width="110">
+              <template #default="{ row }">
+                <span :class="{ 'overview-locked-value': row.lockedStock > 0 }">{{ row.lockedStock }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="shipping" label="在途" width="90" />
+            <el-table-column prop="totalStock" label="合计在库" width="110" />
+            <el-table-column label="售价" width="110">
+              <template #default="{ row }">¥ {{ row.price }}</template>
+            </el-table-column>
+            <el-table-column label="更新时间" min-width="170">
+              <template #default="{ row }">{{ formatTime(row.updateTime) }}</template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-tab-pane>
+
       <!-- ===== 库存台账 ===== -->
       <el-tab-pane label="库存台账" name="ledger">
         <el-alert
@@ -794,6 +942,19 @@ onMounted(() => {
 <style scoped>
 .stock-tabs { min-width: 0; }
 .stock-tabs :deep(.el-tabs__content) { overflow: visible; }
+
+/* 库存概览：汇总卡 + 筛选行 + 锁定库存高亮 */
+.overview-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.overview-stat { display: flex; flex-direction: column; padding: 12px 16px; background: var(--el-fill-color-lighter); border-radius: 6px; }
+.overview-stat-value { color: var(--el-text-color-primary); font-size: 20px; font-weight: 600; }
+.overview-stat-warn { color: var(--el-color-warning); }
+.overview-stat-label { margin-top: 2px; color: var(--el-text-color-secondary); font-size: 12px; }
+.overview-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
+.overview-keyword { width: 280px; }
+.overview-cell { display: flex; flex-direction: column; }
+.overview-cell small { color: var(--el-text-color-secondary); font-size: 12px; }
+.overview-locked-value { color: var(--el-color-warning); font-weight: 600; }
+:deep(.overview-locked-row) { background: var(--el-color-warning-light-9); }
 .stock-alert { margin-bottom: 12px; }
 .muted { color: var(--el-text-color-secondary); font-size: 12px; }
 .danger-text { color: var(--el-color-danger); }

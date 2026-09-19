@@ -7,6 +7,7 @@ import type {
   StockLedgerDetail,
   StockLedgerQuery,
   StockLedgerSummaryItem,
+  StockOverview,
   TotalStockDrift,
   TotalStockDriftPage,
   TotalStockDriftQuery,
@@ -15,7 +16,8 @@ import type {
 /**
  * 库存对账接口层（今华有肽后台）。
  *
- * 对应后端 2026-09-16 新增的**三个只读**接口（不会修改任何数据）：
+ * 对应后端**四个只读**接口（不会修改任何数据）：
+ * - `GET /api/admin/stock/overview`（库存实时概览：可售 / 锁定 / 在途 / 合计，无分页，2026-09-18 新增）
  * - `GET /api/admin/stock/ledger`（库存台账，含期初/期末自动断言）
  * - `GET /api/admin/stock/refund-restock-gaps`（退款应补未补核对）
  * - `GET /api/admin/stock/total-stock-drifts`（冗余列 `product.total_stock` 偏离巡检）
@@ -229,4 +231,35 @@ export async function getTotalStockDrifts(query: TotalStockDriftQuery): Promise<
     pageSize: toNumber(raw.pageSize, query.size),
     list: list.map(normalizeDrift),
   }
+}
+
+/** 归一化库存概览行（int64 主键统一转字符串，数字字段兜底）。 */
+function normalizeOverview(value: unknown): StockOverview {
+  const row = (value || {}) as Record<string, unknown>
+  return {
+    productId: String(row.productId ?? ''),
+    productName: String(row.productName ?? ''),
+    skuId: String(row.skuId ?? ''),
+    skuName: String(row.skuName ?? ''),
+    status: toNumber(row.status),
+    availableStock: toNumber(row.availableStock),
+    lockedStock: toNumber(row.lockedStock),
+    shipping: toNumber(row.shipping),
+    totalStock: toNumber(row.totalStock),
+    price: toNumber(row.price),
+    updateTime: String(row.updateTime ?? ''),
+  }
+}
+
+/**
+ * 库存实时概览（只读、**无分页**）：每个启用 SKU 的**可售 / 锁定 / 在途 / 合计**。
+ *
+ * 用途：解决「锁定库存不可见导致对账对不上」——把货的去向一次看全：
+ * 可售 = `sku.stock`（不含锁定）、锁定 = `sku.locked_stock`（货未出库）、
+ * 在途 = 已发货未收货（**货已出库、不在库**）、合计 = 可售 + 锁定（账面在库）。
+ * 口径与 `getStockLedger` 的 `currentStock` 一致。
+ */
+export async function getStockOverview(): Promise<StockOverview[]> {
+  const data = unwrap(await request.get<StockResponse<unknown>>('/api/admin/stock/overview'), '库存概览查询失败')
+  return Array.isArray(data) ? data.map(normalizeOverview) : []
 }

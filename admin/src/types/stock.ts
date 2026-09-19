@@ -239,3 +239,41 @@ export interface TotalStockDriftPage {
   pageSize: number
   list: TotalStockDrift[]
 }
+
+/**
+ * 库存实时概览（`GET /api/admin/stock/overview`，2026-09-18 新增）一行 = 一个**启用 SKU**。
+ *
+ * 用途：解决「锁定库存不可见导致对账对不上」的盲区，把货的去向一次说清。
+ *
+ * ⚠️ 口径（与 `GET /api/admin/stock/ledger` 台账一致，纯 SELECT 只读）：
+ * - `availableStock` = `product_sku.stock`（可下单卖出，**不含**锁定）；
+ * - `lockedStock` = `product_sku.locked_stock`（下单占用、货未出库，超时自动释放；**自提单最长 30 天**）。
+ *   **含 9/16 流水留痕上线前的历史遗留**，无法逐单追溯，需人工盘点确认；
+ * - `shipping` = 物流已发货（`pickup_type=0`、`status=2`）未确认收货的件数，**货已出库、不在库**；
+ * - `totalStock` = `availableStock + lockedStock`（账面在库）。
+ *
+ * ⚠️ **命名陷阱**：商品列表 `ProductListVO.totalStock` 虽然同名，但那个是「所有启用 SKU 的 `stock` 之和」
+ * = **可售**（不含锁定）；本接口的 `totalStock` 才是「可售 + 锁定」。展示时不要互相套用。
+ */
+export interface StockOverview {
+  /** 商品 ID（`product.id`） */
+  productId: string
+  productName: string
+  /** SKU ID（`product_sku.id`） */
+  skuId: string
+  skuName: string
+  /** 商品状态：0=下架 / 1=上架 */
+  status: number
+  /** 可售库存 = `product_sku.stock`（可下单卖出数，不含锁定） */
+  availableStock: number
+  /** 锁定库存 = `product_sku.locked_stock`（下单占用、货未出库；含 9/16 前历史遗留，需人工盘点） */
+  lockedStock: number
+  /** 在途数量 = 物流已发货未确认收货件数（货已出库、不在库） */
+  shipping: number
+  /** 合计在库量 = 可售 + 锁定 */
+  totalStock: number
+  /** SKU 售价（元） */
+  price: number
+  /** SKU 更新时间（`product_sku.update_time`） */
+  updateTime: string
+}
