@@ -14,7 +14,7 @@ import { validateText } from '@/utils/input-validation'
 import PromotionCodePoster from '@/components/PromotionCodePoster.vue'
 import LoginGuide from '@/components/LoginGuide.vue'
 import PageWatermark from '@/components/PageWatermark.vue'
-import { getModules, isModuleEnabled, type ModuleConfig } from '@/utils/config'
+import { FEATURE_FLAGS, getModules, isModuleEnabled, type ModuleConfig } from '@/utils/config'
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
@@ -110,7 +110,8 @@ const incomeEntries = computed(() => {
     { label: '我的余额', value: wallet.value?.balance },
     { label: '推广收益', value: promotionDisplayAmount.value, settling: promotionSettling.value },
     { label: '平台红包', value: wallet.value?.pendingBonus },
-    { label: '肽金券', value: peptideAccount.value?.balance, visible: peptideVisible.value },
+    // 肽金券：临时隐藏开关（甲方未结款，见 utils/config.ts 的 FEATURE_FLAGS）
+    { label: '肽金券', value: peptideAccount.value?.balance, visible: FEATURE_FLAGS.peptide && peptideVisible.value },
   ]
   const moduleOf: Record<number, string> = { 0: 'basic', 1: 'promotion', 2: 'promotion' }
   return all.filter((item, index) => item.visible !== false && isModuleEnabled(modules, moduleOf[index] || 'basic'))
@@ -457,6 +458,8 @@ function goWallet(): void {
 
 /** 进入肽金券页（余额、流水与使用规则）；肽金券不要求「完成订单」身份，只要求登录。 */
 function goPeptide(): void {
+  // 临时隐藏（甲方未结款）：收益卡入口已隐藏，这里再兜一层，防旧链接/深链直达
+  if (!FEATURE_FLAGS.peptide) return
   if (!isLoggedIn()) {
     showLoginGuide()
     return

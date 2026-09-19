@@ -4,6 +4,7 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getPeptideAccount, getPeptideLogs, normalizePeptideWording, type PeptideAccount, type PeptideLog } from '@/api/peptide'
 import { isLoggedIn } from '@/utils/auth'
 import LoginGuide from '@/components/LoginGuide.vue'
+import { FEATURE_FLAGS } from '@/utils/config'
 
 /** 流水类型兜底文案（后端 typeText 缺失时使用；产品内统一用「红包」，不出现「分红」）。 */
 const LOG_TYPE_TEXT: Record<string, string> = {
@@ -126,7 +127,16 @@ function goBack(): void {
   uni.switchTab({ url: '/pages/mine/mine' })
 }
 
-onLoad(() => { void load(true) })
+onLoad(() => {
+  // 临时隐藏（甲方未结款）：收益卡入口已隐藏，这里兜底防**分享链接 / 深链直达**。
+  // 恢复方式：把 `utils/config.ts` 的 `FEATURE_FLAGS.peptide` 改回 true 即可。
+  if (!FEATURE_FLAGS.peptide) {
+    uni.showToast({ title: '该功能暂未开放', icon: 'none' })
+    setTimeout(() => { uni.navigateBack({ delta: 1, fail: () => uni.switchTab({ url: '/pages/mine/mine' }) }) }, 600)
+    return
+  }
+  void load(true)
+})
 
 /** 从其他页面返回时刷新余额与首屏流水，保证下单抵扣后数字是最新的。 */
 onShow(() => { if (loaded.value) void load(true) })

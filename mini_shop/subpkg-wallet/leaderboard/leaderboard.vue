@@ -3,11 +3,18 @@ import { computed, onMounted, ref } from 'vue'
 import { onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import { getPromotionLeaderboard, type LeaderboardPeriod, type LeaderboardRow, type PromotionLeaderboard } from '@/api/promotion'
 import { isLoggedIn } from '@/utils/auth'
-import { useModuleGuard } from '@/utils/config'
+import { FEATURE_FLAGS, useModuleGuard } from '@/utils/config'
 import LoginGuide from '@/components/LoginGuide.vue'
 
 /** promotion 模块守卫：模块停用时拦截页面（深链防护）。 */
-const { moduleEnabled: promotionEnabled, loadModuleConfig: loadPromotionModule } = useModuleGuard('promotion')
+const { moduleEnabled: promotionModuleEnabled, loadModuleConfig: loadPromotionModule } = useModuleGuard('promotion')
+
+/**
+ * 页面可用性 = 模块开关 **且** 未被临时隐藏。
+ * 临时隐藏（甲方未结款）：`FEATURE_FLAGS.leaderboard` 为 false 时整页走下面的「未开通」兜底 ——
+ * 入口已隐藏，这一层用于**防分享链接 / 深链直达**。恢复时把开关改回 `true` 即可（见 `utils/config.ts`）。
+ */
+const promotionEnabled = computed(() => FEATURE_FLAGS.leaderboard && promotionModuleEnabled.value)
 
 /**
  * 周期切换项（设计稿：日榜 / 周榜 / 月榜 / 年榜 / 总榜）。

@@ -13,7 +13,7 @@ import { getDividendQuantity, isDividendEligible } from '@/utils/dividend-limit'
 import { cleanDigits, cleanText, normalizeEditableMobile, validateEmail, validateMobile, validateTaxNumber, validateText } from '@/utils/input-validation'
 import { isApiRequestError } from '@/utils/request'
 import { isLoggedIn } from '@/utils/auth'
-import { getModules, isModuleEnabled, type ModuleConfig } from '@/utils/config'
+import { FEATURE_FLAGS, getModules, isModuleEnabled, type ModuleConfig } from '@/utils/config'
 import { getAddressList, type Address as AddressBookAddress } from '@/api/address'
 import LoginGuide from '@/components/LoginGuide.vue'
 
@@ -199,12 +199,15 @@ const peptideEnabledAmount = computed(() => items.value.reduce((sum, item) => su
  * 新建订单在平台启用、后端返回可用额度且买家未关闭开关时生效。
  */
 const peptideDeduction = computed(() => {
+  // ⚠️ 临时隐藏（甲方未结款）：`usePeptide` **默认就是 true**，所以只隐藏抵扣行是不够的 ——
+  // 这里必须一并返回 0，否则下单时仍会自动带上肽金券抵扣（`usePeptideAmount` 会随之下发）。
+  if (!FEATURE_FLAGS.peptide) return 0
   if (existingOrder.value) return 0
   if (!usePeptide.value || !peptideUsable.value?.enabled) return 0
   return Math.max(0, Number(peptideUsable.value.usableAmount || 0))
 })
 /** 是否展示肽金券抵扣行：新建订单、平台已启用且有可抵扣额度（余额为 0 或商品不支持时不展示）。 */
-const peptideRowVisible = computed(() => !existingOrder.value && Boolean(peptideUsable.value?.enabled) && Number(peptideUsable.value?.usableAmount || 0) > 0)
+const peptideRowVisible = computed(() => FEATURE_FLAGS.peptide && !existingOrder.value && Boolean(peptideUsable.value?.enabled) && Number(peptideUsable.value?.usableAmount || 0) > 0)
 /** 肽金券使用说明（后端下发文案，展示前把「肽金」归一化为「肽金券」）。 */
 const peptideUsageTip = computed(() => normalizePeptideWording(peptideUsable.value?.usageTip))
 /** 应付合计：实付减去肽金券抵扣，兜底不为负。 */
@@ -214,7 +217,8 @@ const existingPeptideAmount = computed(() => Math.max(0, Number(existingOrder.va
 
 /** 拉取本单肽金券可用额度；历史订单或商品未就绪时不请求，失败时静默隐藏抵扣行。 */
 async function loadPeptideUsable(): Promise<void> {
-  if (existingOrder.value || !items.value.length) {
+  // 临时隐藏（甲方未结款）期间不去查额度，省一次请求
+  if (!FEATURE_FLAGS.peptide || existingOrder.value || !items.value.length) {
     peptideUsable.value = null
     return
   }

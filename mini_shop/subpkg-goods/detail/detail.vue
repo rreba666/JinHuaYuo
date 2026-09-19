@@ -10,6 +10,7 @@ import { bindStoredPromotionIfLoggedIn, buildPromotionSharePath, capturePromotio
 import { getPromotionCode } from '@/api/promotion'
 import { isApiRequestError } from '@/utils/request'
 import { PURCHASE_LIMIT_ERROR_CODE, PURCHASE_LIMIT_MESSAGE } from '@/utils/dividend-limit'
+import { FEATURE_FLAGS } from '@/utils/config'
 import PromotionCodePoster from '@/components/PromotionCodePoster.vue'
 import LoginGuide from '@/components/LoginGuide.vue'
 
@@ -62,8 +63,12 @@ const promotionVisible = computed(() => {
     && Number(product.value?.promotionFund || 0) > 0
 })
 
-/** 是否支持肽金券抵扣：仅详情接口返回 peptideEnabled，故肽金券标识只在详情页展示。 */
+/**
+ * 是否支持肽金券抵扣：仅详情接口返回 peptideEnabled，故肽金券标识只在详情页展示。
+ * 临时隐藏（甲方未结款）：`FEATURE_FLAGS.peptide` 为 false 时一律不展示（见 `utils/config.ts`）。
+ */
 const peptideEnabled = computed(() => {
+  if (!FEATURE_FLAGS.peptide) return false
   const enabled = product.value?.peptideEnabled
   return enabled === 1 || enabled === '1' || enabled === true
 })

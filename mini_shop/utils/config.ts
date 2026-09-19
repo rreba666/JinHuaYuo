@@ -148,6 +148,35 @@ export function brandNameFromContent(content: ClientContentV2 | null): string {
   return content?.themeConfig?.brandTitle?.trim() || ''
 }
 
+// ============================================================================
+// 四、前端临时功能开关（**本地硬开关**，与上面的「模块配置」无关）
+// ============================================================================
+
+/**
+ * 前端临时功能开关（2026-09-19）
+ *
+ * ⚠️ **为什么需要它**：`getModules()` 恒返回 `null`（今华有是单商户独立部署，后端**没有**
+ * `/api/v2/modules` 接口，见上面 `getModules` 的注释），因此 `isModuleEnabled()` **永远为 true**
+ * —— 后端的模块开关在本项目**实际不可用**，没法用它来隐藏功能。
+ *
+ * **用途**：甲方尚未结款，本次上传需临时隐藏「肽金券」与「推广排行榜」。
+ * **恢复方式：把对应项改回 `true` 即可**，无需改动其它任何代码。
+ *
+ * 隐藏范围（**入口隐藏 + 页面兜底**，后者用于防分享链接/深链直达）：
+ * - `peptide`     → 个人页收益卡「肽金券」格、商品详情「支持肽金券抵扣」标识、
+ *                   支付页「肽金券抵扣」行、`subpkg-wallet/peptide/peptide` 页面
+ * - `leaderboard` → 推广中心「排行榜」入口、`subpkg-wallet/leaderboard/leaderboard` 页面
+ *
+ * 注：肽金券的**抵扣能力仍在后端**（`/api/peptide/**`），这里只隐藏前端入口与展示，
+ * 不改变任何资金逻辑；恢复开关后功能原样回来。
+ */
+export const FEATURE_FLAGS = {
+  /** 肽金券（入口 + 展示） */
+  peptide: false,
+  /** 推广排行榜 */
+  leaderboard: false,
+} as const
+
 /** 是否还有下一页（配合 PageResult 分页）。 */
 export function hasNextPage(pageResult: { page: number; pageSize: number; total: number }): boolean {
   return pageResult.page * pageResult.pageSize < pageResult.total

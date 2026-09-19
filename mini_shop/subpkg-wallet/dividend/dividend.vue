@@ -9,7 +9,7 @@ import { formatPromotionQueryDate, getPendingSettlementAmount, isPendingSettleme
 import { resolvePromotionSettlement, savePromotionSettlement, syncPromotionSettlement } from '@/utils/promotion-settlement'
 import { createThrottle } from '@/utils/interaction'
 import LoginGuide from '@/components/LoginGuide.vue'
-import { useModuleGuard } from '@/utils/config'
+import { FEATURE_FLAGS, useModuleGuard } from '@/utils/config'
 
 /** promotion 模块守卫：停用则拦截推广/红包（深链防护）。 */
 const { moduleEnabled: promotionEnabled, loadModuleConfig: loadPromotionModule } = useModuleGuard('promotion')
@@ -426,8 +426,8 @@ onShow(() => {
           </view>
         </view>
 
-        <!-- 排行榜入口：进入「推广排行榜」二级页 -->
-        <view class="leaderboard-entry" @click="goLeaderboard">
+        <!-- 排行榜入口：进入「推广排行榜」二级页（临时隐藏，甲方未结款，见 utils/config.ts 的 FEATURE_FLAGS） -->
+        <view v-if="FEATURE_FLAGS.leaderboard" class="leaderboard-entry" @click="goLeaderboard">
           <text class="leaderboard-label">排行榜</text>
           <view class="leaderboard-arrow" />
         </view>
