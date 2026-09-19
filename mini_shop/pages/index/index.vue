@@ -109,12 +109,6 @@ function goHero(index: number): void {
   if (target) uni.navigateTo({ url: target })
 }
 
-/** 需要「长按识别二维码」的底部图下标（1 = 「今华有肽」，后台放的是普通二维码图片）。 */
-const WELFARE_QR_TABS: number[] = [1]
-
-/** 当前 tab 的二维码识别提示文案；非二维码 tab 返回空串，不渲染提示条。 */
-const welfareQrHint = computed(() => (WELFARE_QR_TABS.indexOf(welfareTab.value) > -1 ? '长按图片识别二维码' : ''))
-
 /**
  * 全屏预览底部图。
  * 普通二维码（非小程序码）在小程序里没有直接识别入口，`show-menu-by-longpress` 的菜单也不含识别项；
@@ -305,10 +299,6 @@ onShow(() => { void refreshHomepage() })
             @click="handleWelfareImageTap(welfareTab)"
             @longpress="handleWelfareImageLongPress(welfareTab)"
           />
-          <!-- 二维码识别提示：普通二维码无法直接长按识别，必须先进全屏预览，因此常驻提示 -->
-          <view v-if="welfareQrHint" class="welfare-qr-hint" @click="handleWelfareImageTap(welfareTab)">
-            <text class="welfare-qr-hint-text">{{ welfareQrHint }}</text>
-          </view>
         </view>
         <view v-else class="welfare-placeholder" />
       </view>
@@ -390,8 +380,5 @@ onShow(() => { void refreshHomepage() })
 /* 福利图区 301×214px, radius 5px */
 .welfare-media { position: relative; width: 602rpx; height: 428rpx; margin-top: 44rpx; }
 .welfare-img { width: 100%; height: 100%; border-radius: 10rpx; }
-/* 二维码识别提示条：贴在图片底部，不改变原有区块高度 */
-.welfare-qr-hint { position: absolute; right: 0; bottom: 0; left: 0; padding: 10rpx 0; border-radius: 0 0 10rpx 10rpx; background: rgba(0,0,0,.42); text-align: center; }
-.welfare-qr-hint-text { color: #fff; font-size: 22rpx; letter-spacing: 2rpx; }
 .welfare-placeholder { width: 602rpx; height: 428rpx; margin-top: 44rpx; background: #a9a9a9; border-radius: 10rpx; }
 </style>
