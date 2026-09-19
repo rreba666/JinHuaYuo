@@ -93,7 +93,7 @@ onMounted(() => {
             <span v-else class="empty">暂无</span>
           </template>
         </el-table-column>
-        <el-table-column label="关注金华有" min-width="140">
+        <el-table-column label="关注今华有肽" min-width="140">
           <template #default="{ row }">
             <el-image v-if="row.bottomImageUrl?.[1]" :src="row.bottomImageUrl[1]" class="mini-thumb" fit="cover" :preview-src-list="[row.bottomImageUrl[1]]" preview-teleported />
             <span v-else class="empty">暂无</span>
@@ -126,7 +126,8 @@ onMounted(() => {
             <div class="field-hint">此 AppID 仅作用于“更多福利”图片，点击该图片时跳转。</div>
             <el-input v-model="form.moreWelfareAppId" placeholder="请输入目标小程序 AppID，例如 wx..." clearable />
           </el-form-item>
-          <el-form-item label="关注金华有">
+          <el-form-item label="关注今华有肽">
+            <div class="field-hint">此处放普通二维码（公众号 / 企业微信等）。C 端首页「今华有肽」标签页展示该图，长按或点击进入全屏预览后长按即可「识别图中二维码」。</div>
             <ImageGridUpload v-model="form.followImage" :max="1" :uploading="store.uploading" @upload="upload($event, 'followImage')" @remove="remove('followImage', $event)" />
           </el-form-item>
         </el-form>

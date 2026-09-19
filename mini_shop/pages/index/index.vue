@@ -109,16 +109,54 @@ function goHero(index: number): void {
   if (target) uni.navigateTo({ url: target })
 }
 
-/** 点击“更多福利”图片：跳转到全屏海报页，整页展示一张可长按识别的小程序码海报。 */
-function handleWelfareImageTap(index: number): void {
-  if (index !== 0) return
-  if (!navigationThrottle()) return
-  const qrUrl = homepageMedia.value?.welfareMiniProgramQrUrl?.trim() || ''
-  if (!qrUrl) {
-    uni.showToast({ title: '福利海报暂未配置', icon: 'none' })
+/** 需要「长按识别二维码」的底部图下标（1 = 「今华有肽」，后台放的是普通二维码图片）。 */
+const WELFARE_QR_TABS: number[] = [1]
+
+/** 当前 tab 的二维码识别提示文案；非二维码 tab 返回空串，不渲染提示条。 */
+const welfareQrHint = computed(() => (WELFARE_QR_TABS.indexOf(welfareTab.value) > -1 ? '长按图片识别二维码' : ''))
+
+/**
+ * 全屏预览底部图。
+ * 普通二维码（非小程序码）在小程序里没有直接识别入口，`show-menu-by-longpress` 的菜单也不含识别项；
+ * 只有微信原生图片预览（wx.previewImage）的长按菜单才提供「识别图中二维码」。
+ */
+function previewWelfareImage(index: number): void {
+  const url = (bottomImages.value[index] || '').trim()
+  if (!url) {
+    uni.showToast({ title: '图片暂未配置', icon: 'none' })
     return
   }
-  uni.navigateTo({ url: `/pages/promo/welfare-poster?src=${encodeURIComponent(qrUrl)}` })
+  uni.previewImage({ urls: [url], current: url })
+}
+
+/** 长按底部图：直接进全屏预览，交给微信「识别图中二维码」。 */
+function handleWelfareImageLongPress(index: number): void {
+  previewWelfareImage(index)
+}
+
+/**
+ * 点击底部图：
+ * - 「更多福利」(0)：跳全屏海报页，该页用 show-menu-by-longpress 识别小程序码；
+ * - 其它（含「今华有肽」）：后台配了跳转链接则跳转，否则进全屏预览以便长按识别二维码。
+ */
+function handleWelfareImageTap(index: number): void {
+  if (index === 0) {
+    if (!navigationThrottle()) return
+    const qrUrl = homepageMedia.value?.welfareMiniProgramQrUrl?.trim() || ''
+    if (!qrUrl) {
+      uni.showToast({ title: '福利海报暂未配置', icon: 'none' })
+      return
+    }
+    uni.navigateTo({ url: `/pages/promo/welfare-poster?src=${encodeURIComponent(qrUrl)}` })
+    return
+  }
+  const target = (homepageMedia.value?.bottomLinkTarget?.[index] || '').trim()
+  if (target) {
+    if (!navigationThrottle()) return
+    uni.navigateTo({ url: target })
+    return
+  }
+  previewWelfareImage(index)
 }
 
 /** 记录首页分享或扫码带入的推广者身份，并为已登录用户尝试补绑定。 */
@@ -257,7 +295,21 @@ onShow(() => { void refreshHomepage() })
           <view class="w-tab" :class="{ active: welfareTab === 0 }" @click="welfareTab = 0"><text>更多福利</text></view>
         <view class="w-tab" :class="{ active: welfareTab === 1 }" @click="welfareTab = 1"><text>今华有肽</text></view>
         </view>
-        <image v-if="bottomImages[welfareTab]" class="welfare-img" :src="bottomImages[welfareTab]" mode="aspectFill" lazy-load @click="handleWelfareImageTap(welfareTab)" />
+        <!-- 底部图统一走「点击/长按」双入口：长按进微信原生预览，才能识别图里的普通二维码 -->
+        <view v-if="bottomImages[welfareTab]" class="welfare-media">
+          <image
+            class="welfare-img"
+            :src="bottomImages[welfareTab]"
+            mode="aspectFill"
+            lazy-load
+            @click="handleWelfareImageTap(welfareTab)"
+            @longpress="handleWelfareImageLongPress(welfareTab)"
+          />
+          <!-- 二维码识别提示：普通二维码无法直接长按识别，必须先进全屏预览，因此常驻提示 -->
+          <view v-if="welfareQrHint" class="welfare-qr-hint" @click="handleWelfareImageTap(welfareTab)">
+            <text class="welfare-qr-hint-text">{{ welfareQrHint }}</text>
+          </view>
+        </view>
         <view v-else class="welfare-placeholder" />
       </view>
     </view>
@@ -336,6 +388,10 @@ onShow(() => { void refreshHomepage() })
 .w-tab { flex: 1; text-align: center; padding: 18rpx 0; color: #999; font-size: 28rpx; border-radius: 44rpx; }
 .w-tab.active { background: #fff; color: #000; font-weight: 500; }
 /* 福利图区 301×214px, radius 5px */
-.welfare-img { width: 602rpx; height: 428rpx; margin-top: 44rpx; border-radius: 10rpx; }
+.welfare-media { position: relative; width: 602rpx; height: 428rpx; margin-top: 44rpx; }
+.welfare-img { width: 100%; height: 100%; border-radius: 10rpx; }
+/* 二维码识别提示条：贴在图片底部，不改变原有区块高度 */
+.welfare-qr-hint { position: absolute; right: 0; bottom: 0; left: 0; padding: 10rpx 0; border-radius: 0 0 10rpx 10rpx; background: rgba(0,0,0,.42); text-align: center; }
+.welfare-qr-hint-text { color: #fff; font-size: 22rpx; letter-spacing: 2rpx; }
 .welfare-placeholder { width: 602rpx; height: 428rpx; margin-top: 44rpx; background: #a9a9a9; border-radius: 10rpx; }
 </style>
