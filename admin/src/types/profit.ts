@@ -38,8 +38,11 @@ export interface PromotionBindingQuery {
   size: number
 }
 
-/** 推广排行榜统计周期：DAY=今日 / WEEK=本周 / MONTH=本月 / YEAR=本年。 */
-export type LeaderboardPeriod = 'DAY' | 'WEEK' | 'MONTH' | 'YEAR'
+/**
+ * 推广排行榜统计周期：`DAY`=今日 / `WEEK`=本周 / `MONTH`=本月 / `YEAR`=本年 / `ALL`=**总榜（全时段）**。
+ * ⚠️ `ALL` 时后端返回 `periodLabel="总榜"`、`periodStart`/`periodEnd` **为 null**（去掉周期起点下界，上界仍为 `asOf`）。
+ */
+export type LeaderboardPeriod = 'DAY' | 'WEEK' | 'MONTH' | 'YEAR' | 'ALL'
 
 /** 推广排行榜单行（B 端，对应后端 LeaderboardRow）。 */
 export interface ProfitLeaderboardRow {
