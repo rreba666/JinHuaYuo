@@ -106,7 +106,11 @@ const ledgerUnavailable = ref(false)
  * `startTime` / `includeNonActionable` / `page` / `size`，**没有 `endTime`**），
  * 所以这里只做单日期选择，不做区间，避免出现"选了结束时间但其实没生效"的假象。
  */
-const gapsStartDate = ref('')
+/**
+ * 「退款应补未补」的退款时间区间（含边界）。
+ * 2026-09-19 起接口支持 `endTime`，因此由原来的单日期改为区间选择；不选 = 后端从留痕上线时间起、不过滤上界。
+ */
+const gapsDateRange = ref<[string, string] | null>(null)
 /** 宽松口径：列出所有「已退款且无回补记录」的订单项（需人工判断），默认只列真问题 */
 const gapsLooseMode = ref(false)
 const gapsList = ref<RefundRestockGap[]>([])
@@ -309,10 +313,13 @@ async function loadGaps(resetPage = false): Promise<void> {
   if (resetPage) gapsPage.value = 1
   gapsLoading.value = true
   try {
-    // 只传起始时间：接口无 endTime 参数（见 gapsStartDate 注释）
-    const startTime = gapsStartDate.value ? `${gapsStartDate.value} 00:00:00` : undefined
+    // 退款时间区间（含边界）：起始取当天 00:00:00、结束取当天 23:59:59
+    const [from, to] = gapsDateRange.value || []
+    const startTime = from ? `${from} 00:00:00` : undefined
+    const endTime = to ? `${to} 23:59:59` : undefined
     const result = await getRefundRestockGaps({
       ...(startTime ? { startTime } : {}),
+      ...(endTime ? { endTime } : {}),
       includeNonActionable: gapsLooseMode.value || undefined,
       page: gapsPage.value,
       size: gapsSize.value,
@@ -351,7 +358,7 @@ function gapsSizeChange(size: number): void {
 
 /** 页签二：重置筛选。 */
 function resetGaps(): void {
-  gapsStartDate.value = ''
+  gapsDateRange.value = null
   gapsLooseMode.value = false
   void loadGaps(true)
 }
@@ -786,8 +793,8 @@ onMounted(() => {
         />
         <el-card shadow="never" class="content-card">
           <el-form inline @submit.prevent="loadGaps(true)">
-            <el-form-item label="退款起始时间">
-              <el-date-picker v-model="gapsStartDate" type="date" value-format="YYYY-MM-DD" placeholder="不选=从留痕上线起" clearable />
+            <el-form-item label="退款时间">
+              <el-date-picker v-model="gapsDateRange" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" clearable />
             </el-form-item>
             <el-form-item label="宽松口径">
               <el-switch v-model="gapsLooseMode" />

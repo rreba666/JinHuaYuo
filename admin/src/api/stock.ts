@@ -183,8 +183,8 @@ export async function getStockLedger(query: StockLedgerQuery): Promise<StockLedg
 export async function getRefundRestockGaps(query: RefundRestockGapQuery): Promise<RefundRestockGapPage> {
   const params: Record<string, string | number | boolean> = { page: query.page, size: query.size }
   if (query.startTime) params.startTime = query.startTime
-  // ⚠️ 刻意不传 endTime：该接口（文档 §3.1 与 api-docs）没有这个参数，传了会被后端忽略，
-  // 却会让调用方以为"已按区间筛选"。后端补上 endTime 后再启用。
+  // 2026-09-19 后端已支持 endTime（与 ledger 的 startTime/endTime 口径一致、含边界）
+  if (query.endTime) params.endTime = query.endTime
   if (query.includeNonActionable) params.includeNonActionable = true
   const data = unwrap(await request.get<StockResponse<unknown>>('/api/admin/stock/refund-restock-gaps', { params }), '退款应补未补核对失败')
   const raw = (data || {}) as Record<string, unknown>

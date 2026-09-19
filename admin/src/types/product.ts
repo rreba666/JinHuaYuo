@@ -25,7 +25,13 @@ export interface ProductListItem {
   /** 每单抽取应急红包池金额（元）。 */
   emergencyPoolAmount?: number
   soldCount: number
+  /** 可售库存（该商品下所有启用 SKU 的 `stock` 之和，查询时实时聚合，**不含**锁定）。 */
   totalStock: number
+  /**
+   * 锁定库存（所有启用 SKU 的 `locked_stock` 之和，实时聚合；已下单占用、货未出库，超时自动释放）。
+   * ⚠️ 与 `totalStock` 口径不同：`totalStock` 是**可售**，本字段是**锁定**，两者之和才是账面在库。
+   */
+  lockedStock?: number
   originPlace: string
   status: ProductStatusValue
   isRecommended: ProductStatusValue
@@ -42,6 +48,8 @@ export interface ProductSku {
   /** 划线价/原价（元），纯展示不参与扣款，为空=无划线价。 */
   originalPrice?: number
   stock: number
+  /** 锁定库存（已下单占用、货未出库；仅商品详情回显返回，保存商品时不提交该字段）。 */
+  lockedStock?: number
   enabled: ProductStatusValue
 }
 
@@ -91,6 +99,11 @@ export interface CategoryNode {
   id: string
   name: string
   icon: string
+  /**
+   * 该分类下商品是否**默认**支持肽金券抵扣（0=否 / 1=是）。
+   * 商品表单选择分类时据此带出「肽金券抵扣」开关的默认值；后端保存商品时也会做同样兜底。
+   */
+  peptideEnabled?: number
   children: CategoryNode[]
 }
 

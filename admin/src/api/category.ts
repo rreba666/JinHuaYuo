@@ -25,6 +25,8 @@ function normalizeList(value: unknown): AdminCategory[] {
       icon: resolveMediaUrl(raw.icon),
       sortOrder: Number(raw.sortOrder) || 0,
       enabled: String(raw.enabled ?? raw.status) === '1' ? 1 : 0,
+      // 该分类下商品是否默认支持肽金券抵扣（0/1）；后端为 2026-09-19 新增字段，缺失时按 0 兜底
+      peptideEnabled: String(raw.peptideEnabled) === '1' || raw.peptideEnabled === 1 ? 1 : 0,
       children: Array.isArray(raw.children) ? normalizeList(raw.children) : [],
     }
   })

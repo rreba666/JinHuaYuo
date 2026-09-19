@@ -182,9 +182,12 @@ export interface RefundRestockGap {
 
 /** 退款应补未补核对查询参数。 */
 export interface RefundRestockGapQuery {
-  /** 起始时间；不传=后端自动取留痕上线时间 */
+  /** 退款起始时间（含），`yyyy-MM-dd HH:mm:ss`；不传 = 后端自动取留痕上线时间 */
   startTime?: string
-  /** ⚠️ 接口**暂不支持**结束时间（文档 §3.1 与 api-docs 都只有 startTime），传了会被后端忽略；后端补充后再启用 */
+  /**
+   * 退款结束时间（含），`yyyy-MM-dd HH:mm:ss`；可空 = 不过滤上界。
+   * ⚠️ 不得早于 `startTime`（未传 `startTime` 时以留痕上线时间为下界）—— 2026-09-19 后端新增。
+   */
   endTime?: string
   /** 默认 false=只有"应补未补"的真问题；true=宽松口径（需前端自行判断） */
   includeNonActionable?: boolean
