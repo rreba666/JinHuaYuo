@@ -216,18 +216,18 @@ function handleDateRangeChange(value: [string, string] | null): void {
   void loadList()
 }
 
-/** 按订单号搜索（精确匹配），回车或点击搜索触发。 */
-function searchByOrderNo(): void {
-  store.filters.orderNo = orderNoInput.value.trim()
-  store.page = 1
-  void loadList()
-}
-
 /**
- * 按用户 ID 搜索该用户的全部订单（后端 query 参数 `userId`，2026-09-21 新增）。
- * 可与订单号同时生效（后端按 AND 处理），这里不做互斥。
+ * 统一搜索：把「订单号」与「用户 ID」两个输入框的值**一起**写进筛选条件再查。
+ *
+ * ⚠️ **2026-09-21 修的 bug**：此前「搜索」按钮只调 `searchByOrderNo()`，它只处理订单号、
+ * 完全不动 `userId` —— 于是"在用户 ID 框里输入后点「搜索」"这个最自然的操作，
+ * 请求 URL 里**根本没有 `userId` 参数**（后端实测参数本身是通的：`?userId=90127` → total=4），
+ * 表现出来就是"按用户 ID 查询无效"。
+ * 现在「搜索」按钮与两个输入框的回车/清空**都走这里**，保证"输入即生效"，
+ * 不会再有"填了却没查"。两个条件可同时生效（后端按 AND 处理）。
  */
-function searchByUserId(): void {
+function search(): void {
+  store.filters.orderNo = orderNoInput.value.trim()
   store.filters.userId = userIdInput.value.trim()
   store.page = 1
   void loadList()
@@ -580,9 +580,10 @@ onMounted(() => {
 
     <el-card shadow="never" class="filter-card">
       <el-form inline class="order-filter-form">
-        <el-form-item label="订单号"><el-input v-model="orderNoInput" placeholder="输入订单号" clearable style="width: 220px" @keyup.enter="searchByOrderNo" @clear="searchByOrderNo" /></el-form-item>
-        <el-form-item label="用户 ID"><el-input v-model="userIdInput" placeholder="输入用户 ID" clearable style="width: 160px" @keyup.enter="searchByUserId" @clear="searchByUserId" /></el-form-item>
-        <el-form-item><el-button type="primary" @click="searchByOrderNo">搜索</el-button></el-form-item>
+        <el-form-item label="订单号"><el-input v-model="orderNoInput" placeholder="输入订单号" clearable style="width: 220px" @keyup.enter="search" @clear="search" /></el-form-item>
+        <!-- ⚠️ 用户 ID 与订单号共用同一个「搜索」按钮：两个条件一起应用（见 search() 的注释） -->
+        <el-form-item label="用户 ID"><el-input v-model="userIdInput" placeholder="输入用户 ID" clearable style="width: 160px" @keyup.enter="search" @clear="search" /></el-form-item>
+        <el-form-item><el-button type="primary" @click="search">搜索</el-button></el-form-item>
         <el-form-item label="下单时间"><el-date-picker :model-value="dateRange" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" @update:model-value="handleDateRangeChange" /></el-form-item>
         <el-form-item label="微信发货上报">
           <el-select v-model="store.filters.wxShippingStatus" clearable placeholder="全部" style="width: 160px" @change="loadList">
