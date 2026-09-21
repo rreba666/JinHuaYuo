@@ -15,7 +15,7 @@ export interface EmergencyPoolLog {
   id: string
   /**
    * 流水类型：
-   * `DEDUCT`=订单抽取入池 / `INJECT`=后台注入 / `INJECT_SETTLE`=注入随结算入池 / `REMAINDER`=结余结转。
+   * `DEDUCT`=订单抽取 / `INJECT`=后台注入 / `INJECT_SETTLE`=注入随结算入父奖池 / `REMAINDER`=发放均分余数。
    */
   type: 'DEDUCT' | 'INJECT' | 'INJECT_SETTLE' | 'REMAINDER' | string
   /**
@@ -49,18 +49,17 @@ export interface EmergencyPoolLogSummary {
   injectAmount: number
   /** 注入笔数。 */
   injectCount: number
-  /** 结余结转合计（元）。 */
+  /** 发放均分余数合计（元）。 */
   remainderAmount: number
-  /** 结余结转笔数。 */
+  /** 发放均分余数笔数。 */
   remainderCount: number
-  /** 全部流水笔数。 */
+  /** 流水总条数（= `total`）。 */
   totalCount: number
   /**
-   * = 抽取合计 ÷ 抽取笔数。
-   * **正常恒为 `100.00`**（业务规则是「每单抽取 100」）—— 这是后端给的**自动校验值**，
-   * 不等于 100 就说明有订单的抽取金额不对，运营可以一眼发现。
+   * 抽取人均额（= `deductAmount` ÷ `deductCount`），**口径校验用**。
+   * 业务规则是「每单抽取 100」，所以正常恒为 `100`；**无抽取时为 `null`**（此时页面应显示「—」，不要当成 0 或 100）。
    */
-  deductPerOrder: number
+  deductPerOrder: number | null
 }
 
 /** 应急红包池流水查询参数（2026-09-19 新增 type / 日期区间）。 */

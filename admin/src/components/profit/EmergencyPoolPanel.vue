@@ -36,12 +36,19 @@ function money(value?: number): string { return `¥ ${Number(value || 0).toFixed
 /** 类型文案：**优先用后端下发的 `typeDesc`**，未下发时按 type 兜底映射（兼容旧接口）。 */
 function logTypeText(row: EmergencyPoolLog): string {
   if (row.typeDesc) return row.typeDesc
-  return ({ DEDUCT: '订单抽取', INJECT: '后台注入', INJECT_SETTLE: '注入随结算入池', REMAINDER: '结余结转' } as Record<string, string>)[row.type] || row.type || '未知'
+  return ({ DEDUCT: '订单抽取', INJECT: '后台注入', INJECT_SETTLE: '注入随结算入池', REMAINDER: '发放均分余数' } as Record<string, string>)[row.type] || row.type || '未知'
 }
 function logTypeTag(type: string): 'warning' | 'success' | 'info' { return type === 'DEDUCT' ? 'warning' : type === 'INJECT' ? 'success' : 'info' }
 
-/** 单均抽取是否正常（业务规则：每单抽取 100）。 */
-function deductPerOrderHealthy(): boolean { return Number(summary.value?.deductPerOrder ?? 100) === 100 }
+/**
+ * 单均抽取的状态（业务规则：每单抽取 100，后端把它作为口径校验值）。
+ * ⚠️ 后端「**无抽取时返回 `null`**」—— 此时既不算正常也不算异常，页面显示「无抽取」并保持中性色。
+ */
+function deductPerOrderState(): 'ok' | 'bad' | 'none' {
+  const value = summary.value?.deductPerOrder
+  if (value == null) return 'none'
+  return Number(value) === 100 ? 'ok' : 'bad'
+}
 
 async function load(): Promise<void> {
   loading.value = true
@@ -125,7 +132,7 @@ onMounted(() => { void load() })
             <el-option label="订单抽取" value="DEDUCT" />
             <el-option label="后台注入" value="INJECT" />
             <el-option label="注入随结算入池" value="INJECT_SETTLE" />
-            <el-option label="结余结转" value="REMAINDER" />
+            <el-option label="发放均分余数" value="REMAINDER" />
           </el-select>
           <el-date-picker
             v-model="filters.dateRange"
@@ -150,11 +157,12 @@ onMounted(() => { void load() })
         <el-descriptions-item label="注入合计">
           {{ money(summary.injectAmount) }}<span class="summary-sub">（{{ summary.injectCount }} 笔）</span>
         </el-descriptions-item>
-        <el-descriptions-item label="结余结转">
+        <el-descriptions-item label="发放均分余数">
           {{ money(summary.remainderAmount) }}<span class="summary-sub">（{{ summary.remainderCount }} 笔）</span>
         </el-descriptions-item>
         <el-descriptions-item label="单均抽取">
-          <el-tag :type="deductPerOrderHealthy() ? 'success' : 'danger'" size="small">{{ money(summary.deductPerOrder) }}</el-tag>
+          <el-tag v-if="deductPerOrderState() === 'none'" type="info" size="small">无抽取</el-tag>
+          <el-tag v-else :type="deductPerOrderState() === 'ok' ? 'success' : 'danger'" size="small">{{ money(summary.deductPerOrder ?? undefined) }}</el-tag>
           <span class="summary-sub">正常应为 ¥100.00</span>
         </el-descriptions-item>
       </el-descriptions>

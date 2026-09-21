@@ -23,25 +23,42 @@ const statusFilter = ref('')
 const detailVisible = ref(false)
 const detailLoading = ref(false)
 const detail = ref<DividendPacketDetail | null>(null)
+/** 当前查看的列表行（头信息兜底用，见 `detailView`）。 */
+const detailRow = ref<DividendPacket | null>(null)
+
+/**
+ * 详情弹窗的头信息：**详情优先、列表行兜底**。
+ *
+ * ⚠️ 为什么不能只用详情：后端 `DividendPacketDetailVO` **不返回** `recordedAmount`（登记值）与
+ * `recordCount`（明细条数），而这两个正是判断「账实是否相符」的关键字段 ——
+ * 直接用详情会把它们显示成 `¥0.00` / 空。这份数据列表接口是有的，所以从列表行兜底取。
+ */
+const detailView = computed<Partial<DividendPacket & DividendPacketDetail>>(() => ({
+  ...(detailRow.value || {}),
+  ...(detail.value || {}),
+}))
 
 function money(value?: number): string { return `¥ ${Number(value || 0).toFixed(2)}` }
 
-/** 状态文案：优先后端 `statusDesc`，否则原样展示（后端未给枚举，前端不猜）。 */
-function statusText(row: DividendPacket): string { return row.statusDesc || row.status || '—' }
+/** 批次状态文案（后端枚举：`PENDING`=待发放 / `PROCESSING`=发放中 / `COMPLETED`=已发放）。 */
+function statusText(status?: string): string {
+  if (!status) return '—'
+  return ({ PENDING: '待发放', PROCESSING: '发放中', COMPLETED: '已发放' } as Record<string, string>)[status] || status
+}
 
 /** 是否账实相符：真值（逐用户明细合计）与批次表登记值一致。 */
 function isBalanced(row: DividendPacket): boolean {
   return Number(row.distributedAmount || 0) === Number(row.recordedAmount || 0)
 }
 
-/** 状态筛选项（从数据里归纳，避免硬编码后端枚举）。 */
+/** 状态筛选项（从返回数据里归纳，避免硬编码；文案走 `statusText`）。 */
 const statusOptions = computed(() => {
-  const seen = new Map<string, string>()
+  const seen = new Set<string>()
   for (const row of packets.value) {
     const value = String(row.status ?? '')
-    if (value && !seen.has(value)) seen.set(value, statusText(row))
+    if (value) seen.add(value)
   }
-  return [...seen.entries()].map(([value, label]) => ({ value, label }))
+  return [...seen].map((value) => ({ value, label: statusText(value) }))
 })
 
 const visiblePackets = computed(() => (statusFilter.value
@@ -65,6 +82,7 @@ async function load(): Promise<void> {
 
 /** 查看某批次的发放人员明细。红包不存在时后端返回 code=1002，此处如实提示。 */
 async function openDetail(row: DividendPacket): Promise<void> {
+  detailRow.value = row
   detailVisible.value = true
   detailLoading.value = true
   detail.value = null
@@ -131,7 +149,7 @@ onMounted(() => { void load() })
       <el-table-column label="老用户层" width="130"><template #default="{ row }">{{ money(row.oldUserAmount) }}</template></el-table-column>
       <el-table-column label="批次号" min-width="150"><template #default="{ row }">{{ row.batchNo || '—' }}</template></el-table-column>
       <el-table-column label="状态" width="120">
-        <template #default="{ row }"><el-tag size="small" :type="isBalanced(row) ? 'success' : 'warning'">{{ statusText(row) }}</el-tag></template>
+        <template #default="{ row }"><el-tag size="small" :type="isBalanced(row) ? 'success' : 'warning'">{{ statusText(row.status) }}</el-tag></template>
       </el-table-column>
       <el-table-column prop="completedAt" label="完成时间" min-width="170"><template #default="{ row }">{{ row.completedAt || '—' }}</template></el-table-column>
       <el-table-column label="操作" width="120" fixed="right">
@@ -142,16 +160,16 @@ onMounted(() => { void load() })
 
   <el-dialog v-model="detailVisible" title="红包发放人员明细" width="880px" append-to-body>
     <div v-loading="detailLoading">
-      <el-descriptions v-if="detail" :column="3" border class="detail-head">
-        <el-descriptions-item label="发放日期">{{ detail.distributionDate || '—' }}</el-descriptions-item>
-        <el-descriptions-item label="发放金额（真值）">{{ money(detail.distributedAmount) }}</el-descriptions-item>
-        <el-descriptions-item label="登记值（对账）">{{ money(detail.recordedAmount) }}</el-descriptions-item>
-        <el-descriptions-item label="发放人数">{{ detail.userCount ?? '—' }}</el-descriptions-item>
-        <el-descriptions-item label="明细条数">{{ detail.recordCount ?? '—' }}</el-descriptions-item>
-        <el-descriptions-item label="批次号">{{ detail.batchNo || '—' }}</el-descriptions-item>
+      <el-descriptions v-if="detailRow" :column="3" border class="detail-head">
+        <el-descriptions-item label="发放日期">{{ detailView.distributionDate || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="发放金额（真值）">{{ money(detailView.distributedAmount) }}</el-descriptions-item>
+        <el-descriptions-item label="登记值（对账）">{{ money(detailView.recordedAmount) }}</el-descriptions-item>
+        <el-descriptions-item label="发放人数">{{ detailView.userCount ?? '—' }}</el-descriptions-item>
+        <el-descriptions-item label="明细条数">{{ detailView.recordCount ?? '—' }}</el-descriptions-item>
+        <el-descriptions-item label="批次号">{{ detailView.batchNo || '—' }}</el-descriptions-item>
       </el-descriptions>
       <el-alert
-        v-if="detail && Number(detail.distributedAmount || 0) !== Number(detail.recordedAmount || 0)"
+        v-if="detailRow && Number(detailView.distributedAmount || 0) !== Number(detailView.recordedAmount || 0)"
         type="error"
         :closable="false"
         show-icon
@@ -167,6 +185,7 @@ onMounted(() => { void load() })
         <el-table-column label="发放金额" width="130"><template #default="{ row }">{{ money(row.amount) }}</template></el-table-column>
         <el-table-column label="用户层" width="120"><template #default="{ row }">{{ segmentText(row.userSegment) }}</template></el-table-column>
         <el-table-column prop="orderCount" label="参与分配订单数" width="150" />
+        <el-table-column label="发放状态" width="110"><template #default="{ row }">{{ statusText(row.status) }}</template></el-table-column>
       </el-table>
       <el-empty v-if="!detailLoading && !(detail?.members || []).length" description="该批次暂无发放明细" />
     </div>

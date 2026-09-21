@@ -221,11 +221,9 @@ export interface DividendPacket {
   poolId?: number | string
   /** 批次号。 */
   batchNo?: string
-  /** 批次状态（后端未给枚举，按原值展示；未发的批次也会返回，前端可按状态分组）。 */
+  /** 批次状态：`PENDING`=待发放 / `PROCESSING`=发放中 / `COMPLETED`=已发放（接口**不过滤状态**，未发的批次也会返回）。 */
   status?: string
-  /** 状态中文名（后端若下发则优先展示）。 */
-  statusDesc?: string
-  /** 完成时间。 */
+  /** 实际完成时间；未完成时为 null。 */
   completedAt?: string
 }
 
@@ -238,8 +236,10 @@ export interface DividendPacketMember {
   amount: number
   /** 用户层：`NEW`=新用户层 / `OLD`=老用户层；**历史数据为 null**。 */
   userSegment?: 'NEW' | 'OLD' | string | null
-  /** 本批参与分配的订单数。 */
+  /** 本批参与分配的订单数（新用户层 = 当天该用户订单数；老用户层 = 轮到收钱的槽位数）。 */
   orderCount: number
+  /** 发放记录状态：`COMPLETED`=已发放。 */
+  status?: string
 }
 
 /** 批次详情：红包头信息 + `members[]`（后端已按「金额降序 → 用户ID升序」排序）。 */
@@ -248,14 +248,11 @@ export interface DividendPacketDetail {
   distributionDate?: string
   distributedAmount?: number
   userCount?: number
-  recordCount?: number
-  recordedAmount?: number
   newUserAmount?: number
   oldUserAmount?: number
   poolId?: number | string
   batchNo?: string
   status?: string
-  statusDesc?: string
   completedAt?: string
   members: DividendPacketMember[]
 }
