@@ -2,7 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Warning } from '@element-plus/icons-vue'
-import { commitOfflineRefund, isOfflineRefundTokenExpired, previewOfflineRefund } from '@/api/offlineRefund'
+import { commitOfflineRefund, isOfflineRefundNeedRepreview, previewOfflineRefund } from '@/api/offlineRefund'
 import { OFFLINE_REFUND_BRANCH_TAG, OFFLINE_REFUND_BRANCH_TEXT } from '@/types/offlineRefund'
 import type { OfflineRefundPreviewVO } from '@/types/offlineRefund'
 
@@ -12,10 +12,12 @@ import type { OfflineRefundPreviewVO } from '@/types/offlineRefund'
  * ⚠️ **这是财务不可逆操作的界面**，所有交互设计都围绕「防误操作」与「可读性」：
  * 1. 打开即预演（只读），把 `plan`（哪张表哪一行从什么变成什么）+ `money`（金额影响）+ `warnings`（风险提示）先摆出来；
  * 2. 表单要求 原因 / 凭证号 / 金额 + 勾选确认 + **手工重输订单号**；金额与实付不一致时二次确认；
- * 3. 提交后展示 `reconcile` 对账块与异常提示；令牌失效**自动回到第一段重新预演**，不让用户卡死。
+ * 3. 提交后展示 `reconcile` 对账块与异常提示；令牌失效 / 池额守卫不匹配**自动回到第一段重新预演**，不让用户卡死。
  *
- * ⚠️ **契约来源**：`docs/B端-自提线下退款冲账-接口方案与风险说明-20260921.md`（2026-09-21）；
- * 该接口尚未进 `api-docs.json`，字段名以后端补的 OpenAPI 为准（补后需复核本组件展示的字段）。
+ * ⚠️ **契约来源**：`docs/B端-自提线下退款冲账-接口方案与风险说明-20260921.md`（业务口径）
+ * + `api-docs.json`（**字段名权威**，2026-09-21 15:27 起已收录这两个接口：
+ * `OfflineRefundPreviewVO` / `OfflineRefundCommitDTO` / `ChangeItem` / `ContributionBrief` / `Money` / `Reconcile`）。
+ * 本组件展示的字段已按 api-docs 复核：新增展示 `executedInfo`（已冲账：操作人/时间/凭证号）与 `plan[].desc`（变更说明）。
  */
 
 const visible = defineModel<boolean>({ default: false })
@@ -51,16 +53,30 @@ const form = reactive({
 
 const rules: FormRules = {
   reason: [{ required: true, message: '请填写退款原因', trigger: 'blur' }],
-  voucherNo: [{ required: true, message: '请填写线下退款凭证号', trigger: 'blur' }],
+  // ⚠️ 契约差异：api-docs 里 OfflineRefundCommitDTO 的 required 只有 ["confirmToken","orderNo","reason"]，
+  // voucherNo 描述为「建议填写，便于事后对账」。**前端刻意比后端更严、保持必填**：
+  // 财务凭证号是事后对账/追责的唯一凭据，留档价值高（后端不拦是兼容历史调用方，不代表可以不填）。
+  voucherNo: [{ required: true, message: '请填写线下退款凭证号（前端必填，便于事后对账）', trigger: 'blur' }],
   offlineRefundAmount: [{ required: true, message: '请填写线下退款金额', trigger: 'change' }],
 }
 
-/** 未冲账时才允许进入表单段（`blockers` 非空 / `NO_CONTRIBUTION` / 已冲账 都不给提交入口）。 */
+/**
+ * 「无需冲账」判定：**以 `contribution === null` 为准**。
+ * 契约依据：api-docs `OfflineRefundPreviewVO.contribution` 描述「订单无红包痕迹时为 null」，这是权威且稳定的结构化依据；
+ * `branch === 'NO_CONTRIBUTION'` 保留为兼容兜底（老口径 / 后端分支枚举调整时仍能正确提示）。
+ */
+const noContribution = computed(() => {
+  const data = preview.value
+  if (!data) return false
+  return data.contribution === null || data.branch === 'NO_CONTRIBUTION'
+})
+
+/** 未冲账时才允许进入表单段（`blockers` 非空 / 无贡献 / 已冲账 都不给提交入口）。 */
 const canSubmit = computed(() => {
   const data = preview.value
   if (!data) return false
   if (data.executed) return false
-  if (data.branch === 'NO_CONTRIBUTION') return false
+  if (noContribution.value) return false
   return data.blockers.length === 0
 })
 
@@ -103,7 +119,7 @@ const layerConsistent = computed(() => {
   return Math.abs(money.poolTotalDelta - (money.newLayerDelta + money.oldLayerDelta)) < 0.005
 })
 
-/** 结果段对账块 12 个字段（金额类两位小数，条数类原样）。 */
+/** 结果段对账块 **11 个字段**（api-docs `Reconcile` 逐项核对：金额类两位小数，条数类原样）。 */
 const reconcileRows = computed(() => {
   const data = result.value?.reconcile
   if (!data) return []
@@ -255,7 +271,7 @@ function goStep2(): void {
     ElMessage.warning('该订单已完成线下退款冲账')
     return
   }
-  if (data?.branch === 'NO_CONTRIBUTION') {
+  if (noContribution.value) {
     ElMessage.warning('该订单没有红包贡献，无需冲账')
     return
   }
@@ -314,13 +330,16 @@ async function submit(): Promise<void> {
     emit('success', response)
   } catch (error) {
     const message = error instanceof Error ? error.message : '线下退款冲账提交失败'
-    // 令牌失效（10 分钟过期 / 账务变更）→ 明确文案 + **自动重新预演回到第一段**，不让用户卡在表单上
-    if (isOfflineRefundTokenExpired(error)) {
-      submitError.value = `预演已过期或账务已变更：${message}`
-      ElMessage.warning('预演已过期，请重新预演')
+    // 「需要重新预演」有两类（api-docs commit 描述）：① 令牌 10 分钟过期 / 摘要不匹配；
+    // ② 池计划额**守卫式冲减**（`AND total_amount=期望值`）不匹配 → 中止并提示重新预演（预演之后账务变了）。
+    // 两类都**自动重新调一次 preview 回到第一段**，不让财务卡在表单上；预览是只读的，重跑无副作用。
+    if (isOfflineRefundNeedRepreview(error)) {
+      submitError.value = `数据已变化，请重新预演：${message}`
+      ElMessage.warning('数据已变化，已自动重新预演')
       await runPreview()
       if (preview.value) form.offlineRefundAmount = Number(preview.value.payAmount ?? 0)
     } else {
+      // 其它失败（如权限不足、后端异常）保持原样：展示原因 + 由用户手动点「重新预演」
       submitError.value = message
       ElMessage.error(message)
     }
@@ -367,7 +386,7 @@ function finish(): void {
         description="冲账会作废红包贡献 / 槽位 / 推广金，冲减红包池计划额，并可能反向应急红包池与回收肽金。系统没有「撤销冲账」功能，请先与门店和凭证核对无误再提交。"
       />
 
-      <!-- 已冲账：直接给出结论，隐藏表单 -->
+      <!-- 已冲账：直接给出结论，隐藏表单；后端 executedInfo 有值时一并展示「谁 / 何时 / 凭哪张凭证」 -->
       <el-alert
         v-if="preview.executed"
         type="success"
@@ -375,18 +394,24 @@ function finish(): void {
         show-icon
         class="block-gap"
         title="该订单已完成线下退款冲账"
-        description="无需重复操作；重复冲账会被后端唯一键拒绝（幂等保护）。如需查看审计明细，请联系后端/运维查分红线下退款审计表。"
-      />
+        description="无需重复操作；重复冲账会被后端唯一键拒绝（幂等保护）。如需查看审计明细，请联系后端/运维查红包线下退款审计表。"
+      >
+        <!-- executedInfo 由后端拼好（操作人 / 时间 / 凭证号），为 null（老数据缺审计字段）时不显示这一行 -->
+        <div v-if="preview.executedInfo" class="executed-info">
+          <span class="executed-info-label">已冲账信息：</span>
+          <span class="mono">{{ preview.executedInfo }}</span>
+        </div>
+      </el-alert>
 
-      <!-- 无贡献：明确告知无需冲账 -->
+      <!-- 无贡献：明确告知无需冲账（判定以 contribution === null 为准，NO_CONTRIBUTION 仅作兼容） -->
       <el-alert
-        v-else-if="preview.branch === 'NO_CONTRIBUTION'"
+        v-else-if="noContribution"
         type="info"
         :closable="false"
         show-icon
         class="block-gap"
         title="该订单没有红包贡献，无需冲账"
-        description="后端判定该订单不存在红包贡献记录（可能未产生贡献或已被冲账），无需执行线下退款冲账。"
+        description="后端返回的贡献摘要为 null（该订单无红包痕迹，可能未产生贡献或已被冲账），无需执行线下退款冲账。"
       />
 
       <el-descriptions :column="2" border size="small" class="block-gap">
@@ -441,7 +466,7 @@ function finish(): void {
           <el-table-column label="字段" min-width="150">
             <template #default="{ row }"><span class="mono">{{ row.field || '—' }}</span></template>
           </el-table-column>
-          <el-table-column label="原值 → 新值" min-width="300">
+          <el-table-column label="原值 → 新值" min-width="260">
             <template #default="{ row }">
               <!-- 值可能很长或是 JSON：单行省略 + tooltip 看全文（避免撑破弹窗） -->
               <el-tooltip placement="top-start" :show-after="200">
@@ -453,6 +478,15 @@ function finish(): void {
                   <span class="plan-arrow">→</span>
                   <span class="plan-to">{{ formatPlanValue(row.to) }}</span>
                 </div>
+              </el-tooltip>
+            </template>
+          </el-table-column>
+          <!-- 变更说明（后端 ChangeItem.desc，api-docs 2026-09-21 收录）：可能为空 → 「—」；
+               说明通常较长（一句话解释为什么要改这行），与 from/to 同样做单行省略 + tooltip 看全文 -->
+          <el-table-column label="说明" min-width="200">
+            <template #default="{ row }">
+              <el-tooltip placement="top-start" :show-after="200" :content="formatPlanValue(row.desc)" :disabled="!row.desc">
+                <div class="plan-desc">{{ formatPlanValue(row.desc) }}</div>
               </el-tooltip>
             </template>
           </el-table-column>
@@ -506,7 +540,8 @@ function finish(): void {
           <el-input v-model="form.reason" type="textarea" :rows="3" maxlength="200" show-word-limit placeholder="例如：门店线下已全额退款，客户未提货" />
         </el-form-item>
         <el-form-item label="线下退款凭证号" prop="voucherNo">
-          <el-input v-model="form.voucherNo" maxlength="64" placeholder="例如微信/支付宝转账单号 WX20260920142300" />
+          <!-- 后端 required 里没有 voucherNo（描述为「建议填写」），前端刻意保持必填：凭证号是对账/追责唯一凭据 -->
+          <el-input v-model="form.voucherNo" maxlength="64" placeholder="例如微信/支付宝转账单号 WX20260920142300（本页必填，用于事后对账）" />
         </el-form-item>
         <el-form-item label="线下退款金额" prop="offlineRefundAmount">
           <el-input-number v-model="form.offlineRefundAmount" :min="0.01" :precision="2" :step="0.01" controls-position="right" style="width: 220px" />
@@ -584,8 +619,8 @@ function finish(): void {
           type="danger"
           @click="goStep2"
         >下一步：填写退款凭证</el-button>
-        <!-- 不能提交时给出**具体原因**，避免财务看到灰按钮不知道卡在哪 -->
-        <el-button v-else-if="preview && !preview.executed && preview.branch !== 'NO_CONTRIBUTION'" type="danger" disabled>存在阻断项，无法冲账</el-button>
+        <!-- 不能提交时给出**具体原因**，避免财务看到灰按钮不知道卡在哪（无贡献的判定与 canSubmit 保持一致） -->
+        <el-button v-else-if="preview && !preview.executed && !noContribution" type="danger" disabled>存在阻断项，无法冲账</el-button>
         <el-button v-else-if="preview && preview.executed" disabled>该订单已冲账</el-button>
         <el-button v-else-if="preview" disabled>无需冲账</el-button>
       </template>
@@ -619,7 +654,12 @@ function finish(): void {
 .plan-from { overflow: hidden; color: var(--el-text-color-regular); text-overflow: ellipsis; white-space: nowrap; }
 .plan-arrow { color: var(--el-text-color-secondary); flex-shrink: 0; }
 .plan-to { overflow: hidden; color: var(--el-color-primary); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+/* 变更说明列：同样单行省略（完整内容走 tooltip），空值「—」用次要色区分于真实说明 */
+.plan-desc { overflow: hidden; color: var(--el-text-color-regular); text-overflow: ellipsis; white-space: nowrap; }
 .tooltip-value { max-width: 420px; font-family: Consolas, Monaco, monospace; font-size: 12px; line-height: 18px; word-break: break-all; }
+/* 已冲账信息（操作人/时间/凭证号）：贴在「已冲账」成功提示里，字号略小于正文 */
+.executed-info { margin-top: 4px; font-size: 12px; line-height: 18px; }
+.executed-info-label { color: var(--el-text-color-secondary); }
 /* 金额影响配色：负值红、正值绿、0 灰 */
 .delta-negative { color: var(--el-color-danger); font-weight: 600; }
 .delta-positive { color: var(--el-color-success); font-weight: 600; }

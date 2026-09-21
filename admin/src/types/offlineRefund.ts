@@ -1,16 +1,18 @@
 /**
  * 自提订单「线下退款冲账」类型定义（B 端后台）。
  *
- * ⚠️ **契约来源**：`docs/B端-自提线下退款冲账-接口方案与风险说明-20260921.md`（2026-09-21）。
- * 该文档是本次契约的**唯一权威**：字段名 / 分支枚举 / 对账块全部抄自它。
+ * ⚠️ **契约来源（两个，分工不同）**：
+ * 1. `docs/B端-自提线下退款冲账-接口方案与风险说明-20260921.md`（2026-09-21）—— **业务口径解释来源**
+ *    （分支矩阵、为什么必须人工冲账、异常如何处置）；
+ * 2. `E:\work\JJ\project\api-docs.json` —— **字段名的权威来源**：
+ *    **2026-09-21 15:27 起 api-docs.json 已收录这两个接口**
+ *    （`GET /api/admin/profit/offline-refund/preview` / `POST /api/admin/profit/offline-refund/commit`），
+ *    相关 schema：`OfflineRefundCommitDTO` / `OfflineRefundPreviewVO` / `ChangeItem` / `ContributionBrief` / `Money` / `Reconcile`。
+ *    本节字段已按它**逐字段复核**：结论是字段名基本吻合，本次补齐此前漏掉的 3 处
+ *    —— `OfflineRefundPreviewVO.executedInfo`、`ChangeItem.desc`、DTO 可选 `operatorName`（仅声明，前端不传）。
  *
- * ⚠️ **api-docs.json 尚未同步**：`E:\work\JJ\project\api-docs.json` 里 `grep offline-refund` 零命中，
- * 即后端 OpenAPI 还没有这两个接口（接口本身已上线生产：`GET .../preview` → 401、`GET .../commit` → 405、
- * `POST .../commit` → 401）。**后端补文档后需复核本文件字段名**，尤其是：
- * - `contribution.userSegment` / `contribution.peptideAmount` 只在 md 的示例里出现（示例值为 `"NEW"` / `null`）；
- * - `reconcile` 的 12 个字段全部来自 md §2.2 的响应示例，文档未给完整 schema。
- * 因此 api 层做了 `normalizePreview` 兜底（见 `src/api/offlineRefund.ts`），
- * 后端字段微调**不会白屏**，但若改了字段名，页面会显示兜底值（0 / 空），需按后端补的文档复核。
+ * 仍然保留 api 层的 `normalizePreview` 兜底（见 `src/api/offlineRefund.ts`）：
+ * 后端字段微调**不会白屏**，但若改了字段名，页面会显示兜底值（0 / 空）。
  */
 
 /** 冲账分支：服务端判定，前端**只展示不判定**（见 md §三 分支矩阵）。 */
@@ -59,6 +61,11 @@ export interface OfflineRefundPlanRow {
   from: unknown
   /** 修改后目标值。 */
   to: unknown
+  /**
+   * 该行变更的说明（后端 `ChangeItem.desc`，api-docs 2026-09-21 收录），可能为空。
+   * 展示时必须安全转换（复用 `formatPlanValue`），空值以「—」占位。
+   */
+  desc: string | null
 }
 
 /**
@@ -90,9 +97,16 @@ export interface OfflineRefundContribution {
   poolDate: string
   /** 进池额（已扣应急池与肽金）。 */
   amount: number
-  /** 应急池抽取额；未开启应急池为 `null`。 */
+  /**
+   * 应急池抽取额；未开启应急池为 `null`。
+   * ⚠️ api-docs `ContributionBrief.emergencyAmount` 标为 `number`（**没有** nullable），
+   * 但后端实际可能下发 `null`（md 示例即 `null`）—— 前端按可空容错，保持宽松更安全。
+   */
   emergencyAmount: number | null
-  /** 肽金计提额（新口径才有，老口径数据为 `null`）。 */
+  /**
+   * 肽金计提额（新口径才有，老口径数据为 `null`）。
+   * ⚠️ 同 `emergencyAmount`：api-docs 标为 `number`，前端仍按可空容错。
+   */
   peptideAmount: number | null
   /** 贡献状态：`PENDING` / `CONFIRMING` / `CONFIRMED` / `VOIDED`。 */
   status: string
@@ -100,7 +114,13 @@ export interface OfflineRefundContribution {
   userSegment: string
 }
 
-/** 冲账后对账块（仅在 `commit` 响应里返回；md §2.2 示例的 12 个字段）。 */
+/**
+ * 冲账后对账块（仅在 `commit` 响应里返回）。
+ * 字段名与数量已按 api-docs `Reconcile`（2026-09-21 收录）核对：**正好 11 个**
+ * （poolTotal / poolNew / poolOld / poolDistributed / poolRemaining / poolNewOrderCount /
+ * nonVoidedCount / nonVoidedAmount / emergencyBalance / emergencyTotalDeducted / emergencyTotalInjected）。
+ * 此前注释写的「12 个字段」来自 md 示例，是错的，已修正。
+ */
 export interface OfflineRefundReconcile {
   /** 池总额（冲减后）。 */
   poolTotal: number
@@ -148,7 +168,16 @@ export interface OfflineRefundPreviewVO {
   branchDesc: string
   /** 是否已执行过冲账（`true` = 该单已冲账，表单必须隐藏）。 */
   executed: boolean
-  /** 贡献记录快照；`NO_CONTRIBUTION` 时为 `null`。 */
+  /**
+   * 已冲账信息（操作人 / 时间 / 凭证号），后端拼好的整串字符串，前端**原样展示**。
+   * 契约：api-docs `OfflineRefundPreviewVO.executedInfo`（2026-09-21 收录），类型 `string`；
+   * `executed=true` 时后端下发，但仍可能为 `null`（老数据 / 审计台账缺字段），所以按可空处理。
+   */
+  executedInfo: string | null
+  /**
+   * 贡献记录快照（后端 `ContributionBrief`）；**订单无红包痕迹时为 `null`**。
+   * 这是「无需冲账」的判定依据（api-docs 原文：「订单无分红痕迹时为 null」，项目内文案统一称「红包」）。
+   */
   contribution: OfflineRefundContribution | null
   /** 逐行变更计划（"哪张表哪一行从什么变成什么"）。 */
   plan: OfflineRefundPlanRow[]
@@ -167,12 +196,22 @@ export interface OfflineRefundPreviewVO {
 /** 提交请求体（后端 `OfflineRefundCommitDTO`）。 */
 export interface OfflineRefundCommitDTO {
   orderNo: string
-  /** 退款原因（必填）。 */
+  /** 冲账原因（必填，写入审计台账）。api-docs `required` 含 `reason`。 */
   reason: string
-  /** 线下退款凭证号（必填，如微信/支付宝转账单号）。 */
+  /**
+   * 线下退款凭证号（如微信/支付宝转账单号）。
+   * ⚠️ 契约差异说明：api-docs `required` 只有 `["confirmToken","orderNo","reason"]`，
+   * `voucherNo` 描述是「建议填写，便于事后对账」。**前端仍按必填校验**（比后端更严）——
+   * 财务凭证号是事后对账/追责的唯一凭据，留档价值高，故不放宽。
+   */
   voucherNo: string
-  /** 线下实际退款金额（元；与订单实付不一致时前端会二次确认）。 */
+  /** 线下实际退款金额（元；与订单实付不一致时前端会二次确认）。api-docs：不填默认取订单实付。 */
   offlineRefundAmount: number
-  /** 预演拿到的确认令牌（10 分钟有效）。 */
+  /** 预演拿到的确认令牌（10 分钟有效）。api-docs `required` 含 `confirmToken`。 */
   confirmToken: string
+  /**
+   * 操作人（可选）。后端口径：「不填则取当前登录管理员昵称」—— 所以前端**保持不传**，
+   * 由后端按登录态填充，避免前端伪造操作人。这里声明它是为了对齐契约与留档。
+   */
+  operatorName?: string
 }
