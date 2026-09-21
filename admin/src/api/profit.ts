@@ -1,5 +1,5 @@
 import { request } from './request'
-import type { AdminDividendSlot, BonusInjectDTO, DailyContributionUser, DividendContribution, DividendContributionPage, DividendRecordTestItem, DividendRecordTestResult, DividendSlotTestItem, DividendSlotTestResult, LeaderboardPeriod, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, ProfitLeaderboard, ProfitLeaderboardRow, ProfitResponse, PromotionBinding, PromotionBindingPage, PromotionBindingQuery, PromotionPage, PendingPromotionRecord, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
+import type { AdminDividendSlot, BonusInjectDTO, DailyContributionUser, DividendContribution, DividendContributionPage, DividendPacket, DividendPacketDetail, DividendRecordTestItem, DividendRecordTestResult, DividendSlotTestItem, DividendSlotTestResult, LeaderboardPeriod, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, ProfitLeaderboard, ProfitLeaderboardRow, ProfitResponse, PromotionBinding, PromotionBindingPage, PromotionBindingQuery, PromotionPage, PendingPromotionRecord, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
 
 function unwrap<T>(response: { data: ProfitResponse<T> }, fallback: string): T {
   const result = response.data
@@ -216,6 +216,25 @@ export async function getBonusPools(): Promise<SevenDayBonusPool[]> {
 export async function getBonusDetails(poolId: string): Promise<SevenDayBonusDetail[]> {
   const data = unwrap(await request.get<ProfitResponse<unknown>>(`/api/admin/profit/detail/${poolId}`), '红包明细查询失败')
   return Array.isArray(data) ? data.map(normalizeDetail) : []
+}
+
+/**
+ * 红包发放批次列表（2026-09-19 新增；**不分页**，后端按发放日倒序；**不过滤状态**，未发的批次也在）。
+ * 兼容后端把 `data` 直接给数组、或包一层 `{ list }` 两种形态。
+ */
+export async function getDividendPackets(): Promise<DividendPacket[]> {
+  const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/dividend-packets'), '红包明细查询失败')
+  const list = Array.isArray(data) ? data : ((data as { list?: DividendPacket[] } | null)?.list ?? [])
+  return list.map((item) => ({ ...item, id: String(item.id ?? '') }))
+}
+
+/**
+ * 红包批次详情（含 `members[]`；后端已按「金额降序 → 用户ID升序」排序）。
+ * 红包不存在时后端返回 `code=1002`，由 `unwrap` 抛出并由页面提示。
+ */
+export async function getDividendPacketDetail(id: string): Promise<DividendPacketDetail> {
+  const data = unwrap(await request.get<ProfitResponse<DividendPacketDetail>>(`/api/admin/profit/dividend-packets/${encodeURIComponent(id)}`), '红包明细详情查询失败')
+  return { ...(data || {}), id: String(data?.id ?? id), members: data?.members ?? [] } as DividendPacketDetail
 }
 
 export async function getUnsettledDailyDetails(): Promise<SevenDayBonusDetail[]> {

@@ -5,6 +5,7 @@ import { Refresh, Search, Setting, View } from '@element-plus/icons-vue'
 import { getDividendRecordTestResult, getDividendSlotTestResult, getWalletTestResult } from '@/api/profit'
 import { useProfitStore } from '@/stores/profit'
 import { normalizeLegacyWording } from '@/utils/wording'
+import DividendPacketPanel from '@/components/profit/DividendPacketPanel.vue'
 import EmergencyPoolPanel from '@/components/profit/EmergencyPoolPanel.vue'
 import type { DividendRecordTestResult, DividendSlotTestResult, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
 
@@ -213,6 +214,8 @@ onMounted(() => { void load(); void loadContributions() })
           </el-table>
         </el-card>
       </el-tab-pane>
+      <!-- 红包发放明细（2026-09-19 新增）：按批次看发放真值 vs 登记值、发放人员与用户层 -->
+      <el-tab-pane label="红包明细" name="packets"><DividendPacketPanel /></el-tab-pane>
       <el-tab-pane label="应急红包池" name="emergency"><EmergencyPoolPanel /></el-tab-pane>
     </el-tabs>
     <el-dialog v-model="poolDetailVisible" title="每日红包明细" width="760px" append-to-body><el-table :data="store.poolDetails" border><el-table-column prop="poolDate" label="日期" /><el-table-column label="每日金额"><template #default="{ row }">{{ money(row.dailyAmount) }}</template></el-table-column><el-table-column prop="dailyUserCount" label="用户数" /><el-table-column prop="updateTime" label="更新时间" /></el-table></el-dialog>

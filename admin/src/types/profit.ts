@@ -189,6 +189,77 @@ export interface AdminDividendSlot {
   lockedAt: string | null
 }
 
+/**
+ * 红包发放批次（`GET /api/admin/profit/dividend-packets`，2026-09-19 新增）。
+ * 一行 = 一个发放批次（一个「红包」），详情用它。
+ */
+export interface DividendPacket {
+  /** 红包 ID（= 发放批次 id）。 */
+  id: string
+  /** 发放日期（= 成交日 + 7）。 */
+  distributionDate: string
+  /**
+   * 发放金额（元）—— **真值**，取「逐用户明细合计」。
+   * ⚠️ **不是**批次表登记值：9/21 那次事故正是「登记值 = 0 但钱已实发」，
+   * 所以这个字段以后端算出的真值为准，对账请看 `recordedAmount`。
+   */
+  distributedAmount: number
+  /** 发放人数（**去重**）。 */
+  userCount: number
+  /**
+   * 明细条数 —— **与 `userCount` 不相等**：
+   * 同一用户当日会同时出现在「新用户层」和「老用户层」，产生两条明细。
+   */
+  recordCount: number
+  /** 批次表登记值（元，**仅对账用**）；与 `distributedAmount` 不等 = **账实不符**。 */
+  recordedAmount: number
+  /** 新用户层发放金额（元）。 */
+  newUserAmount: number
+  /** 老用户层发放金额（元）。 */
+  oldUserAmount: number
+  /** 奖池 ID。 */
+  poolId?: number | string
+  /** 批次号。 */
+  batchNo?: string
+  /** 批次状态（后端未给枚举，按原值展示；未发的批次也会返回，前端可按状态分组）。 */
+  status?: string
+  /** 状态中文名（后端若下发则优先展示）。 */
+  statusDesc?: string
+  /** 完成时间。 */
+  completedAt?: string
+}
+
+/** 批次成员（详情响应里的 `members[]`）。 */
+export interface DividendPacketMember {
+  userId: number
+  /** 用户名字；**取不到为 null**，前端回退「用户[id]」。 */
+  nickname?: string | null
+  /** 该用户在本批的发放金额（元，与钱包入账、红包流水一致）。 */
+  amount: number
+  /** 用户层：`NEW`=新用户层 / `OLD`=老用户层；**历史数据为 null**。 */
+  userSegment?: 'NEW' | 'OLD' | string | null
+  /** 本批参与分配的订单数。 */
+  orderCount: number
+}
+
+/** 批次详情：红包头信息 + `members[]`（后端已按「金额降序 → 用户ID升序」排序）。 */
+export interface DividendPacketDetail {
+  id: string
+  distributionDate?: string
+  distributedAmount?: number
+  userCount?: number
+  recordCount?: number
+  recordedAmount?: number
+  newUserAmount?: number
+  oldUserAmount?: number
+  poolId?: number | string
+  batchNo?: string
+  status?: string
+  statusDesc?: string
+  completedAt?: string
+  members: DividendPacketMember[]
+}
+
 export interface ProfitResponse<T> {
   code: number
   message: string
