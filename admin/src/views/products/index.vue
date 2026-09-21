@@ -185,7 +185,7 @@ async function submitForm(): Promise<void> {
       status: normalizeBinary(form.status),
       promotionEnabled: normalizeBinary(form.promotionEnabled),
       dividendEnabled: normalizeBinary(form.dividendEnabled),
-      // 肽金券抵扣开关：与「是否分红」相互独立，缺失时按 0（不允许抵扣）提交
+      // 肽金券抵扣开关：与「是否发放红包」相互独立，缺失时按 0（不允许抵扣）提交
       peptideEnabled: normalizeBinary(form.peptideEnabled),
       isRecommended: normalizeBinary(form.status) === 1 ? normalizeBinary(form.isRecommended) : 0,
       recommendTextEnabled: normalizeBinary(form.status) === 1 && normalizeBinary(form.isRecommended) === 1 ? normalizeBinary(form.recommendTextEnabled) : 0,

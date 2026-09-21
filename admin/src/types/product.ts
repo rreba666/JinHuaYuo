@@ -17,7 +17,7 @@ export interface ProductListItem {
   dividendEnabled: ProductFundStatusValue
   /**
    * 是否允许该商品使用肽金券抵扣：0=否（默认）/ 1=是。
-   * 与 dividendEnabled（是否分红，决定**能否获得**肽金券）是**两个独立开关**，不要合并。
+   * 与 dividendEnabled（是否发放红包，决定**能否获得**肽金券）是**两个独立开关**，不要合并。
    */
   peptideEnabled?: ProductFundStatusValue
   /** 是否开启抽应急红包池：0/1。 */

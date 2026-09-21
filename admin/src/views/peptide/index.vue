@@ -94,7 +94,7 @@ async function saveConfig(): Promise<void> {
   }
   try {
     await ElMessageBox.confirm(
-      `将保存发放配置：发放${grantForm.enabled ? '启用' : '停用'}、每单 ¥ ${amount.toFixed(2)}、生效起始成交日 ${grantForm.startDate}。\n注意：改金额会同步改变进分红大池的金额（用户现金红包随之变化）。确认保存吗？`,
+      `将保存发放配置：发放${grantForm.enabled ? '启用' : '停用'}、每单 ¥ ${amount.toFixed(2)}、生效起始成交日 ${grantForm.startDate}。\n注意：改金额会同步改变进红包池的金额（用户现金红包随之变化）。确认保存吗？`,
       '确认保存发放配置',
       { type: 'warning' },
     )
@@ -343,7 +343,7 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="每单金额（元）">
           <el-input-number v-model="grantForm.amount" :min="0.01" :max="100000" :precision="2" :step="10" :disabled="!isSuper" />
-          <span class="form-hint">默认 52.80；实际切出 min(本值, 该单红包资金)。改金额会同步改变进分红大池的金额</span>
+          <span class="form-hint">默认 52.80；实际切出 min(本值, 该单红包资金)。改金额会同步改变进红包池的金额</span>
         </el-form-item>
         <el-form-item label="生效起始成交日">
           <el-date-picker v-model="grantForm.startDate" type="date" value-format="YYYY-MM-DD" placeholder="yyyy-MM-dd" :disabled="!isSuper" />
