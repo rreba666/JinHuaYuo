@@ -5,14 +5,19 @@ import { useRoute } from 'vue-router'
 import { useOrderStore } from '@/stores/order'
 import { useTodoStore } from '@/stores/todo'
 import DataTable from '@/components/DataTable.vue'
+import OfflineRefundDialog from '@/components/profit/OfflineRefundDialog.vue'
+import type { AdminRole } from '@/types/auth'
 import type { Order, OrderAddressUpdateDTO, OrderPickupType, OrderRefundDTO, OrderStatus } from '@/types/order'
+import { hasRole } from '@/utils/permission'
 import { isVerifiedStatus } from '@/utils/orderRules'
+import { useAuthStore } from '@/stores/auth'
 import { retryWxShipping } from '@/api/order'
 import { copyToClipboard } from '@/utils/clipboard'
 import { Box, CircleCheck, CopyDocument, Delete, RefreshLeft, View } from '@element-plus/icons-vue'
 
 const store = useOrderStore()
 const todoStore = useTodoStore()
+const authStore = useAuthStore()
 const route = useRoute()
 const selected = ref<Order[]>([])
 const statusTab = ref<string>('')
@@ -22,6 +27,7 @@ const batchShipVisible = ref(false)
 const verifyVisible = ref(false)
 const addressVisible = ref(false)
 const refundVisible = ref(false)
+const offlineRefundVisible = ref(false)
 const traceVisible = ref(false)
 const shipFormRef = ref<FormInstance>()
 const batchShipFormRef = ref<FormInstance>()
@@ -131,6 +137,48 @@ async function doRetryWxShipping(order: Order): Promise<void> {
 /** 仅已发货或已收货且未软删除的订单允许客服人工退款。 */
 function isRefundable(order: Order): boolean {
   return !isDeleted(order) && (order.status === 2 || order.status === 3)
+}
+
+// ===== 线下退款冲账（自提已核销订单） =====
+/**
+ * 是否有「线下退款冲账」权限：仅超管（SUPER_ADMIN）/ 财务（FINANCE）。
+ * 与后端 `RoleGuardInterceptor` 对 `/api/admin/profit/**` 的口径一致
+ * （契约来源：docs/B端-自提线下退款冲账-接口方案与风险说明-20260921.md §二）。
+ * ⚠️ 无权限时**隐藏按钮**（不是禁用），避免客服误以为"点一下申请就能开"。
+ */
+const canOfflineRefund = computed(() => hasRole(authStore.role as AdminRole, ['SUPER_ADMIN', 'FINANCE']))
+
+/**
+ * 「线下退款冲账」入口显示条件：自提（`pickupType === 1`）+ 已核销（`status === 8`）+ 未软删除 + 有权限。
+ *
+ * ⚠️ **已知缺口（后端未提供字段，待补）**：md §四.1 原本还要求「该单存在红包/推广痕迹」，
+ * 但订单详情与列表接口都**没有**这个判据字段，所以这里只按"自提 + 已核销"显示；
+ * 真正的兜底在弹窗里——`preview.branch === 'NO_CONTRIBUTION'` 时会明确提示"该订单没有红包贡献，无需冲账"且不展示表单。
+ */
+function canShowOfflineRefund(order: Order | null | undefined): boolean {
+  if (!order) return false
+  return canOfflineRefund.value && !isDeleted(order) && order.pickupType === 1 && order.status === 8
+}
+
+/** 打开线下退款冲账弹窗（弹窗内自行调只读预演）。 */
+function openOfflineRefund(): void {
+  if (!store.detail || !canShowOfflineRefund(store.detail)) return
+  offlineRefundVisible.value = true
+}
+
+/**
+ * 冲账成功后的收尾：**保留详情弹窗并重新拉一次详情**（与页面既有的"重试上报后刷新详情"习惯一致），
+ * 让状态与后续操作条件立即反映最新数据；列表在下次进入/手动刷新时自然同步
+ * （列表标记这次不做：后端未提供"已冲账"字段，逐单调 preview 不现实）。
+ */
+async function handleOfflineRefundSuccess(): Promise<void> {
+  const orderId = store.detail?.id
+  if (!orderId) return
+  try {
+    await store.fetchDetail(orderId)
+  } catch {
+    /* 详情刷新失败不影响冲账结果（结果已在弹窗第三段展示） */
+  }
 }
 
 /** 仅已发货及后续物流订单允许查询轨迹，拦截状态异常但残留单号的数据。 */
@@ -635,8 +683,10 @@ onMounted(() => {
         <el-table :data="store.detail.items" border><el-table-column label="商品图" width="90"><template #default="{ row }"><el-image v-if="row.productImage" :src="row.productImage" class="detail-item-image" fit="cover" /><span v-else class="detail-item-image-placeholder">—</span></template></el-table-column><el-table-column prop="productName" label="商品名称" min-width="220" /><el-table-column prop="skuName" label="规格" min-width="150" /><el-table-column prop="price" label="单价" width="110" /><el-table-column prop="quantity" label="数量" width="90" /><el-table-column prop="subtotal" label="小计" width="110" /></el-table>
       </template>
        <el-empty v-else description="暂无订单详情" />
-       <template #footer><el-button v-if="store.detail && isRefundable(store.detail)" type="warning" :loading="store.refunding" @click="openRefund(store.detail)">客服人工退款</el-button><el-button @click="detailVisible = false">关闭</el-button></template>
+       <template #footer><el-button v-if="store.detail && isRefundable(store.detail)" type="warning" :loading="store.refunding" @click="openRefund(store.detail)">客服人工退款</el-button><el-button v-if="canShowOfflineRefund(store.detail)" type="danger" plain @click="openOfflineRefund">线下退款冲账</el-button><el-button @click="detailVisible = false">关闭</el-button></template>
      </el-dialog>
+
+    <OfflineRefundDialog v-model="offlineRefundVisible" :order-no="store.detail?.orderNo || ''" @success="handleOfflineRefundSuccess" />
 
     <el-dialog v-model="addressVisible" title="修改收货地址" width="560px" append-to-body>
       <el-form ref="addressFormRef" :model="addressForm" :rules="addressRules" label-width="90px">
