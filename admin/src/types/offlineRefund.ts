@@ -176,7 +176,7 @@ export interface OfflineRefundPreviewVO {
   executedInfo: string | null
   /**
    * 贡献记录快照（后端 `ContributionBrief`）；**订单无红包痕迹时为 `null`**。
-   * 这是「无需冲账」的判定依据（api-docs 原文：「订单无分红痕迹时为 null」，项目内文案统一称「红包」）。
+   * 这是「无需冲账」的判定依据（api-docs 原文用的是项目已弃用的**旧称**，项目内文案统一称「红包」）。
    */
   contribution: OfflineRefundContribution | null
   /** 逐行变更计划（"哪张表哪一行从什么变成什么"）。 */
@@ -187,6 +187,18 @@ export interface OfflineRefundPreviewVO {
   warnings: string[]
   /** 阻断项（**非空即禁止提交**）。 */
   blockers: string[]
+  /**
+   * 是否存在**需人工跟进**的异常：`0`=无 / `1`=有（明细见 `exceptionReasons`）。
+   * 契约：api-docs `OfflineRefundPreviewVO.exceptionFlag`（**2026-09-21 新增**）。
+   * ⚠️ 语义随时间变化：**预演阶段是"预判"**（如推广金已入账但钱包余额不足），
+   * **提交后是"实际发生"**的异常，与审计台账 `exception_reason` 同源 —— 所以两段都要看这个字段。
+   */
+  exceptionFlag: number | null
+  /**
+   * 需人工跟进的异常明细，三种来源：
+   * ① 推广金已入账但推广员待提现余额不足；② 肽金已发放但用户余额不足（已抵扣消费）；③ 应急池反向余额不足。
+   */
+  exceptionReasons: string[]
   /** 二次确认令牌，10 分钟有效，绑定「订单 + 变更计划摘要」。 */
   confirmToken: string
   /** 对账块：仅 `commit` 成功时返回。 */

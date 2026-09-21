@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useRouter } from 'vue-router'
 import DataTable from '@/components/DataTable.vue'
 import { useUserStore } from '@/stores/user'
 import { useAuthStore } from '@/stores/auth'
 import type { AdminWalletUpsertDTO, User, UserBanStatus, UserBanStatusValue, UserDetail } from '@/types/user'
-import { Delete, Lock, RefreshLeft, Unlock, View } from '@element-plus/icons-vue'
+import { Delete, Lock, RefreshLeft, Tickets, Unlock, View } from '@element-plus/icons-vue'
 
 const store = useUserStore()
 const authStore = useAuthStore()
+const router = useRouter()
 const selected = ref<User[]>([])
 type UserStatusTab = 'normal' | 'deleted' | 'banned'
 const statusTab = ref<UserStatusTab>(store.statusFilter as UserStatusTab)
@@ -105,6 +107,18 @@ async function loadList(): Promise<void> {
 function searchUsers(): void {
   store.page = 1
   void loadList()
+}
+
+/**
+ * 跳转到订单列表并只看该用户的订单。
+ * 后端 `/api/admin/order/list` 自 2026-09-21 起支持 `userId` 查询参数（传该 userId 即返回其全部订单），
+ * 订单页 `applyQueryFilters()` 会读取 `?userId=` 写入筛选条件 —— 适用于"从用户详情/客服会话看这个人的所有订单"。
+ * 跳转方式与库存对账页「按订单号跳订单页」一致（router.push + query）。
+ * 注：能进入用户管理页的角色（超管 / 商户管理员 / 客服）在 permission.ts 中都拥有 `/orders` 权限，无需额外守卫；
+ * userId 按字符串传递，避免 int64 在 JS 侧丢精度（与项目 id 类字段的既有约定一致）。
+ */
+function viewOrders(user: User): void {
+  void router.push({ path: '/orders', query: { userId: String(user.id) } })
 }
 
 async function toggleBan(user: User): Promise<void> {
@@ -239,8 +253,8 @@ onMounted(() => { void loadList() })
           <template #default="{ row }"><el-tag v-if="isDeleted(row)" type="info">已删除</el-tag><el-tag v-else :type="normalizeBanStatus(row.banStatus) ? 'danger' : 'success'">{{ normalizeBanStatus(row.banStatus) ? '封禁' : '正常' }}</el-tag></template>
         </el-table-column>
         <el-table-column prop="createTime" label="注册时间" min-width="180" />
-        <el-table-column label="操作" fixed="right" width="280">
-          <template #default="{ row }"><div class="operator-actions"><el-button size="small" type="primary" :loading="store.detailLoading && detailUserId === row.id" @click="showDetail(row)"><el-icon><View /></el-icon>详情</el-button><el-button v-if="isDeleted(row)" size="small" type="success" :loading="store.actionLoading" @click="restoreUser(row)"><el-icon><RefreshLeft /></el-icon>恢复</el-button><template v-else><el-button size="small" :type="normalizeBanStatus(row.banStatus) ? 'warning' : 'danger'" :loading="store.actionLoading" @click="toggleBan(row)"><el-icon><Unlock v-if="normalizeBanStatus(row.banStatus)" /><Lock v-else /></el-icon>{{ normalizeBanStatus(row.banStatus) ? '解封' : '封禁' }}</el-button><el-button size="small" type="danger" :loading="store.actionLoading" @click="removeUser(row)"><el-icon><Delete /></el-icon>删除</el-button></template></div></template>
+        <el-table-column label="操作" fixed="right" width="340">
+          <template #default="{ row }"><div class="operator-actions"><el-button size="small" type="primary" :loading="store.detailLoading && detailUserId === row.id" @click="showDetail(row)"><el-icon><View /></el-icon>详情</el-button><el-button size="small" plain @click="viewOrders(row)"><el-icon><Tickets /></el-icon>查看订单</el-button><el-button v-if="isDeleted(row)" size="small" type="success" :loading="store.actionLoading" @click="restoreUser(row)"><el-icon><RefreshLeft /></el-icon>恢复</el-button><template v-else><el-button size="small" :type="normalizeBanStatus(row.banStatus) ? 'warning' : 'danger'" :loading="store.actionLoading" @click="toggleBan(row)"><el-icon><Unlock v-if="normalizeBanStatus(row.banStatus)" /><Lock v-else /></el-icon>{{ normalizeBanStatus(row.banStatus) ? '解封' : '封禁' }}</el-button><el-button size="small" type="danger" :loading="store.actionLoading" @click="removeUser(row)"><el-icon><Delete /></el-icon>删除</el-button></template></div></template>
         </el-table-column>
       </DataTable>
     </el-card>

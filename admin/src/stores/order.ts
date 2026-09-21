@@ -19,7 +19,7 @@ export const useOrderStore = defineStore('order', () => {
   const trace = ref<ExpressTrace | null>(null)
   const page = ref(1)
   const pageSize = ref(10)
-  const filters = reactive<{ status: '' | OrderStatus; pickupType: OrderPickupType; startTime: string; endTime: string; orderNo: string; wxShippingStatus: '' | number }>({ status: '', pickupType: 0, startTime: '', endTime: '', orderNo: '', wxShippingStatus: '' })
+  const filters = reactive<{ status: '' | OrderStatus; pickupType: OrderPickupType; startTime: string; endTime: string; orderNo: string; wxShippingStatus: '' | number; userId: string }>({ status: '', pickupType: 0, startTime: '', endTime: '', orderNo: '', wxShippingStatus: '', userId: '' })
 
   /** 查询订单列表，并只发送 OpenAPI 明确支持的参数。 */
   async function fetchList(): Promise<void> {
@@ -33,6 +33,8 @@ export const useOrderStore = defineStore('order', () => {
         ...(filters.startTime ? { startTime: filters.startTime } : {}),
         ...(filters.endTime ? { endTime: filters.endTime } : {}),
         ...(filters.orderNo.trim() ? { orderNo: filters.orderNo.trim() } : {}),
+        // 按用户 ID 查该用户全部订单（2026-09-21 新增；用户管理页「查看订单」跳转用）
+        ...(filters.userId.trim() ? { userId: filters.userId.trim() } : {}),
         // 微信发货上报状态筛选（铃铛「微信发货上报失败」跳转用；不传=全部）
         ...(filters.wxShippingStatus === '' ? {} : { wxShippingStatus: filters.wxShippingStatus }),
       }
@@ -192,6 +194,7 @@ export const useOrderStore = defineStore('order', () => {
     filters.endTime = ''
     filters.orderNo = ''
     filters.wxShippingStatus = ''
+    filters.userId = ''
     page.value = 1
   }
 

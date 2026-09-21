@@ -23,6 +23,25 @@ export interface Order {
   status: OrderStatus
   statusDesc: string
   payAmount: number
+  /**
+   * 支付渠道（后端 2026-09-21 新增）：0=微信支付 / 1=余额支付 / null=未选渠道（订单未支付或已关闭）。
+   * 该字段是**退款分流依据** —— 微信支付退款调微信 API 原路退回零钱，余额支付直接退回钱包 balance。
+   * ⚠️ 订单关闭时后端会清空 `pay_channel`（`OrderMapper#closeOrder`），所以**已关闭订单恒为 null**，
+   * 前端按可空处理，不要当 0（0 是"微信支付"，含义完全不同）。
+   */
+  payChannel?: number | null
+  /**
+   * 支付渠道中文名「微信支付」/「余额支付」，未支付为 null。
+   * 后端已按 `common.constant.PayChannel` 映射好，**前端直接展示，无需自己映射**。
+   */
+  payChannelDesc?: string | null
+  /**
+   * 红包/推广痕迹（后端 2026-09-21 新增）：该订单是否存在红包贡献 / 红包槽位 / 推广关系（任一存在即 true）。
+   * 用途：决定「线下退款冲账」入口显隐 —— 前端**只在 `pickupType === 1 && status === 8 && hasDividendTrace === true`**
+   * 时显示该入口（api-docs 原文："不再靠 pickupType+status 猜"，否则没有痕迹的自提单也会冒出入口）。
+   * ⚠️ 只表示"有痕迹"，**不代表可冲账**（是否已冲账看冲账预演的 executed）；C 端订单接口不填充该字段（返回 null）。
+   */
+  hasDividendTrace?: boolean | null
   totalQuantity: number
   firstProductImage: string
   /** 第一件商品名称（下单时快照；后端 2026-09-15 新增，列表商品列直接展示）。 */
@@ -119,6 +138,12 @@ export interface OrderQueryParams {
   endTime?: string
   /** 订单号筛选（精确匹配，后端 /api/admin/order/list 支持）。 */
   orderNo?: string
+  /**
+   * 按用户 ID 查该用户全部订单（**2026-09-21 新增**，后端 int64）。
+   * 不传=不筛选；可与 `orderNo` 同时传（同时生效）。
+   * ⚠️ 这里按 string 传：id 类字段在本项目一律按字符串落地，避免 JS number 精度丢失（用户输入本就是字符串）。
+   */
+  userId?: string
   /** 微信发货上报状态筛选（2026-09-15 新增）：0 未上报 / 1 已上报 / 2 失败 / 3 无需上报；不传=全部。 */
   wxShippingStatus?: number
 }

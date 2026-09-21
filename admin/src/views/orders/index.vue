@@ -40,6 +40,8 @@ const addressForm = reactive<OrderAddressUpdateDTO>({ receiverName: '', receiver
 const refundForm = reactive({ orderId: '', orderNo: '', reason: '' })
 const dateRange = ref<[string, string] | null>(null)
 const orderNoInput = ref('')
+/** 用户 ID 输入框（与 store.filters.userId 双向同步：URL 带入时也要回填，见 applyQueryFilters）。 */
+const userIdInput = ref('')
 const shipRules: FormRules = {
   expressCompanyCode: [{ required: true, message: '请选择快递公司', trigger: 'change' }],
   expressNo: [{ required: true, message: '请输入快递单号', trigger: 'blur' }],
@@ -149,15 +151,20 @@ function isRefundable(order: Order): boolean {
 const canOfflineRefund = computed(() => hasRole(authStore.role as AdminRole, ['SUPER_ADMIN', 'FINANCE']))
 
 /**
- * 「线下退款冲账」入口显示条件：自提（`pickupType === 1`）+ 已核销（`status === 8`）+ 未软删除 + 有权限。
+ * 「线下退款冲账」入口显示条件：自提（`pickupType === 1`）+ 已核销（`status === 8`）
+ * + **有红包/推广痕迹（`hasDividendTrace === true`）** + 未软删除 + 有权限。
  *
- * ⚠️ **已知缺口（后端未提供字段，待补）**：md §四.1 原本还要求「该单存在红包/推广痕迹」，
- * 但订单详情与列表接口都**没有**这个判据字段，所以这里只按"自提 + 已核销"显示；
- * 真正的兜底在弹窗里——`preview.branch === 'NO_CONTRIBUTION'` 时会明确提示"该订单没有红包贡献，无需冲账"且不展示表单。
+ * ⚠️ 判据依据（api-docs 2026-09-21，订单列表/详情接口 `hasDividendTrace` 字段说明）：
+ * 前端**只在 `pickupType=1 && status=8 && hasDividendTrace=true`** 时显示「线下退款冲账」入口，
+ * **不再靠 `pickupType+status` 猜**（否则没有红包痕迹的自提单也会显示出入口）。
+ * 因此这里必须用 `=== true` **严格判断**：该字段可能是 `null`（未填充/无痕迹），
+ * 用真值判断会漏掉"必须显式为 true"的口径。
+ * ⚠️ 该字段只表示"有痕迹"，**不代表可冲账**；是否已冲账仍看冲账预演接口返回的 `executed`
+ * （弹窗内 `branch === 'NO_CONTRIBUTION'` 时依旧不展示表单）。
  */
 function canShowOfflineRefund(order: Order | null | undefined): boolean {
   if (!order) return false
-  return canOfflineRefund.value && !isDeleted(order) && order.pickupType === 1 && order.status === 8
+  return canOfflineRefund.value && !isDeleted(order) && order.pickupType === 1 && order.status === 8 && order.hasDividendTrace === true
 }
 
 /** 打开线下退款冲账弹窗（弹窗内自行调只读预演）。 */
@@ -212,6 +219,16 @@ function handleDateRangeChange(value: [string, string] | null): void {
 /** 按订单号搜索（精确匹配），回车或点击搜索触发。 */
 function searchByOrderNo(): void {
   store.filters.orderNo = orderNoInput.value.trim()
+  store.page = 1
+  void loadList()
+}
+
+/**
+ * 按用户 ID 搜索该用户的全部订单（后端 query 参数 `userId`，2026-09-21 新增）。
+ * 可与订单号同时生效（后端按 AND 处理），这里不做互斥。
+ */
+function searchByUserId(): void {
+  store.filters.userId = userIdInput.value.trim()
   store.page = 1
   void loadList()
 }
@@ -494,6 +511,7 @@ watch(() => route.fullPath, () => {
  * - `/orders?statuses=1&pickupType=1` 自提待核销 → `statuses` + `pickupType`
  * - `/orders?wxShippingStatus=2` 微信发货上报失败 → `wxShippingStatus`
  * - `/orders?orderNo=xxx` 库存对账页台账按订单号定位 → `orderNo`
+ * - `/orders?userId=90192` 用户管理页「查看订单」→ `userId`（2026-09-21 新增，查该用户全部订单）
  */
 function applyQueryFilters(): void {
   const statuses = route.query.statuses
@@ -517,6 +535,12 @@ function applyQueryFilters(): void {
   if (typeof orderNo === 'string' && orderNo.trim() !== '') {
     store.filters.orderNo = orderNo.trim()
     orderNoInput.value = orderNo.trim() // 同步输入框，避免出现"已按订单号筛选但输入框是空的"
+  }
+  // 「用户管理」页的「查看订单」入口跳转（`/orders?userId=90192`）：按用户 ID 查该用户全部订单（2026-09-21 新增参数）
+  const userId = route.query.userId
+  if (typeof userId === 'string' && userId.trim() !== '') {
+    store.filters.userId = userId.trim()
+    userIdInput.value = userId.trim() // 同步输入框，避免出现"已按用户 ID 筛选但输入框是空的"
   }
 }
 
@@ -557,6 +581,7 @@ onMounted(() => {
     <el-card shadow="never" class="filter-card">
       <el-form inline class="order-filter-form">
         <el-form-item label="订单号"><el-input v-model="orderNoInput" placeholder="输入订单号" clearable style="width: 220px" @keyup.enter="searchByOrderNo" @clear="searchByOrderNo" /></el-form-item>
+        <el-form-item label="用户 ID"><el-input v-model="userIdInput" placeholder="输入用户 ID" clearable style="width: 160px" @keyup.enter="searchByUserId" @clear="searchByUserId" /></el-form-item>
         <el-form-item><el-button type="primary" @click="searchByOrderNo">搜索</el-button></el-form-item>
         <el-form-item label="下单时间"><el-date-picker :model-value="dateRange" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" @update:model-value="handleDateRangeChange" /></el-form-item>
         <el-form-item label="微信发货上报">
@@ -567,7 +592,7 @@ onMounted(() => {
             <el-option label="无需上报" :value="3" />
           </el-select>
         </el-form-item>
-        <el-form-item><el-button @click="store.resetFilters(); dateRange = null; orderNoInput = ''; void loadList()">重置</el-button></el-form-item>
+        <el-form-item><el-button @click="store.resetFilters(); dateRange = null; orderNoInput = ''; userIdInput = ''; void loadList()">重置</el-button></el-form-item>
       </el-form>
     </el-card>
 
@@ -591,6 +616,8 @@ onMounted(() => {
           <el-table-column prop="userId" label="用户ID" min-width="120"><template #default="{ row }">{{ row.userId ?? '—' }}</template></el-table-column>
           <el-table-column label="商品" min-width="220"><template #default="{ row }"><div class="order-product"><el-image v-if="row.firstProductImage" :src="row.firstProductImage" class="order-image" fit="cover" /><span>{{ row.totalQuantity }} 件商品</span></div></template></el-table-column>
           <el-table-column label="订单金额" width="120"><template #default="{ row }">¥ {{ Number(row.payAmount || 0).toFixed(2) }}</template></el-table-column>
+          <!-- 支付方式：直接用后端下发的 payChannelDesc；null=未支付或已关闭，按「—」展示（不自造"未选渠道"文案） -->
+          <el-table-column label="支付方式" width="110"><template #default="{ row }">{{ row.payChannelDesc || '—' }}</template></el-table-column>
           <el-table-column prop="createTime" label="下单时间" min-width="180" />
           <el-table-column prop="shopName" label="自提门店" min-width="150"><template #default="{ row }">{{ row.shopName || '暂无数据' }}</template></el-table-column>
           <el-table-column label="核销状态" width="120"><template #default="{ row }"><el-tag :type="isVerifiedStatus(row.status) ? 'success' : 'warning'">{{ isVerifiedStatus(row.status) ? '已核销' : '待核销' }}</el-tag></template></el-table-column>
@@ -636,6 +663,8 @@ onMounted(() => {
         </el-table-column>
         <el-table-column prop="createTime" label="下单时间" min-width="180" />
         <el-table-column label="实付金额" width="130"><template #default="{ row }">¥ {{ Number(row.payAmount || 0).toFixed(2) }}</template></el-table-column>
+        <!-- 支付方式：后端 2026-09-21 新增 payChannelDesc，直接展示；null（未支付/已关闭）显示「—」 -->
+        <el-table-column label="支付方式" width="110"><template #default="{ row }">{{ row.payChannelDesc || '—' }}</template></el-table-column>
         <el-table-column prop="statusDesc" label="订单状态" width="190"><template #default="{ row }"><div class="order-status"><el-tag :type="statusType(row.status)">{{ row.statusTextByType || row.statusDesc }}</el-tag><el-tag v-if="row.wxShippingStatus === 2" type="danger" effect="plain" :title="`微信发货信息上报失败：${row.wxShippingErrmsg || '原因未返回'}（可在订单详情里重试）`">微信上报失败</el-tag></div></template></el-table-column>
         <el-table-column label="操作" fixed="right" width="240"><template #default="{ row }"><div class="operator-actions"><el-button size="small" type="primary" @click="showDetail(row)"><el-icon><View /></el-icon>详情</el-button><el-button v-if="row.status === 1" size="small" type="primary" @click="openShip(row)"><el-icon><Box /></el-icon>发货</el-button><el-button size="small" type="danger" :disabled="!isDeletable(row) || store.deleting" :loading="store.deleting" title="删除订单" @click="removeOrder(row)"><el-icon><Delete /></el-icon>删除</el-button></div></template></el-table-column>
       </DataTable>
@@ -647,7 +676,7 @@ onMounted(() => {
       <template v-else-if="store.detail">
         <el-steps :active="Math.min(store.detail.status, 3)" finish-status="success" align-center><el-step title="提交订单" /><el-step title="支付" /><el-step title="发货" /><el-step title="完成" /></el-steps>
         <el-divider />
-        <el-descriptions :column="2" border><el-descriptions-item label="订单号">{{ store.detail.orderNo }}</el-descriptions-item><el-descriptions-item label="订单状态"><span class="order-status"><el-tag :type="statusType(store.detail.status)">{{ store.detail.statusDesc }}</el-tag><el-tag v-if="isDeleted(store.detail)" type="danger" effect="plain">已删除</el-tag></span></el-descriptions-item><el-descriptions-item label="配送方式">{{ store.detail.pickupType === 1 ? '线下自提' : '物流配送' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 1" label="核销状态">{{ isVerifiedStatus(store.detail.status) ? '已核销' : '待核销' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 1" label="自提门店">{{ store.detail.shopName || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 1" label="自提码">{{ store.detail.pickupCode || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 1" label="物流轨迹"><el-empty :image-size="48" description="暂无物流轨迹" /></el-descriptions-item><el-descriptions-item label="买家手机号">{{ store.detail.buyerPhone || '暂无数据' }}<el-button v-if="store.detail.buyerPhone" link type="primary" :icon="CopyDocument" @click="copyField(store.detail?.buyerPhone, '买家手机号')">复制</el-button></el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="收货人">{{ store.detail.receiverName || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="联系电话"><span :class="{ 'phone-masked': isPhoneMasked(store.detail.receiverPhone) }">{{ store.detail.receiverPhone || '暂无数据' }}</span><el-button link type="primary" :icon="CopyDocument" @click="copyField(store.detail?.receiverPhone, '联系电话')">复制</el-button><el-tag v-if="isPhoneMasked(store.detail.receiverPhone)" type="warning" size="small" effect="plain" class="tag-gap">后端脱敏号，不能用于面单</el-tag></el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="收货地址" :span="2"><div class="address-detail-row"><span>{{ store.detail.receiverAddress || '暂无数据' }}</span><el-button v-if="store.detail.status === 1 && !isDeleted(store.detail)" link type="primary" @click="openAddressEditor">修改地址</el-button></div></el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="快递公司">{{ store.detail.expressCompany || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="物流单号">{{ store.detail.expressNo || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0 && store.detail.wxShippingStatus != null" label="微信发货信息"><span class="order-status"><el-tag :type="wxShippingTagType(store.detail.wxShippingStatus)" size="small">{{ wxShippingText(store.detail.wxShippingStatus) }}</el-tag><el-button v-if="store.detail.wxShippingStatus === 2" link type="primary" :loading="wxRetrying" @click="doRetryWxShipping(store.detail)">重试上报</el-button></span><div v-if="store.detail.wxShippingErrmsg" class="cell-sub">{{ store.detail.wxShippingErrmsg }}</div><div v-if="store.detail.wxShippingUploadTime" class="cell-sub">上报时间：{{ store.detail.wxShippingUploadTime }}</div></el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="物流轨迹"><el-button v-if="isTraceable(store.detail)" link type="primary" :disabled="!isTraceable(store.detail) || store.traceLoading" :loading="store.traceLoading" @click="openTrace">物流轨迹</el-button><el-empty v-else :image-size="48" description="暂无物流轨迹" /></el-descriptions-item><el-descriptions-item label="商品总额">¥ {{ Number(store.detail.totalAmount || 0).toFixed(2) }}</el-descriptions-item><el-descriptions-item label="实付金额">¥ {{ Number(store.detail.payAmount || 0).toFixed(2) }}</el-descriptions-item></el-descriptions>
+        <el-descriptions :column="2" border><el-descriptions-item label="订单号">{{ store.detail.orderNo }}</el-descriptions-item><el-descriptions-item label="订单状态"><span class="order-status"><el-tag :type="statusType(store.detail.status)">{{ store.detail.statusDesc }}</el-tag><el-tag v-if="isDeleted(store.detail)" type="danger" effect="plain">已删除</el-tag></span></el-descriptions-item><el-descriptions-item label="配送方式">{{ store.detail.pickupType === 1 ? '线下自提' : '物流配送' }}</el-descriptions-item><el-descriptions-item label="支付方式">{{ store.detail.payChannelDesc || '—' }}<span v-if="store.detail.payChannel != null" class="pay-channel-hint">退款去向：{{ store.detail.payChannel === 1 ? '退回钱包余额' : '微信原路退回' }}</span></el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 1" label="核销状态">{{ isVerifiedStatus(store.detail.status) ? '已核销' : '待核销' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 1" label="自提门店">{{ store.detail.shopName || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 1" label="自提码">{{ store.detail.pickupCode || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 1" label="物流轨迹"><el-empty :image-size="48" description="暂无物流轨迹" /></el-descriptions-item><el-descriptions-item label="买家手机号">{{ store.detail.buyerPhone || '暂无数据' }}<el-button v-if="store.detail.buyerPhone" link type="primary" :icon="CopyDocument" @click="copyField(store.detail?.buyerPhone, '买家手机号')">复制</el-button></el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="收货人">{{ store.detail.receiverName || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="联系电话"><span :class="{ 'phone-masked': isPhoneMasked(store.detail.receiverPhone) }">{{ store.detail.receiverPhone || '暂无数据' }}</span><el-button link type="primary" :icon="CopyDocument" @click="copyField(store.detail?.receiverPhone, '联系电话')">复制</el-button><el-tag v-if="isPhoneMasked(store.detail.receiverPhone)" type="warning" size="small" effect="plain" class="tag-gap">后端脱敏号，不能用于面单</el-tag></el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="收货地址" :span="2"><div class="address-detail-row"><span>{{ store.detail.receiverAddress || '暂无数据' }}</span><el-button v-if="store.detail.status === 1 && !isDeleted(store.detail)" link type="primary" @click="openAddressEditor">修改地址</el-button></div></el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="快递公司">{{ store.detail.expressCompany || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="物流单号">{{ store.detail.expressNo || '暂无数据' }}</el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0 && store.detail.wxShippingStatus != null" label="微信发货信息"><span class="order-status"><el-tag :type="wxShippingTagType(store.detail.wxShippingStatus)" size="small">{{ wxShippingText(store.detail.wxShippingStatus) }}</el-tag><el-button v-if="store.detail.wxShippingStatus === 2" link type="primary" :loading="wxRetrying" @click="doRetryWxShipping(store.detail)">重试上报</el-button></span><div v-if="store.detail.wxShippingErrmsg" class="cell-sub">{{ store.detail.wxShippingErrmsg }}</div><div v-if="store.detail.wxShippingUploadTime" class="cell-sub">上报时间：{{ store.detail.wxShippingUploadTime }}</div></el-descriptions-item><el-descriptions-item v-if="store.detail.pickupType === 0" label="物流轨迹"><el-button v-if="isTraceable(store.detail)" link type="primary" :disabled="!isTraceable(store.detail) || store.traceLoading" :loading="store.traceLoading" @click="openTrace">物流轨迹</el-button><el-empty v-else :image-size="48" description="暂无物流轨迹" /></el-descriptions-item><el-descriptions-item label="商品总额">¥ {{ Number(store.detail.totalAmount || 0).toFixed(2) }}</el-descriptions-item><el-descriptions-item label="实付金额">¥ {{ Number(store.detail.payAmount || 0).toFixed(2) }}</el-descriptions-item></el-descriptions>
         <el-divider>微信发货上报</el-divider>
         <el-alert
           v-if="store.detail.wxShippingStatus === 2"
@@ -792,6 +821,8 @@ onMounted(() => {
 .order-status-tabs { margin-bottom: 16px; }
 .order-status-tabs :deep(.el-tabs__header) { margin-bottom: 0; }
 .address-detail-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+/* 支付方式旁的退款去向轻提示（api-docs：退款前先看 payChannel 判断去向；不动退款流程本身） */
+.pay-channel-hint { margin-left: 6px; color: var(--el-text-color-secondary); font-size: 12px; }
 /* 发货弹窗：收货信息区与脱敏提示 */
 .ship-alert { margin-bottom: 12px; }
 .ship-info { margin-bottom: 10px; }

@@ -73,9 +73,10 @@ function toNullableText(value: unknown): string | null {
 /**
  * **展示层文案归一化**（项目硬性口径，务必保留）。
  *
- * 后端下发的文案里可能出现旧称「分红」（`api-docs.json` 里这两个接口的描述就是通篇「分红」，
- * 如 `branchDesc` 的示例、`ContributionBrief.poolId` 的"归属分红池"），
- * 而产品规定：**代码注释与所有用户可见文案统一用「红包」，不得出现「分红」**（见 CLAUDE.md 与 `utils/wording.ts`）。
+ * 后端下发的文案里可能出现**项目已弃用的旧称**（`api-docs.json` 里这两个接口的描述就是通篇用的旧称，
+ * 如 `branchDesc` 的示例、`ContributionBrief.poolId` 的"归属 XX 池"），
+ * 而产品规定：**代码注释与所有用户可见文案统一用「红包」，不得出现旧称**（见 CLAUDE.md 与 `utils/wording.ts`，
+ * 后者用 `\u` 转义写出旧称，所以这里也不便明文写出）。
  * 所以凡是**给人看的字符串**（`branchDesc` / `warnings` / `blockers` / `plan[].desc` / `executedInfo`）
  * 都必须在接口层过一遍这个函数 —— 放在这里而不是页面里，是为了**一处生效、不依赖每个展示点自觉**。
  *
@@ -142,7 +143,7 @@ function normalizePlan(value: unknown): OfflineRefundPlanRow[] {
       from: 'from' in raw ? raw.from : null,
       to: 'to' in raw ? raw.to : null,
       // 后端 ChangeItem.desc（api-docs 2026-09-21 收录）：缺失/空串按 null 落地，表格显示「—」；
-      // 文案同样要过「分红→红包」归一化（后端可能下发旧称）
+      // 文案同样要过"旧称→红包"归一化（后端可能下发已弃用的旧称）
       desc: normalizeWordingNullableText(raw.desc),
     }
   })
@@ -189,7 +190,7 @@ export function normalizePreview(value: unknown): OfflineRefundPreviewVO {
     payAmount: toNumber(raw.payAmount),
     branch: raw.branch == null ? '' : String(raw.branch),
     // ⚠️ 下面这些是**后端下发的展示文案**（branchDesc / warnings / blockers / executedInfo）：
-    // 统一在接口层过"分红→红包"归一化，避免旧称漏到财务眼前（见 normalizeWordingText 的说明）
+    // 统一在接口层过"旧称→红包"归一化，避免旧称漏到财务眼前（见 normalizeWordingText 的说明）
     branchDesc: normalizeWordingText(raw.branchDesc),
     executed: raw.executed === true,
     // 已冲账信息（操作人/时间/凭证号）：有值才展示，故按可空落地（api-docs 2026-09-21 补的字段）
@@ -199,6 +200,10 @@ export function normalizePreview(value: unknown): OfflineRefundPreviewVO {
     money: normalizeMoney(raw.money),
     warnings: toStringArray(raw.warnings).map(normalizeWordingText),
     blockers: toStringArray(raw.blockers).map(normalizeWordingText),
+    // 异常预判/实际（2026-09-21 新增）：预演阶段是"预判"、提交后是"实际发生"，两段共用同一字段；
+    // 明细同样是后端下发的展示文案 → 一并过"旧称→红包"归一化
+    exceptionFlag: toNullableNumber(raw.exceptionFlag),
+    exceptionReasons: toStringArray(raw.exceptionReasons).map(normalizeWordingText),
     confirmToken: toText(raw.confirmToken),
     reconcile: normalizeReconcile(raw.reconcile),
   }

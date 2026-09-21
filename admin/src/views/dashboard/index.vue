@@ -115,6 +115,8 @@ onMounted(() => { void load() })
         <el-table-column prop="quantity" label="数量" width="90" />
         <el-table-column label="单价" width="120"><template #default="{ row }">¥ {{ formatMoney(row.price) }}</template></el-table-column>
         <el-table-column label="小计" width="120"><template #default="{ row }">¥ {{ formatMoney(row.subtotal) }}</template></el-table-column>
+        <!-- 支付方式：仅新增展示列（后端 2026-09-21 新增 payChannelDesc），null=未支付/已关闭 → 「—」；不参与 dashboardAnalytics 聚合 -->
+        <el-table-column label="支付方式" width="110"><template #default="{ row }">{{ row.payChannelDesc || '—' }}</template></el-table-column>
         <el-table-column prop="createTime" label="下单时间" min-width="180" />
         <el-table-column prop="payTime" label="支付时间" min-width="180" />
         <el-table-column prop="statusDesc" label="状态" width="110" />

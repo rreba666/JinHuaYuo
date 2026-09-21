@@ -192,15 +192,22 @@ function planRowKey(row: { table: string; id: string; field: string }, index: nu
 /**
  * 是否存在「待人工跟进的异常项」。
  *
- * **数据来源限制**：md §三 说明异常（推广金余额不足 / 肽金余额不足 / 应急池反向失败）体现在**审计表与 `warnings`**，
- * 而审计表没有查询接口 —— 所以本次只能按 `warnings` 文案里的"异常/不足/失败/待人工"关键词判断，
- * 属于**启发式**提示，不是后端结构化字段（后端未提供 `exceptionFlag` 字段，待补）。
+ * ✅ **2026-09-21：后端已补结构化字段** `exceptionFlag`（0=无 / 1=有）+ `exceptionReasons[]`，
+ * 与审计台账 `exception_reason` 同源，**不需要再单独查审计接口**。
+ * （旧实现只能按 `warnings` 文案里的"异常/不足/失败/待人工"关键词猜，属启发式判断，已废弃。）
+ * ⚠️ 语义随时间变化：**预演阶段是"预判"**（如推广金已入账但钱包余额不足 → 可在确认前提醒操作人），
+ * **提交后是"实际发生"**的异常。
  */
 const hasException = computed(() => {
   const data = result.value ?? preview.value
   if (!data) return false
-  const text = [...data.warnings, ...data.blockers].join('；')
-  return /(异常|不足|失败|待人工|追回)/.test(text)
+  return Number(data.exceptionFlag) === 1 || data.exceptionReasons.length > 0
+})
+
+/** 当前要展示的异常明细：有提交结果就看"实际发生"，否则看预演的"预判"。 */
+const exceptionReasons = computed<string[]>(() => {
+  const data = result.value ?? preview.value
+  return data?.exceptionReasons ?? []
 })
 
 /** 重置全部状态：每次打开弹窗都从第一段开始，避免残留上一单的清单与表单值。 */
@@ -452,6 +459,25 @@ function finish(): void {
         </ul>
       </div>
 
+      <!--
+        异常预判（api-docs 2026-09-21 新增的结构化字段 exceptionFlag / exceptionReasons）：
+        预演阶段后端返回的是**预判**，让操作人在确认前就知道"冲完还有哪些钱要人工追"。
+        ⚠️ 它**不阻断**本次冲账（冲账本身照常完成），所以用 warning 而不是 error，也不禁用提交。
+      -->
+      <el-alert
+        v-if="hasException"
+        type="warning"
+        :closable="false"
+        show-icon
+        class="block-gap exception-alert"
+        title="存在待人工跟进的异常项（预演阶段为「预判」）"
+        description="以下项需人工处理（推广金已入账但钱包余额不足 / 肽金已发放但余额不足 / 应急池反向余额不足）。它们不会阻断本次冲账 —— 贡献作废、槽位作废、池额冲减照常完成，但这些钱要人工追回。"
+      >
+        <ul class="plain-list danger-text">
+          <li v-for="(item, index) in exceptionReasons" :key="`preview-exception-${index}`">{{ item }}</li>
+        </ul>
+      </el-alert>
+
       <!-- 变更计划：哪张表、哪一行、哪个字段、从什么变成什么 -->
       <div class="block-gap">
         <div class="section-title">变更计划（共 {{ preview.plan.length }} 行）</div>
@@ -568,7 +594,10 @@ function finish(): void {
         :description="`订单 ${result.orderNo}：红包贡献/槽位/推广金已作废，红包池计划额已按分支口径冲减。`"
       />
 
-      <!-- 异常项：只在结果里提示（列表/详情标记缺后端字段，本次不做） -->
+      <!--
+        异常项：改为展示后端**结构化字段** exceptionReasons（api-docs 2026-09-21 新增），
+        提交后该字段返回的是"实际发生"的异常（与审计台账 exception_reason 同源），不再靠 warnings 关键词猜。
+      -->
       <el-alert
         v-if="hasException"
         type="error"
@@ -576,10 +605,10 @@ function finish(): void {
         show-icon
         class="block-gap exception-alert"
         title="存在待人工跟进的异常项"
-        description="冲账本身已完成，但下述提示说明有钱款需要人工处理（如推广金已入账但余额不足、肽金已发放但余额不足、应急池反向失败）。后端异常明细写在审计台账里，请按提示人工核对。"
+        description="冲账本身已完成（单事务提交），但下列钱款需人工处理。后端异常明细与本提示同源，无需另查审计接口。"
       >
         <ul class="plain-list danger-text">
-          <li v-for="(item, index) in result.warnings" :key="`result-warning-${index}`">{{ item }}</li>
+          <li v-for="(item, index) in exceptionReasons" :key="`result-exception-${index}`">{{ item }}</li>
         </ul>
       </el-alert>
 
