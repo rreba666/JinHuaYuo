@@ -4,7 +4,7 @@ import { onLoad, onShareAppMessage, onShow } from '@dcloudio/uni-app'
 import { addSkuToCartWithStock } from '@/api/cart'
 import { favoriteProduct, unfavoriteProduct } from '@/api/favorite'
 import { getUserProfile, type UserProfile } from '@/api/user'
-import { getProductDetail, type ProductDetail } from '@/api/product'
+import { getProductDetail, type ProductDetail, isSpecialProduct } from '@/api/product'
 import { getAuth, isLoggedIn, isRegisteredUser } from '@/utils/auth'
 import { bindStoredPromotionIfLoggedIn, buildPromotionSharePath, capturePromotionContext } from '@/utils/promotion'
 import { getPromotionCode } from '@/api/promotion'
@@ -72,6 +72,15 @@ const peptideEnabled = computed(() => {
   const enabled = product.value?.peptideEnabled
   return enabled === 1 || enabled === '1' || enabled === true
 })
+
+/**
+ * 是否「复购专区」商品（2026-09-23）。
+ *
+ * ⚠️ 仅用于**展示标签**，不做门禁：门禁由后端负责（游客根本打不开这类商品的详情，
+ * 后端会返回 `1004` 且**不返回任何商品内容**）。
+ * ⚠️ 后端在详情接口给的是 `boolean`（列表是 `0/1`）⇒ 统一走 `isSpecialProduct()` 归一。
+ */
+const isSpecial = computed(() => isSpecialProduct(product.value))
 
 /** 将金额格式化为设计稿使用的紧凑形式。 */
 function formatAmount(value: number): string {
@@ -306,6 +315,7 @@ onShow(() => {
           </view>
 
           <view class="tag-row">
+            <view v-if="isSpecial" class="tag"><text>复购专区</text></view>
             <view class="tag"><image class="tag-icon" src="/static/ProductDetails/包邮_slices/包邮.png" mode="aspectFit" /><text>包邮</text></view>
             <view class="tag"><image class="tag-icon" src="/static/ProductDetails/七天无理由_slices/七天无理由.png" mode="aspectFit" /><text>七天无理由</text></view>
           </view>
