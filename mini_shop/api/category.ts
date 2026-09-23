@@ -5,6 +5,15 @@ export interface CategoryNode {
   id: string
   name: string
   icon: string
+  /**
+   * **是否「复购专区」分类**（2026-09-23 新增）：`0`=普通分类 / `1`=复购专区。
+   *
+   * ⚠️ api-docs 明确写着：**前端只能用本字段判断，不要用分类名或固定 ID**（改名/换环境即失效）。
+   * 全库最多一个；游客/未登录时后端**不会返回**该分类。
+   * ⚠️ 若 `special === 1`，该分类的商品**不能**走 `/api/product/list?categoryId=`（后端恒不返回），
+   * 必须走 `GET /api/product/special-zone`。
+   */
+  special?: number
   children?: CategoryNode[]
 }
 

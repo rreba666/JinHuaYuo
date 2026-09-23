@@ -2,6 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getCategoryList, getCategoryProducts, type CategoryNode, type CategoryProduct } from '@/api/category'
+import { getSpecialZoneProducts } from '@/api/product'
+import { SPECIAL_LOCKED_GUIDE, isSpecialLockedError, showSpecialLockedGuide } from '@/utils/special-zone'
 import { addSkuToCartWithStock } from '@/api/cart'
 import { getProductDetail } from '@/api/product'
 import { ApiRequestError, isApiRequestError } from '@/utils/request'
@@ -78,7 +80,7 @@ function refreshCategories(): Promise<void> {
 }
 
 
-/** 请求 GET /api/product/list?categoryId= 获取商品 */
+/** 请求商品：普通分类走 GET /api/product/list?categoryId=，**复购专区分类走 special-zone** */
 async function loadGoods(catId: string): Promise<void> {
   const requestToken = ++goodsRequestToken
   if (categoryGoodsCache.has(catId)) {
@@ -87,17 +89,32 @@ async function loadGoods(catId: string): Promise<void> {
     return
   }
 
+  /**
+   * ⚠️ 是否「复购专区」分类（`special === 1`）。
+   * 这类分类**不能**走 `/api/product/list?categoryId=` —— 后端为保护门禁，
+   * 该接口**恒不返回**特殊商品（会得到空数组），必须走 `GET /api/product/special-zone`。
+   */
+  const isSpecial = Number(cats.value.find((c) => c.id === catId)?.special) === 1
+
   busy.value = true
   try {
-    const r = await getCategoryProducts(catId, 1, 20)
-    const list = r?.list || []
+    const r = isSpecial
+      ? await getSpecialZoneProducts({ categoryId: catId, page: 1, pageSize: 20 })
+      : await getCategoryProducts(catId, 1, 20)
+    const list = (r?.list || []) as unknown as CategoryProduct[]
     categoryGoodsCache.set(catId, list)
     if (requestToken === goodsRequestToken) goods.value = list
     if (r?.list?.length) console.log('分类商品加载成功:', r.list.length, '条, 首个:', JSON.stringify(r.list[0]))
   } catch (e) {
     console.error('分类商品加载失败:', e)
     if (requestToken === goodsRequestToken) {
-      loadError.value = e instanceof Error ? e.message : '商品加载失败，请重试'
+      // ⚠️ 1004 是「已登录但还不是注册用户」的门禁（不是系统故障）⇒ 给可操作引导，别只说"加载失败"
+      if (isSpecialLockedError(e)) {
+        showSpecialLockedGuide()
+        loadError.value = SPECIAL_LOCKED_GUIDE
+      } else {
+        loadError.value = e instanceof Error ? e.message : '商品加载失败，请重试'
+      }
     }
   } finally {
     if (requestToken === goodsRequestToken) busy.value = false
