@@ -34,7 +34,7 @@ function normalizeList(value: unknown): AdminCategory[] {
        * （曾因此出现"保存成功了、再打开开关又是关的"——后端存住了，是前端自己丢的）。
        * ⚠️ 兼容后端三种下发形态：boolean `true` / number `1` / string `'1'`。
        */
-      special: raw.special === true || String(raw.special) === '1' ? 1 : 0,
+      special: (() => { const v = raw.special as unknown; return v === true || String(v) === '1' ? 1 : 0 })(),
       children: Array.isArray(raw.children) ? normalizeList(raw.children) : [],
     }
   })
