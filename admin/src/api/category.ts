@@ -27,6 +27,14 @@ function normalizeList(value: unknown): AdminCategory[] {
       enabled: String(raw.enabled ?? raw.status) === '1' ? 1 : 0,
       // 该分类下商品是否默认支持肽金券抵扣（0/1）；后端为 2026-09-19 新增字段，缺失时按 0 兜底
       peptideEnabled: String(raw.peptideEnabled) === '1' || raw.peptideEnabled === 1 ? 1 : 0,
+      /**
+       * 是否「复购专区」分类（2026-09-23 新增）。
+       *
+       * ⚠️⚠️ 这里**必须显式重建本字段**：本函数是白名单式重建，漏一个字段就等于把它丢掉
+       * （曾因此出现"保存成功了、再打开开关又是关的"——后端存住了，是前端自己丢的）。
+       * ⚠️ 兼容后端三种下发形态：boolean `true` / number `1` / string `'1'`。
+       */
+      special: raw.special === true || String(raw.special) === '1' ? 1 : 0,
       children: Array.isArray(raw.children) ? normalizeList(raw.children) : [],
     }
   })
