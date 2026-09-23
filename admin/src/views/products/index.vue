@@ -95,6 +95,28 @@ function findCategoryPeptideDefault(categoryId: string): ProductStatus | null {
   return walk(store.categories || [])
 }
 
+/**
+ * 判断某分类是否「复购专区」（`special === 1`）。
+ *
+ * ⚠️ 2026-09-23：专区分类是特殊商品的**唯一容器** —— 选中它，后端会把
+ * 推广/分红/应急池/券等字段**自动收口**（`promotionEnabled=1`、`promotionFund=0`、
+ * `dividendEnabled=0`、`dividendFund=0`…），运营填了也会被忽略。
+ * ⇒ 前端据本函数把这些字段**隐藏**，避免"我填了他不改"的困惑。
+ */
+function findCategorySpecial(target: string): boolean {
+  if (!target) return false
+  function walk(nodes: Array<{ id?: string | number; special?: number; children?: unknown }>): boolean {
+    for (const node of nodes) {
+      if (String(node.id) === target) return Number(node.special) === 1
+      if (walk((node.children || []) as Array<{ id?: string | number; special?: number; children?: unknown }>)) return true
+    }
+    return false
+  }
+  return walk((store.categories || []) as Array<{ id?: string | number; special?: number; children?: unknown }>)
+}
+
+/** 当前选中的分类是否为「复购专区」⇒ 隐藏收口字段、并锁定分类下拉（专区身份不可迁移）。 */
+const isSpecialCategory = computed(() => findCategorySpecial(String(form.categoryId || '')))
 /** 选择分类后按该分类的默认值带出「肽金券抵扣」开关（运营仍可在下方手动修改）。 */
 function handleCategoryChange(categoryId: string): void {
   const fallback = findCategoryPeptideDefault(categoryId)
@@ -310,7 +332,7 @@ onMounted(() => {
       <el-form ref="formRef" class="product-form" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="商品名称" prop="name"><el-input v-model="form.name" /></el-form-item>
         <el-form-item label="描述标题"><el-input v-model="form.descriptionTitle" placeholder="首页卡片商品描述文字" /></el-form-item>
-        <el-form-item label="商品分类" prop="categoryId"><el-select v-model="form.categoryId" placeholder="请选择分类" @change="handleCategoryChange"><el-option v-for="option in categoryOptions" :key="option.id" :label="option.label" :value="option.id" /></el-select></el-form-item>
+        <el-form-item label="商品分类" prop="categoryId"><el-select v-model="form.categoryId" placeholder="请选择分类" :disabled="isSpecialCategory" @change="handleCategoryChange"><el-option v-for="option in categoryOptions" :key="option.id" :label="option.label" :value="option.id" /></el-select></el-form-item>
         <el-form-item label="主图" prop="mainImage" class="form-item-full media-form-item">
           <ImageGridUpload :model-value="form.mainImage ? [form.mainImage] : []" :max="1" :uploading="mediaUploading" @upload="onMainImageUpload" @remove="form.mainImage = ''" />
           <p class="upload-hint">建议尺寸 750×750px（1:1 正方形），首页卡片中图片将撑满显示，文字叠于底部</p>
@@ -330,7 +352,7 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="产地"><el-input v-model="form.originPlace" /></el-form-item>
         <el-form-item label="排序权重"><el-input-number v-model="form.sortOrder" :min="0" /></el-form-item>
-        <div class="fund-config-row form-item-full"><el-form-item label="推广资金"><div class="fund-control"><el-switch v-model="promotionUseDefault" active-text="默认比例" inactive-text="手动金额" /><el-input-number v-model="form.promotionFund" :min="0" :precision="2" :disabled="promotionUseDefault" /><el-switch v-model="form.promotionEnabled" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="禁用" /></div></el-form-item><el-form-item label="平台红包"><div class="fund-control"><el-switch v-model="dividendUseDefault" active-text="默认比例" inactive-text="手动金额" /><el-input-number v-model="form.dividendFund" :min="0" :precision="2" :disabled="dividendUseDefault" /><el-switch v-model="form.dividendEnabled" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="禁用" /></div></el-form-item><el-form-item label="应急红包池"><div class="fund-control"><el-switch v-model="form.emergencyPoolEnabled" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="关闭" /><el-input-number v-model="form.emergencyPoolAmount" :min="0" :precision="2" :disabled="normalizeBinary(form.emergencyPoolEnabled) === 0" placeholder="每单抽取金额" /></div></el-form-item><el-form-item label="肽金券抵扣"><div class="fund-control"><el-switch v-model="form.peptideEnabled" :active-value="1" :inactive-value="0" active-text="开启" inactive-text="关闭" /></div><p class="peptide-tip">肽金券不可提现，仅可用于抵扣；开启后买家下单时可用肽金券抵扣本商品（无门槛、无上限）。选择分类时会自动带出该分类的默认设置，可在此单独修改。</p></el-form-item></div>
+        <div v-if="!isSpecialCategory" class="fund-config-row form-item-full"><el-form-item label="推广资金"><div class="fund-control"><el-switch v-model="promotionUseDefault" active-text="默认比例" inactive-text="手动金额" /><el-input-number v-model="form.promotionFund" :min="0" :precision="2" :disabled="promotionUseDefault" /><el-switch v-model="form.promotionEnabled" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="禁用" /></div></el-form-item><el-form-item label="平台红包"><div class="fund-control"><el-switch v-model="dividendUseDefault" active-text="默认比例" inactive-text="手动金额" /><el-input-number v-model="form.dividendFund" :min="0" :precision="2" :disabled="dividendUseDefault" /><el-switch v-model="form.dividendEnabled" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="禁用" /></div></el-form-item><el-form-item label="应急红包池"><div class="fund-control"><el-switch v-model="form.emergencyPoolEnabled" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="关闭" /><el-input-number v-model="form.emergencyPoolAmount" :min="0" :precision="2" :disabled="normalizeBinary(form.emergencyPoolEnabled) === 0" placeholder="每单抽取金额" /></div></el-form-item><el-form-item label="肽金券抵扣"><div class="fund-control"><el-switch v-model="form.peptideEnabled" :active-value="1" :inactive-value="0" active-text="开启" inactive-text="关闭" /></div><p class="peptide-tip">肽金券不可提现，仅可用于抵扣；开启后买家下单时可用肽金券抵扣本商品（无门槛、无上限）。选择分类时会自动带出该分类的默认设置，可在此单独修改。</p></el-form-item></div>
         <el-form-item label="商品状态"><el-switch v-model="form.status" :active-value="1" :inactive-value="0" active-text="上架" inactive-text="下架" /></el-form-item>
         <el-form-item label="首页推荐"><el-switch v-model="form.isRecommended" :disabled="normalizeBinary(form.status) === 0" :active-value="1" :inactive-value="0" /></el-form-item>
         <el-form-item label="推荐文本"><el-switch v-model="form.recommendTextEnabled" :disabled="normalizeBinary(form.status) === 0 || normalizeBinary(form.isRecommended) === 0" :active-value="1" :inactive-value="0" /></el-form-item>
