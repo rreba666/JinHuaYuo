@@ -17,7 +17,7 @@ import { FEATURE_FLAGS, getModules, isModuleEnabled, type ModuleConfig } from '@
 import { getAddressList, type Address as AddressBookAddress } from '@/api/address'
 import LoginGuide from '@/components/LoginGuide.vue'
 
-/** 配送方式：0=物流(快速配送) 1=线下自提 2=同城配送（本期不开放下单，仅占位）。 */
+/** 配送方式：0=物流(快递配送) 1=线下自提 2=同城配送（本期不开放下单，仅占位）。 */
 type PickupType = 0 | 1 | 2
 type InvoiceType = 'personal' | 'company'
 const PAYMENT_CONTACT_NAME_MAX_LENGTH = 32
@@ -427,7 +427,7 @@ async function loadModuleConfig(): Promise<void> {
 const deliveryOptions = computed(() => {
   const modules = moduleConfig.value
   const options: { type: PickupType; label: string }[] = []
-  if (isModuleEnabled(modules, 'delivery')) options.push({ type: 0, label: '快速配送' })
+  if (isModuleEnabled(modules, 'delivery')) options.push({ type: 0, label: '快递配送' })
   if (isModuleEnabled(modules, 'pickup')) options.push({ type: 1, label: '门店自提' })
   // samecity 本期不开放下单：即使模块开启也不提供「同城配送」选项（docs/plan 口径）
   return options
