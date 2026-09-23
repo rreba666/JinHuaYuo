@@ -26,7 +26,7 @@ const parentOptions = computed(() => store.list.filter((item) => item.id !== edi
 function openForm(category?: AdminCategory): void {
   editingId.value = category?.id || null
   Object.assign(form, category
-    ? { name: category.name, parentId: category.parentId, icon: category.icon, sortOrder: category.sortOrder, enabled: category.enabled, peptideEnabled: category.peptideEnabled, special: category.special ?? 0 }
+    ? { name: category.name, parentId: category.parentId, icon: category.icon, sortOrder: category.sortOrder, enabled: category.enabled, peptideEnabled: category.peptideEnabled, special: Number(category.special) === 1 ? 1 : 0 }
     : createEmptyForm())
   formVisible.value = true
 }
