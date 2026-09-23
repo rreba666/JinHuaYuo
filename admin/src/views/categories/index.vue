@@ -16,7 +16,7 @@ const rules: FormRules = {
 
 /** 创建分类表单默认值（肽金券抵扣默认关闭，与后端 `0=否默认` 一致）。 */
 function createEmptyForm(): AdminCategorySaveDTO {
-  return { name: '', parentId: '0', icon: '', sortOrder: 0, enabled: 1, peptideEnabled: 0 }
+  return { name: '', parentId: '0', icon: '', sortOrder: 0, enabled: 1, peptideEnabled: 0, special: 0 }
 }
 
 /** 将后台分类平铺为父级下拉选项，避免选择自身或子分类。 */
@@ -26,7 +26,7 @@ const parentOptions = computed(() => store.list.filter((item) => item.id !== edi
 function openForm(category?: AdminCategory): void {
   editingId.value = category?.id || null
   Object.assign(form, category
-    ? { name: category.name, parentId: category.parentId, icon: category.icon, sortOrder: category.sortOrder, enabled: category.enabled, peptideEnabled: category.peptideEnabled }
+    ? { name: category.name, parentId: category.parentId, icon: category.icon, sortOrder: category.sortOrder, enabled: category.enabled, peptideEnabled: category.peptideEnabled, special: category.special ?? 0 }
     : createEmptyForm())
   formVisible.value = true
 }
@@ -46,6 +46,11 @@ async function submitForm(): Promise<void> {
 
 /** 确认并软删除分类。后端会拒绝仍有子分类的一级分类。 */
 async function remove(category: AdminCategory): Promise<void> {
+  // ⚠️ 复购专区分类受保护（后端也会拒）：如需关闭专区入口请改为「停用」
+  if (Number(category.special) === 1) {
+    ElMessage.warning('「复购专区」分类不允许删除。如需关闭专区入口，请改为「停用」该分类')
+    return
+  }
   try {
     await ElMessageBox.confirm(`确认删除分类“${category.name}”吗？`, '删除确认')
     await store.remove(category.id)
@@ -72,13 +77,15 @@ onMounted(() => {
         <el-table-column prop="sortOrder" label="排序" width="90" />
         <el-table-column label="状态" width="150"><template #default="{ row }"><div class="category-status"><el-button class="category-status-button" :class="row.enabled === 1 ? 'is-enabled' : 'is-disabled'" :type="row.enabled === 1 ? 'success' : 'info'" circle :aria-label="row.enabled === 1 ? '启用状态' : '禁用状态'"><el-icon><CircleCheck v-if="row.enabled === 1" /><CircleClose v-else /></el-icon></el-button><span class="category-status-label" :class="row.enabled === 1 ? 'is-enabled' : 'is-disabled'">{{ row.enabled === 1 ? '启用' : '禁用' }}</span></div></template></el-table-column>
         <el-table-column label="肽金券抵扣" width="130"><template #default="{ row }"><el-tag :type="row.peptideEnabled === 1 ? 'success' : 'info'" size="small">{{ row.peptideEnabled === 1 ? '默认支持' : '默认不支持' }}</el-tag></template></el-table-column>
+        <el-table-column label="复购专区" width="120"><template #default="{ row }"><el-tag v-if="Number(row.special) === 1" type="success" size="small">复购专区</el-tag><span v-else style="color: var(--el-text-color-secondary)">—</span></template></el-table-column>
         <el-table-column label="操作" fixed="right" width="170"><template #default="{ row }"><div class="operator-actions"><el-button size="small" type="primary" @click="openForm(row)"><el-icon><Edit /></el-icon>编辑</el-button><el-button size="small" type="danger" :loading="store.deleting" @click="remove(row)"><el-icon><Delete /></el-icon>删除</el-button></div></template></el-table-column>
       </el-table>
       <el-empty v-if="!store.loading && !store.list.length" description="暂无分类数据" />
     </el-card>
 
     <el-dialog v-model="formVisible" :title="editingId ? '编辑分类' : '新增分类'" width="520px" append-to-body>
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="90px"><el-form-item label="名称" prop="name"><el-input v-model="form.name" /></el-form-item><el-form-item label="父级分类"><el-select v-model="form.parentId" clearable placeholder="一级分类"><el-option label="一级分类" value="0" /><el-option v-for="option in parentOptions" :key="option.id" :label="option.label" :value="option.id" /></el-select></el-form-item><el-form-item label="图标"><el-input v-model="form.icon" placeholder="图标 URL" /></el-form-item><el-form-item label="排序"><el-input-number v-model="form.sortOrder" :min="0" /></el-form-item><el-form-item label="状态"><el-switch v-model="form.enabled" :active-value="1" :inactive-value="0" /></el-form-item><el-form-item label="肽金券抵扣"><el-switch v-model="form.peptideEnabled" :active-value="1" :inactive-value="0" /><span style="margin-left: 8px; color: var(--el-text-color-secondary); font-size: 12px">开启后该分类下新保存的商品默认支持肽金券抵扣（可在商品里单独修改；关闭不影响已保存的商品）</span></el-form-item></el-form>
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="90px"><el-form-item label="名称" prop="name"><el-input v-model="form.name" /></el-form-item><el-form-item label="父级分类"><el-select v-model="form.parentId" clearable placeholder="一级分类"><el-option label="一级分类" value="0" /><el-option v-for="option in parentOptions" :key="option.id" :label="option.label" :value="option.id" /></el-select></el-form-item><el-form-item label="图标"><el-input v-model="form.icon" placeholder="图标 URL" /></el-form-item><el-form-item label="排序"><el-input-number v-model="form.sortOrder" :min="0" /></el-form-item><el-form-item label="状态"><el-switch v-model="form.enabled" :active-value="1" :inactive-value="0" /><span v-if="Number(form.special) === 1" style="margin-left: 8px; color: var(--el-text-color-secondary); font-size: 12px">停用后分类页不再有专区入口（推荐的临时关闭手段）</span></el-form-item>
+        <el-form-item label="复购专区"><el-switch v-model="form.special" :active-value="1" :inactive-value="0" :disabled="Number(form.special) === 1" /><span style="margin-left: 8px; color: var(--el-text-color-secondary); font-size: 12px">全库只能有一个；设为专区的分类用于承载「复购专区」商品（其商品配置由后端自动收口）。⚠️ 设为专区后不能取消勾选，如需关闭入口请用「停用」</span></el-form-item><el-form-item label="肽金券抵扣"><el-switch v-model="form.peptideEnabled" :active-value="1" :inactive-value="0" /><span style="margin-left: 8px; color: var(--el-text-color-secondary); font-size: 12px">开启后该分类下新保存的商品默认支持肽金券抵扣（可在商品里单独修改；关闭不影响已保存的商品）</span></el-form-item></el-form>
       <template #footer><el-button @click="formVisible = false">取消</el-button><el-button type="primary" :loading="store.saving" @click="submitForm">保存</el-button></template>
     </el-dialog>
   </section>
