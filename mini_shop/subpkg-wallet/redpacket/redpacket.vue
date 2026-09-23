@@ -17,6 +17,22 @@ const menuTop = ref(0)
 const menuHeight = ref(32)
 const wallet = ref<WalletInfo | null>(null)
 const records = ref<DividendRecord[]>([])
+
+/**
+ * 红包来源标签文案。
+ *
+ * ⚠️ 2026-09-23：后端新增 `sourceType` 打标（`DIVIDEND` 分红红包 / `SPECIAL_SUBSIDY` 特殊补贴），
+ * 文档说 `sourceTypeDesc` 可直接展示；但本项目展示口径是**前端映射** ——
+ * 特殊商品补贴对外叫「**商品补贴**」（后端下发的是"特殊补贴"）。
+ * 所以这里按 `sourceType` 映射，`sourceTypeDesc` 仅在没有 sourceType 时兜底
+ * （后端 `non_null` ⇒ 老数据可能整个 key 缺失）。
+ */
+function sourceTagText(record: DividendRecord): string {
+  if (record.sourceType === 'SPECIAL_SUBSIDY') return '商品补贴'
+  if (record.sourceType === 'DIVIDEND') return '分红红包'
+  return record.sourceTypeDesc || ''
+}
+
 const recordsPage = ref(1)
 const recordsTotal = ref(0)
 const loading = ref(false)
@@ -213,7 +229,7 @@ onShow(() => { void refreshData() })
           <view v-show="!loading && !records.length" class="source-empty"><text>暂无红包记录</text></view>
           <view v-show="!loading && records.length" class="source-list">
             <view v-for="record in records" :key="record.id" class="source-row">
-              <text class="source-cell name">{{ record.productName || '--' }}</text>
+              <text class="source-cell name">{{ record.productName || '--' }}<text v-if="sourceTagText(record)" class="source-tag">{{ sourceTagText(record) }}</text></text>
               <text class="source-cell time">{{ formatTime(record.createTime) }}</text>
               <text class="source-cell amount">{{ formatPoints(record.amount) }}</text>
             </view>
@@ -262,6 +278,8 @@ onShow(() => { void refreshData() })
 .source-list { margin-top: 10rpx; }
 .source-row { display: grid; grid-template-columns: 240rpx 240rpx 150rpx; min-height: 90rpx; margin: 0 40rpx; align-items: center; border-bottom: 1rpx solid #f6f6f6; color: #959595; font-size: 20rpx; }
 .source-cell { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre-line; }
+/* 红包来源标签（分红红包 / 商品补贴）：跟在商品名后的小号标记 */
+.source-tag { margin-left: 8rpx; padding: 0 8rpx; border: 1rpx solid #e8d5b7; border-radius: 6rpx; color: #916448; font-size: 18rpx; }
 .source-cell.time { text-align: center; }
 .source-cell.amount { color: #010101; text-align: right; }
 .source-more { padding: 20rpx 0; color: #959595; font-size: 20rpx; text-align: center; }

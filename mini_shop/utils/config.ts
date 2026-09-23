@@ -171,8 +171,8 @@ export function brandNameFromContent(content: ClientContentV2 | null): string {
  * 不改变任何资金逻辑；恢复开关后功能原样回来。
  */
 export const FEATURE_FLAGS = {
-  /** 肽金券（入口 + 展示） */
-  peptide: false,
+  /** 肽金券（入口 + 展示）—— 2026-09-23 已放出（甲方结款后恢复上线） */
+  peptide: true,
   /** 推广排行榜 */
   leaderboard: false,
 } as const

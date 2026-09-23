@@ -205,6 +205,18 @@ export interface DividendRecord {
   amount: number
   /** 红包到账时间（yyyy-MM-dd HH:mm:ss） */
   createTime: string
+  /**
+   * 红包**来源类型**（2026-09-23 新增）：
+   * `DIVIDEND` 分红红包 / `SPECIAL_SUBSIDY` 特殊商品补贴。
+   * ⚠️ 后端 `default-property-inclusion: non_null` ⇒ 老数据可能**整个 key 都不存在**。
+   */
+  sourceType?: string
+  /**
+   * 来源中文名（后端下发，文档标注"可直接展示"）。
+   * ⚠️ 但本项目的展示口径是**前端映射**：`SPECIAL_SUBSIDY` 要显示成「**商品补贴**」
+   * （后端下发的是"特殊补贴"）⇒ 见 `sourceTagText()`，本字段仅作兜底。
+   */
+  sourceTypeDesc?: string
 }
 
 /** 红包流水分页结果。 */
