@@ -7,6 +7,7 @@ import { useProfitStore } from '@/stores/profit'
 import { normalizeLegacyWording } from '@/utils/wording'
 import DividendPacketPanel from '@/components/profit/DividendPacketPanel.vue'
 import EmergencyPoolPanel from '@/components/profit/EmergencyPoolPanel.vue'
+import OldLayerPanel from '@/components/profit/OldLayerPanel.vue'
 import type { DividendRecordTestResult, DividendSlotTestResult, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
 
 /**
@@ -217,6 +218,8 @@ onMounted(() => { void load(); void loadContributions() })
       <!-- 红包发放明细（2026-09-19 新增）：按批次看发放真值 vs 登记值、发放人员与用户层 -->
       <el-tab-pane label="红包明细" name="packets"><DividendPacketPanel /></el-tab-pane>
       <el-tab-pane label="应急红包池" name="emergency"><EmergencyPoolPanel /></el-tab-pane>
+      <!-- 老层发放设置（2026-09-24 新增）：老层发放模式开关（ROTATION / ONE_SHOT），仅超管 -->
+      <el-tab-pane label="老层发放" name="oldLayer"><OldLayerPanel /></el-tab-pane>
     </el-tabs>
     <el-dialog v-model="poolDetailVisible" title="每日红包明细" width="760px" append-to-body><el-table :data="store.poolDetails" border><el-table-column prop="poolDate" label="日期" /><el-table-column label="每日金额"><template #default="{ row }">{{ money(row.dailyAmount) }}</template></el-table-column><el-table-column prop="dailyUserCount" label="用户数" /><el-table-column prop="updateTime" label="更新时间" /></el-table></el-dialog>
     <el-dialog v-model="adjustPoolVisible" title="调整 周红包" width="460px" append-to-body><el-form ref="adjustPoolFormRef" :model="adjustPoolForm" :rules="poolFormRules" label-width="100px"><el-form-item label="总金额" prop="totalAmount"><el-input-number v-model="adjustPoolForm.totalAmount" :min="0" :precision="2" /></el-form-item><el-form-item label="用户数" prop="userCount"><el-input-number v-model="adjustPoolForm.userCount" :min="0" /></el-form-item></el-form><template #footer><el-button @click="adjustPoolVisible = false">取消</el-button><el-button type="primary" :loading="store.actionLoading" @click="submitPoolAdjust">保存</el-button></template></el-dialog>

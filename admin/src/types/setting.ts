@@ -104,3 +104,25 @@ export interface FundRateSaveDTO {
   rate: number
   remark?: string
 }
+
+/**
+ * 老层发放模式（通用配置键 `dividend_old_layer_mode`）。
+ *
+ * - `ROTATION`：按名单 7 天轮转（历史口径，默认）—— 按 `7/7/7/8/8/8/9` 分到 7 天；
+ * - `ONE_SHOT`：只在池首发放日（自然周口径下即**周一**）一次性把当周合格槽位发完，D2~D7 老层为 0。
+ *
+ * ⚠️ 两种模式**每人的钱与整周总额完全一样**，只是到账时点不同（对接文档 §1.2）。
+ */
+export type OldLayerMode = 'ROTATION' | 'ONE_SHOT'
+
+/**
+ * 老层发放模式配置。
+ *
+ * ⚠️ **后端读取端对非法值是静默回退 `ROTATION` 的**，所以前端提交前必须只允许这两个值
+ * （写入端会硬校验，其它值返回 `code=400`）—— 否则会出现"后台显示改了、线上其实没生效"这种最难排查的情况。
+ * ⚠️ **生效时点**：发放时读配置，**从下一个建池的池开始生效**；必须在建池前设置好，设晚了当周改不回来。
+ */
+export interface OldLayerModeConfig {
+  mode: OldLayerMode
+  remark: string
+}

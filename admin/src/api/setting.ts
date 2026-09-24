@@ -1,6 +1,6 @@
 import { request } from './request'
 import type { ApiResponse } from './request'
-import type { DividendCap, DividendCapSaveDTO, LeaderboardLimitConfig, ProfitRatesConfig, ProfitRatesSaveDTO, RandomDividendConfig, RandomFloatConfig, SlotCountConfig, SysConfig, SysConfigSaveDTO, WithdrawRulesConfig, WithdrawRulesSaveDTO } from '@/types/setting'
+import type { DividendCap, DividendCapSaveDTO, LeaderboardLimitConfig, OldLayerMode, OldLayerModeConfig, ProfitRatesConfig, ProfitRatesSaveDTO, RandomDividendConfig, RandomFloatConfig, SlotCountConfig, SysConfig, SysConfigSaveDTO, WithdrawRulesConfig, WithdrawRulesSaveDTO } from '@/types/setting'
 import { DEFAULT_DIVIDEND_RATE, DEFAULT_PROMOTION_RATE } from '@/utils/productPricing'
 
 const CUSTOMER_SERVICE_KEY = 'customer_service_phone'
@@ -139,6 +139,48 @@ export async function saveSlotCountConfig(payload: { slotCount: number; remark?:
     remark: payload.remark,
   })
   ensureSuccess(response.data, '槽位数量保存失败')
+}
+
+/* ===================== 老层发放模式（2026-09-24 新增） ===================== */
+
+/** 老层发放模式配置键（通用配置接口 `/api/admin/setting/{configKey}`）。 */
+const OLD_LAYER_MODE_KEY = 'dividend_old_layer_mode'
+/** 合法的两个取值；后端写入端硬校验、读取端对非法值静默回退 ROTATION。 */
+const OLD_LAYER_MODES: OldLayerMode[] = ['ROTATION', 'ONE_SHOT']
+
+/**
+ * 读取老层发放模式。
+ *
+ * ⚠️ 该键**不存在时后端返回 `data = null`，语义等价于 `ROTATION`**（对接文档 §六）——
+ * 所以这里对「未配置 / 查询失败 / 值非法」统一兜底成 `ROTATION`，不要让页面因为没配置就报错。
+ * ⚠️ `skipAuthRedirect`：`/api/admin/setting/**` 仅超管，非超管访问会拿到业务错误，不应触发登录跳转。
+ */
+export async function getOldLayerModeConfig(): Promise<OldLayerModeConfig> {
+  const response = await request.get<ApiResponse<SysConfig | null>>(`/api/admin/setting/${OLD_LAYER_MODE_KEY}`, { skipAuthRedirect: true })
+  const result = response.data
+  try { ensureSuccess(result, '老层发放模式查询失败') } catch { /* 未配置时按默认 ROTATION */ }
+  const raw = String(result?.data?.configValue ?? '').trim().toUpperCase()
+  const mode = (OLD_LAYER_MODES as string[]).includes(raw) ? (raw as OldLayerMode) : 'ROTATION'
+  return { mode, remark: String(result?.data?.remark ?? '') }
+}
+
+/**
+ * 保存老层发放模式（通用配置接口 POST `/api/admin/setting/{configKey}`）。
+ *
+ * ⚠️ 前端先校验取值，避免把非法值提交上去 —— 后端虽然也会拒（`code=400`），
+ * 但**读取端对非法值是静默回退 ROTATION 的**，一旦脏值落库就会变成"改了但没生效"。
+ * ⚠️ 值会被后端规范成大写，所以这里统一 `toUpperCase()`。
+ */
+export async function saveOldLayerModeConfig(payload: { mode: OldLayerMode; remark?: string }): Promise<void> {
+  const mode = String(payload.mode ?? '').trim().toUpperCase() as OldLayerMode
+  if (!(OLD_LAYER_MODES as string[]).includes(mode)) {
+    throw new Error('老层发放模式只支持 ROTATION（按名单 7 天轮转）或 ONE_SHOT（每周一一次性发完）')
+  }
+  const response = await request.post<ApiResponse<null>>(`/api/admin/setting/${OLD_LAYER_MODE_KEY}`, {
+    configValue: mode,
+    remark: payload.remark,
+  })
+  ensureSuccess(response.data, '老层发放模式保存失败')
 }
 
 /** 排行榜显示人数配置键、默认值与取值范围（与后端接口 limit 的 1~100 对齐）。 */
