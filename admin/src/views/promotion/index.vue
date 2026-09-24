@@ -185,6 +185,26 @@ const leaderboardLimitSaving = ref(false)
 /** 仅超级管理员可改：这是平台级参数，商户管理员/财务只读。 */
 const canEditLeaderboardLimit = computed(() => isSuperAdmin(authStore.role as AdminRole))
 
+/**
+ * 「推广排行榜」页签的**总开关**（2026-09-24 新增）。
+ *
+ * 背景：该页签 2026-09-18 就进了代码，且**从来没有显隐条件** ⇒ 部署新版后台后会直接出现在
+ * 「推广管理」里，给所有能进该页的角色看到。而后端排行榜接口当时**生产未部署**
+ * （见 `docs/后端文档/推广排行榜接口生产未部署-后端排查单-2026-09-18.md`：C 端/B 端均返回 404），
+ * 放出去会让运营直接撞到报错。
+ *
+ * ⇒ 当前口径：**仅超管可见**（见 `canViewLeaderboard`）。
+ * 将来接口上线、或决定对更多角色开放时，改这里即可（一处收口）：
+ *   `false` = 全部隐藏（含超管）；`true` = 由下面的角色条件决定。
+ */
+const SHOW_LEADERBOARD_TAB = true
+
+/**
+ * 是否显示「推广排行榜」页签：总开关打开 **且** 当前登录角色是超级管理员。
+ * 非超管进去只会看到接口报错，所以先把可见范围收在超管。
+ */
+const canViewLeaderboard = computed(() => SHOW_LEADERBOARD_TAB && isSuperAdmin(authStore.role as AdminRole))
+
 /** 读取排行榜显示人数配置；未配置或值非法时回落到默认 20。 */
 async function loadLeaderboardLimit(): Promise<void> {
   try {
@@ -238,7 +258,9 @@ onUnmounted(() => stopLeaderboardPolling())
           <div class="table-pagination"><span>共 {{ store.relationTotal }} 条</span><el-pagination background layout="total, sizes, prev, pager, next" :current-page="store.relationPage" :page-size="store.relationSize" :total="store.relationTotal" @current-change="relationPageChange" @size-change="relationSizeChange" /></div>
         </el-card>
       </el-tab-pane>
-      <el-tab-pane label="推广排行榜" name="leaderboard">
+      <!-- ⚠️ 仅超管可见（canViewLeaderboard）：后端排行榜接口生产尚未部署，非超管进去只会看到报错。
+           要不要开放给更多角色，改 SHOW_LEADERBOARD_TAB / canViewLeaderboard 一处即可。 -->
+      <el-tab-pane v-if="canViewLeaderboard" label="推广排行榜" name="leaderboard">
         <el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>推广排行榜</strong><span class="toolbar-count">{{ store.leaderboard?.periodLabel || '' }}按推广人数排名</span></div><div class="toolbar-actions"><el-radio-group v-model="store.leaderboardPeriod" @change="() => loadLeaderboard()"><el-radio-button v-for="opt in leaderboardPeriods" :key="opt.value" :value="opt.value">{{ opt.label }}</el-radio-button></el-radio-group><el-button :loading="store.leaderboardLoading" @click="loadLeaderboard()"><el-icon><Refresh /></el-icon>刷新</el-button></div></div>
           <p class="leaderboard-tip">只统计「推广金已生成」（被推广人支付成功）且未退款作废的推广，按去重人数排名，时间锚点为支付时间。<template v-if="store.leaderboard">{{ periodText }} · 数据截至 {{ store.leaderboard.asOf }}；{{ store.leaderboardPeriod === 'ALL' ? '全时段累计（上界为数据截至时刻），按去重人数排名' : '按自然周/月/年统计，含尚未走完的当前周期' }}，排名随支付实时变化（页面每 60 秒自动刷新）。</template></p>
           <div class="leaderboard-config"><span class="leaderboard-config-label">显示人数</span><el-input-number v-model="leaderboardLimit" :min="1" :max="100" :step="10" :controls="false" :disabled="!canEditLeaderboardLimit" class="leaderboard-limit-input" /><el-button type="primary" :loading="leaderboardLimitSaving" :disabled="!canEditLeaderboardLimit" @click="saveLeaderboardLimit">保存</el-button><span class="leaderboard-config-hint">{{ canEditLeaderboardLimit ? '控制小程序与后台榜单显示前几名（1~100）' : '仅超级管理员可修改' }}</span></div>

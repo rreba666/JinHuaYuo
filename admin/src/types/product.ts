@@ -63,6 +63,15 @@ export interface ProductDetail extends ProductListItem {
   detailImages: string[]
   /** 商品详情海报（B端编辑/回显，C端详情页海报）。 */
   detailPosterUrl?: string
+  /**
+   * 特殊推广比例（0~1，如 0.05 = 5%）—— **仅复购专区商品**有值。
+   * 给**推广人**的佣金，算法 = **商品定价** × 本比例。
+   * ⚠️ 基数是**定价**不是实付（用肽金券抵扣不减少基数）；⚠️ 后端 2026-09-24 才补上这个回显字段，
+   * 此前 B 端读不到、运营只能盲填（一填就把原值覆盖）。
+   */
+  specialPromotionRate?: number | null
+  /** 特殊补贴比例（0~1）—— **仅复购专区商品**有值，给**买家本人**（每用户终身一次）。 */
+  specialSubsidyRate?: number | null
   skuList: ProductSku[]
 }
 
@@ -93,6 +102,13 @@ export interface AdminProductSaveDTO {
   recommendTextEnabled: ProductStatus
   sortOrder: number
   skuList: ProductSku[]
+  /**
+   * 特殊推广比例（0~1，如 0.05 = 5%）。**仅复购专区商品传**，普通商品不要传（后端会清成 null）。
+   * ⚠️ 留空 / 传 `null` → 后端**强制写 0.05**（不是"保持原值"）⇒ 编辑时必须把回显值原样回传。
+   */
+  specialPromotionRate?: number | null
+  /** 特殊补贴比例（0~1）。同上：留空会被后端兜底成 0.05。 */
+  specialSubsidyRate?: number | null
 }
 
 export interface CategoryNode {

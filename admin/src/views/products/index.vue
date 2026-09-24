@@ -17,6 +17,23 @@ const detailVisible = ref(false)
 const editingId = ref<string | undefined>()
 const formRef = ref<FormInstance>()
 const form = reactive<AdminProductSaveDTO>(createEmptyForm())
+
+/**
+ * 复购专区商品的「特殊推广 / 特殊补贴」比例，**以百分比录入**（`5` 表示 5%）。
+ *
+ * ⚠️ 单位：后端字段是 `0~1` 的小数（`0.05`），而输入框对运营友好的是百分比
+ * ⇒ **回显时 ×100、提交时 ÷100**，换算只在这两处做，别在别处再乘除一遍。
+ * ⚠️ 后端是「入参为空 → **强制写 0.05**」，**不是"保持原值"**：编辑时必须把回显值原样回传，
+ *    否则别人打开编辑页没动这一项、提交时漏带，运营设的 10% 会被**打回 5%**。
+ */
+const specialPromotionPercent = ref<number | null>(null)
+const specialSubsidyPercent = ref<number | null>(null)
+
+/** 百分比 → 后端比例（0~1）：`5 → 0.05`；`null`/非法 → `null`（后端按"留空兜底 0.05"处理）。 */
+function percentToRate(percent: number | null | undefined): number | null {
+  if (percent == null || !Number.isFinite(Number(percent))) return null
+  return Number((Number(percent) / 100).toFixed(4))
+}
 /** 推广资金是否使用默认比例自动计算（关闭则手动输入金额）。 */
 const promotionUseDefault = ref(true)
 /** 平台红包是否使用默认比例自动计算。 */
@@ -134,6 +151,13 @@ function fillForm(detail?: ProductDetail): void {
   if (!detail) {
     form.promotionFund = getDefaultPromotionFundForSku()
     form.dividendFund = getDefaultDividendFundForSku()
+    // 新增专区商品：预填后端兜底值 5%（留空同样会被后端写成 5%，这里只是让运营看得见当前口径）
+    specialPromotionPercent.value = 5
+    specialSubsidyPercent.value = 5
+  } else {
+    // 编辑：回显值 `0~1` → 百分比（**唯一换算点之一**，另一处在 submitForm 提交时）
+    specialPromotionPercent.value = detail.specialPromotionRate == null ? null : Number((detail.specialPromotionRate * 100).toFixed(2))
+    specialSubsidyPercent.value = detail.specialSubsidyRate == null ? null : Number((detail.specialSubsidyRate * 100).toFixed(2))
   }
 }
 
@@ -212,6 +236,16 @@ async function submitForm(): Promise<void> {
       isRecommended: normalizeBinary(form.status) === 1 ? normalizeBinary(form.isRecommended) : 0,
       recommendTextEnabled: normalizeBinary(form.status) === 1 && normalizeBinary(form.isRecommended) === 1 ? normalizeBinary(form.recommendTextEnabled) : 0,
       ...(editingId.value ? { id: editingId.value } : { id: undefined }),
+      // ⚠️ 只有**复购专区商品**才传这两个比例：普通商品传了也会被后端清成 null，
+      //    但按对接文档要求「非专区商品不要传」，避免给出误导性的入参。
+      //    ⚠️ 单位换算：表单存百分比，接口要 0~1 的小数。
+      //    留空 → 传 `null` ⇒ 后端按「留空兜底 0.05」处理（与界面提示一致）。
+      ...(isSpecialCategory.value
+        ? {
+            specialPromotionRate: percentToRate(specialPromotionPercent.value),
+            specialSubsidyRate: percentToRate(specialSubsidyPercent.value),
+          }
+        : {}),
     }
     await store.saveProduct(payload)
     formVisible.value = false
@@ -359,7 +393,30 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="产地"><el-input v-model="form.originPlace" /></el-form-item>
         <el-form-item label="排序权重"><el-input-number v-model="form.sortOrder" :min="0" /></el-form-item>
-        <div class="fund-config-row form-item-full"><div v-if="isSpecialCategory" class="special-fund-tip"><strong>复购专区商品的资金由系统按专区口径统一处理，不读取下方配置：</strong><span>· 推广金 → 特殊推广：订单实付价 × 5%，给推广人</span><span>· 特殊补贴：订单实付价 × 5%，给买家本人（每用户终身一次）</span><span>· 平台红包：不参与红包分配、不进红包池</span><span>· 应急红包池：不抽取</span><span>· 肽金券：可用肽金券抵扣本商品，但因不进红包池，本商品不产生肽金券</span><span>下方为系统实际生效值，不可手动修改（肽金券抵扣开关除外）。</span></div><el-form-item label="推广资金"><div class="fund-control"><el-switch v-model="promotionUseDefault" :disabled="isSpecialCategory" active-text="默认比例" inactive-text="手动金额" /><el-input-number v-model="form.promotionFund" :min="0" :precision="2" :disabled="promotionUseDefault || isSpecialCategory" /><el-switch v-model="form.promotionEnabled" :disabled="isSpecialCategory" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="禁用" /></div></el-form-item><el-form-item label="平台红包"><div class="fund-control"><el-switch v-model="dividendUseDefault" :disabled="isSpecialCategory" active-text="默认比例" inactive-text="手动金额" /><el-input-number v-model="form.dividendFund" :min="0" :precision="2" :disabled="dividendUseDefault || isSpecialCategory" /><el-switch v-model="form.dividendEnabled" :disabled="isSpecialCategory" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="禁用" /></div></el-form-item><el-form-item label="应急红包池"><div class="fund-control"><el-switch v-model="form.emergencyPoolEnabled" :disabled="isSpecialCategory" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="关闭" /><el-input-number v-model="form.emergencyPoolAmount" :min="0" :precision="2" :disabled="normalizeBinary(form.emergencyPoolEnabled) === 0 || isSpecialCategory" placeholder="每单抽取金额" /></div></el-form-item><el-form-item label="肽金券抵扣"><div class="fund-control"><el-switch v-model="form.peptideEnabled" :active-value="1" :inactive-value="0" active-text="开启" inactive-text="关闭" /></div><p class="peptide-tip">肽金券不可提现，仅可用于抵扣；开启后买家下单时可用肽金券抵扣本商品（无门槛、无上限）。选择分类时会自动带出该分类的默认设置，可在此单独修改。</p></el-form-item></div>
+        <!-- 复购专区：特殊推广 / 特殊补贴比例（2026-09-24 后端补上回显字段后才可编辑）
+             ⚠️ 只在专区商品显示；非专区商品后端会把这两个字段清成 null，前端也不提交 -->
+        <div v-if="isSpecialCategory" class="special-rate-row form-item-full">
+          <el-alert type="warning" :closable="false" show-icon class="special-rate-alert">
+            <template #title>
+              特殊推广给<strong>推广人</strong>、特殊补贴给<strong>买家本人</strong>，两者独立设置；算法 = <strong>商品定价 × 比例</strong>（基数是定价、不是实付，用肽金券抵扣不减少基数）。
+            </template>
+          </el-alert>
+          <el-form-item label="特殊推广比例">
+            <div class="fund-control">
+              <el-input-number v-model="specialPromotionPercent" :min="0" :max="100" :step="0.5" :precision="2" placeholder="留空按默认 5% 计算" />
+              <span class="rate-suffix">%</span>
+              <span class="form-hint">给推广人。留空将按<span class="rate-strong">默认 5%</span> 计算（<span class="rate-strong">不是保持原值</span>）</span>
+            </div>
+          </el-form-item>
+          <el-form-item label="特殊补贴比例">
+            <div class="fund-control">
+              <el-input-number v-model="specialSubsidyPercent" :min="0" :max="100" :step="0.5" :precision="2" placeholder="留空按默认 5% 计算" />
+              <span class="rate-suffix">%</span>
+              <span class="form-hint">给买家本人（每用户终身一次）。留空将按<span class="rate-strong">默认 5%</span> 计算</span>
+            </div>
+          </el-form-item>
+        </div>
+        <div class="fund-config-row form-item-full"><div v-if="isSpecialCategory" class="special-fund-tip"><strong>复购专区商品的资金由系统按专区口径统一处理，不读取下方配置：</strong><span>· 推广金 → 特殊推广：商品定价 × 上方比例，给推广人</span><span>· 特殊补贴：商品定价 × 上方比例，给买家本人（每用户终身一次）</span><span>· 平台红包：不参与红包分配、不进红包池</span><span>· 应急红包池：不抽取</span><span>· 肽金券：可用肽金券抵扣本商品，但因不进红包池，本商品不产生肽金券</span><span>下方为系统实际生效值，不可手动修改（肽金券抵扣开关除外）。</span></div><el-form-item label="推广资金"><div class="fund-control"><el-switch v-model="promotionUseDefault" :disabled="isSpecialCategory" active-text="默认比例" inactive-text="手动金额" /><el-input-number v-model="form.promotionFund" :min="0" :precision="2" :disabled="promotionUseDefault || isSpecialCategory" /><el-switch v-model="form.promotionEnabled" :disabled="isSpecialCategory" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="禁用" /></div></el-form-item><el-form-item label="平台红包"><div class="fund-control"><el-switch v-model="dividendUseDefault" :disabled="isSpecialCategory" active-text="默认比例" inactive-text="手动金额" /><el-input-number v-model="form.dividendFund" :min="0" :precision="2" :disabled="dividendUseDefault || isSpecialCategory" /><el-switch v-model="form.dividendEnabled" :disabled="isSpecialCategory" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="禁用" /></div></el-form-item><el-form-item label="应急红包池"><div class="fund-control"><el-switch v-model="form.emergencyPoolEnabled" :disabled="isSpecialCategory" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="关闭" /><el-input-number v-model="form.emergencyPoolAmount" :min="0" :precision="2" :disabled="normalizeBinary(form.emergencyPoolEnabled) === 0 || isSpecialCategory" placeholder="每单抽取金额" /></div></el-form-item><el-form-item label="肽金券抵扣"><div class="fund-control"><el-switch v-model="form.peptideEnabled" :active-value="1" :inactive-value="0" active-text="开启" inactive-text="关闭" /></div><p class="peptide-tip">肽金券不可提现，仅可用于抵扣；开启后买家下单时可用肽金券抵扣本商品（无门槛、无上限）。选择分类时会自动带出该分类的默认设置，可在此单独修改。</p></el-form-item></div>
         <el-form-item label="商品状态"><el-switch v-model="form.status" :active-value="1" :inactive-value="0" active-text="上架" inactive-text="下架" /></el-form-item>
         <el-form-item label="首页推荐"><el-switch v-model="form.isRecommended" :disabled="normalizeBinary(form.status) === 0" :active-value="1" :inactive-value="0" /></el-form-item>
         <el-form-item label="推荐文本"><el-switch v-model="form.recommendTextEnabled" :disabled="normalizeBinary(form.status) === 0 || normalizeBinary(form.isRecommended) === 0" :active-value="1" :inactive-value="0" /></el-form-item>
@@ -405,6 +462,12 @@ onMounted(() => {
 .fund-config-row :deep(.el-form-item) { min-width: 0; }
 .fund-control { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; min-width: 0; }
 .fund-control .form-hint { margin-left: 0; }
+/* 复购专区的特殊推广 / 特殊补贴比例（2026-09-24）：仅专区商品显示，两个比例可独立编辑 */
+.special-rate-row { margin: 0 0 4px; }
+.special-rate-alert { margin-bottom: 12px; }
+.special-rate-alert :deep(.el-alert__title) { line-height: 20px; font-size: 13px; }
+.rate-suffix { color: #606266; font-size: 14px; }
+.rate-strong { color: #b88230; font-weight: 600; }
 .selection-tip { color: #8492a6; font-size: 13px; }
 .operator-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .operator-actions :deep(.el-button) { margin-left: 0; padding: 5px 8px; }
