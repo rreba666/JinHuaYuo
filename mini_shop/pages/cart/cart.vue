@@ -115,7 +115,13 @@ onMounted(() => {
   try { const r = uni.getMenuButtonBoundingClientRect(); if (r) { menuTop.value = r.top; menuHeight.value = r.height } } catch { /* */ }
   void refreshList()
 })
-onShow(() => { loading.value = true; void refreshList() })
+onShow(() => {
+  // ⚠️ 2026-09-24：已有数据时**不要**再置 loading —— 否则每次从其它页返回购物车，
+  // 都会先闪一下「加载中…」再跳回列表（线上反馈）。手里有数据就先按旧数据渲染，
+  // 请求回来再静默替换（`refreshList()` 内部有并发合并，不会重复发请求）。
+  if (!items.value.length) loading.value = true
+  void refreshList()
+})
 </script>
 
 <template>

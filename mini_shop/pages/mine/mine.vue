@@ -30,10 +30,15 @@ const peptideAccount = ref<PeptideAccount | null>(null)
 /**
  * 肽金券格是否展示：平台启用发放时展示；**暂停发放时只要还有余额也必须展示**，
  * 否则用户查不到自己的余额（接口说明：停发不影响历史余额，仍可继续抵扣）。
+ *
+ * ⚠️ 2026-09-24：**数据还没回来时按「可见」处理**（静态开关 `FEATURE_FLAGS.peptide` 开着）。
+ * 原来这里 `if (!account) return false`，导致首屏只有 3 格、等账户接口回来才"长"出第 4 格
+ * —— 每次进入个人页都会闪一下（线上反馈）。现在首屏直接按 4 格布局，只有
+ * 「平台停用 **且** 余额为 0」这种极少见的情况才会在数据到达后少一格。
  */
 const peptideVisible = computed(() => {
   const account = peptideAccount.value
-  if (!account) return false
+  if (!account) return true
   return account.enabled === true || Number(account.balance || 0) > 0
 })
 const profileEditorVisible = ref(false)
@@ -104,12 +109,9 @@ const visibleMenuItems = computed(() => {
 })
 
 /**
- * 收益卡是否已就绪（首屏不"跳数目"的关键）。
- *
- * ⚠️ 第 4 格「肽金券」的**有无**取决于异步拉取的肽金券账户（平台是否启用 / 是否仍有余额），
- * 而前 3 格只用同步的钱包数据 ⇒ 不等它就把卡片渲染出来，首屏必然是
- * 「**先 3 格 → 数据回来变 4 格**」，用户会看到明显的数目跳动（线上反馈）。
- * 所以这两项数据一起回来后再渲染整张卡（两者已改为并行请求，不会因此变慢）。
+ * ⚠️ 2026-09-24 起**已不参与渲染**：原先用它在「钱包 + 肽金券账户都就绪」前遮挡整张收益卡，
+ * 结果只是把「3 格→4 格」换成了「无→有」，照样闪（线上反馈）。
+ * 现在改为由 `peptideVisible`（数据未到时按可见）保证**首屏就是固定的 4 格**，变量保留仅供将来需要时使用。
  */
 const incomeReady = ref(false)
 
@@ -591,8 +593,9 @@ onShow(() => { void refreshData() })
           <view v-if="!registeredUser" class="member-end" />
         </view>
 
-        <!-- ⚠️ 必须等 incomeReady：第 4 格「肽金券」的有无取决于异步数据，先渲染会「先 3 格后 4 格」跳一下 -->
-        <view v-if="registeredUser && incomeReady" class="income-strip">
+        <!-- ⚠️ 不再用 incomeReady 遮挡：格子数已由 peptideVisible「未加载按可见」保证首屏就固定，
+             再遮一层会让整块收益卡"从无到有"，照样是闪（2026-09-24 线上反馈修正） -->
+        <view v-if="registeredUser" class="income-strip">
           <view v-for="(item, index) in incomeEntries" :key="item.label" class="income-item" @click="goIncome(index)">
             <text :class="['income-value', incomeValueClass(item.value)]">{{ formatIncome(item.value) }}</text>
             <text class="income-label">{{ item.label }}<text v-if="item.settling" class="income-label-tag">（结算中）</text></text>
