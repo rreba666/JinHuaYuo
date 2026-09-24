@@ -235,7 +235,8 @@ onShow(() => { void loadList() })
 .action { color: #475467; font-size: 24rpx; }
 .action.danger { color: #f04438; }
 .add-bar { position: fixed; right: 0; bottom: 0; left: 0; z-index: 20; padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom)); box-sizing: border-box; background: #fff; }
-.add-btn { height: 84rpx; margin: 0; border: 0; border-radius: 42rpx; background: linear-gradient(135deg, #ff6a2b, #ff5a1f); color: #fff; font-size: 30rpx; font-weight: 600; line-height: 84rpx; }
+/* 方形黑底白字：与地址相关页面、支付页弹层的按钮风格统一（原来是橙色胶囊） */
+.add-btn { height: 88rpx; margin: 0; border: 0; border-radius: 8rpx; background: #010101; color: #fff; font-size: 30rpx; font-weight: 600; line-height: 88rpx; }
 .add-btn::after { border: 0; }
 .mask { position: fixed; inset: 0; z-index: 40; display: flex; align-items: flex-end; background: rgba(0, 0, 0, .56); }
 .sheet { width: 100%; padding: 28rpx 28rpx calc(30rpx + env(safe-area-inset-bottom)); background: #fff; box-sizing: border-box; }
@@ -246,6 +247,7 @@ onShow(() => { void loadList() })
 .label { width: 140rpx; color: #333; font-size: 26rpx; flex-shrink: 0; }
 .input { flex: 1; height: 68rpx; padding: 0 20rpx; border-radius: 12rpx; background: #f7f7f7; color: #333; font-size: 26rpx; }
 .bank-picker-text { display: flex; align-items: center; justify-content: space-between; color: #333; }
-.save-btn { height: 84rpx; margin-top: 12rpx; border: 0; border-radius: 42rpx; background: linear-gradient(135deg, #ff6a2b, #ff5a1f); color: #fff; font-size: 30rpx; font-weight: 600; line-height: 84rpx; }
+/* 方形黑底白字：与地址相关页面、支付页弹层的按钮风格统一（原来是橙色胶囊） */
+.save-btn { height: 84rpx; margin-top: 12rpx; border: 0; border-radius: 8rpx; background: #010101; color: #fff; font-size: 30rpx; font-weight: 600; line-height: 84rpx; }
 .save-btn::after { border: 0; }
 </style>
