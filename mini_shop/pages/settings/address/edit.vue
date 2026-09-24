@@ -423,7 +423,8 @@ onLoad(async (options) => {
 
 <style scoped>
 .page { min-height: 100vh; box-sizing: border-box; background: #f5f6f8; }
-.nav { position: fixed; right: 0; left: 0; z-index: 20; background: #fff; }
+/* 导航栏底色与页面一致（与地址簿页同款），不要白底，否则顶部会有一条明显的色带 */
+.nav { position: fixed; right: 0; left: 0; z-index: 20; background: #f5f6f8; }
 .nav-inner { display: flex; align-items: center; height: 44px; padding: 0 24rpx; }
 .nav-back { display: flex; align-items: center; width: 56rpx; height: 88rpx; color: #1d2129; font-size: 46rpx; line-height: 1; }
 .nav-title { color: #1d2129; font-size: 34rpx; font-weight: 600; }
