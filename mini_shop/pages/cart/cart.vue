@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getCartList, toggleChecked, updateQuantity, checkAll, removeCartItem, removeCartBatch, type CartItem } from '@/api/cart'
 import { DIVIDEND_PURCHASE_LIMIT, PURCHASE_LIMIT_MESSAGE, getDividendQuantity } from '@/utils/dividend-limit'
 import { createThrottle } from '@/utils/interaction'
@@ -9,16 +9,22 @@ import LoginGuide from '@/components/LoginGuide.vue'
 import PageWatermark from '@/components/PageWatermark.vue'
 import { isLoggedIn } from '@/utils/auth'
 
-const menuTop = ref(0)
-const menuHeight = ref(32)
 /**
- * ⚠️ 胶囊位置必须在**首帧就正确**（2026-09-24 修"进购物车抖一下"）。
+ * ⚠️ 默认值**不能再用 0**（2026-09-24 第三次修"进购物车抖一下"）。
  *
- * `uni.getMenuButtonBoundingClientRect()` 是**同步** API，原先放在 `onMounted` 里读，于是：
- * 首帧按默认值（`menuTop = 0`、`menuHeight = 32`）渲染 → `onMounted` 校正为真机值（距顶通常 44~50px）
- * → `bodyTop = menuTop + menuHeight + 48rpx` 变大 → **整页内容被往下推** ⇒ 视觉上就是"抖一下"。
- * 改成在 setup 顶层立即读：值参与首次渲染，不再有位移。
+ * 前两次的教训：把 `getMenuButtonBoundingClientRect()` 提到 setup 顶层**仍然会抖** ——
+ * 因为小程序页面在 setup 执行时尚未就绪，该 API 拿不到值，`menuTop` 保持默认 `0`，
+ * 首帧内容整体偏上；等拿到真实值（真机胶囊距顶通常 44~50px）再改 ⇒ 又被往下推。
+ *
+ * ⇒ 改为默认值直接取**同步可得**的 `statusBarHeight`（真机上非常接近胶囊 top），
+ *   首帧就基本正确，后续校正的位移可忽略；并在 `onLoad` 再读一次胶囊做精确校正。
  */
+const systemInfo = (() => {
+  try { return uni.getSystemInfoSync() } catch { return null }
+})()
+const menuTop = ref(systemInfo?.statusBarHeight || 44)
+const menuHeight = ref(32)
+/** 精确校正胶囊位置（同步 API）；拿不到时保留上面的近似默认值。 */
 function readMenuRect(): void {
   try {
     const r = uni.getMenuButtonBoundingClientRect()
@@ -156,8 +162,14 @@ function goPayment(): void {
   uni.navigateTo({ url: `/subpkg-order/payment/payment?cartIds=${selectedIds.join(',')}` })
 }
 
+onLoad(() => {
+  // 页面已创建、渲染前再精确校正一次胶囊位置（setup 顶层那次可能因页面尚未就绪而拿不到值）。
+  // ⚠️ 值相同时 ref 赋值不会触发重渲染 ⇒ 这一步本身不会制造新的抖动。
+  readMenuRect()
+})
+
 onMounted(() => {
-  // 胶囊位置已在 setup 顶层同步读好（见 readMenuRect），这里只负责拉数据
+  // 胶囊位置已在 setup 顶层 + onLoad 校正过（见 readMenuRect），这里只负责拉数据
   void refreshList()
 })
 onShow(() => {
