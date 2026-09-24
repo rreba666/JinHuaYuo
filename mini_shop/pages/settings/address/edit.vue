@@ -307,11 +307,29 @@ function pasteAndRecognize(): void {
 function chooseWechatAddress(): void {
   uni.chooseAddress({
     success: async (res) => {
-      const r = res as unknown as { userName?: string; telNumber?: string; provinceName?: string; cityName?: string; countyName?: string; detailInfo?: string }
+      const r = res as unknown as {
+        userName?: string
+        telNumber?: string
+        /** ⚠️ uni-app 统一后的字段名（微信原生叫 `provincialName`），两个都读以兼容。 */
+        provinceName?: string
+        provincialName?: string
+        cityName?: string
+        countyName?: string
+        /** 第四级地址（街道），微信小程序专属。 */
+        streetName?: string
+        /** 旧版选择器的详细地址。 */
+        detailInfo?: string
+        /** ⚠️ **新版**选择器的详细地址（微信小程序专属）——旧字段在新版上可能为空，必须优先读它。 */
+        detailInfoNew?: string
+      }
       if (r.userName) form.receiverName = r.userName
       if (r.telNumber) form.receiverPhone = r.telNumber
-      if (r.detailInfo) form.detail = r.detailInfo
-      if (r.provinceName) await applyRegionText(r.provinceName, r.cityName || '', r.countyName || '')
+      // 详细地址：优先新版字段；第四级街道有值就拼在最前（且避免与 detail 重复）
+      const detail = String(r.detailInfoNew || r.detailInfo || '').trim()
+      const street = String(r.streetName || '').trim()
+      if (detail) form.detail = street && !detail.includes(street) ? `${street}${detail}` : detail
+      const province = r.provinceName || r.provincialName || ''
+      if (province) await applyRegionText(province, r.cityName || '', r.countyName || '')
       uni.showToast({ title: '已带入微信地址，请核对', icon: 'none' })
     },
     fail: (err) => {
