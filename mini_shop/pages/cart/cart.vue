@@ -11,6 +11,21 @@ import { isLoggedIn } from '@/utils/auth'
 
 const menuTop = ref(0)
 const menuHeight = ref(32)
+/**
+ * ⚠️ 胶囊位置必须在**首帧就正确**（2026-09-24 修"进购物车抖一下"）。
+ *
+ * `uni.getMenuButtonBoundingClientRect()` 是**同步** API，原先放在 `onMounted` 里读，于是：
+ * 首帧按默认值（`menuTop = 0`、`menuHeight = 32`）渲染 → `onMounted` 校正为真机值（距顶通常 44~50px）
+ * → `bodyTop = menuTop + menuHeight + 48rpx` 变大 → **整页内容被往下推** ⇒ 视觉上就是"抖一下"。
+ * 改成在 setup 顶层立即读：值参与首次渲染，不再有位移。
+ */
+function readMenuRect(): void {
+  try {
+    const r = uni.getMenuButtonBoundingClientRect()
+    if (r) { menuTop.value = r.top; menuHeight.value = r.height }
+  } catch { /* 非微信环境保留默认值 */ }
+}
+readMenuRect()
 const navStyle = computed(() => ({ top: menuTop.value + 'px', height: menuHeight.value + 'px' }))
 const navActionStyle = computed(() => ({ top: `${menuHeight.value + uni.upx2px(8)}px` }))
 const bodyTop = computed(() => menuTop.value + menuHeight.value + uni.upx2px(48))
@@ -142,7 +157,7 @@ function goPayment(): void {
 }
 
 onMounted(() => {
-  try { const r = uni.getMenuButtonBoundingClientRect(); if (r) { menuTop.value = r.top; menuHeight.value = r.height } } catch { /* */ }
+  // 胶囊位置已在 setup 顶层同步读好（见 readMenuRect），这里只负责拉数据
   void refreshList()
 })
 onShow(() => {
