@@ -74,9 +74,15 @@ const walletBalance = ref(0)
 const now = ref(Date.now())
 let countdownTimer: ReturnType<typeof setInterval> | null = null
 
-const addressSheetVisible = ref(false)
 const shopSheetVisible = ref(false)
-const addressForm = reactive<Address>({ name: '', phone: '', detail: '' })
+/**
+ * 是否刚从「添加新地址」整页返回。
+ *
+ * 地址表单已从本页的内联弹层改为**独立整页**（`pages/settings/address/edit`，为的是放得下
+ * 「粘贴并识别」与「授权微信地址」两个快速录入入口）。整页保存后不回传数据，改由本页
+ * `onShow` 拉一次地址簿、取默认地址回填，所以这里需要知道"这次 onShow 是去填地址回来的"。
+ */
+const pendingAddressPick = ref(false)
 
 const invoiceExpanded = ref(false)
 const invoiceDrawerVisible = ref(false)
@@ -466,9 +472,22 @@ onLoad(async (options?: Record<string, string | undefined>) => {
   await Promise.all([loadSelectedItems(), loadShops(), loadBalance(), loadModuleConfig()])
 })
 
-/** 页面重新显示时关闭残留的发票抽屉，确保进入确认订单页不会被遮罩覆盖。 */
-onShow(() => {
+/**
+ * 页面重新显示时：关闭残留的发票抽屉（确保进入确认订单页不会被遮罩覆盖）；
+ * 若刚去过「添加新地址」整页，则拉一次地址簿，把默认地址（没有默认就取第一条）填进下单地址。
+ */
+onShow(async () => {
   invoiceDrawerVisible.value = false
+  if (!pendingAddressPick.value) return
+  pendingAddressPick.value = false
+  try {
+    const list = await getAddressList()
+    const arr = Array.isArray(list) ? list : []
+    if (!arr.length) return
+    pickAddressBook(arr.find((item) => Number(item.isDefault) === 1) || arr[0])
+  } catch {
+    /* 回填失败就保留用户原有的下单地址，不打断流程 */
+  }
 })
 
 onMounted(() => {
@@ -520,10 +539,15 @@ function selectPayMethod(method: PayMethod): void {
   payMethod.value = method
 }
 
-/** 打开本地地址编辑抽屉。 */
-function openAddressEditor(): void {
-  Object.assign(addressForm, selectedAddress.value || { name: '', phone: '', detail: '' })
-  addressSheetVisible.value = true
+/**
+ * 打开「添加新地址」整页表单。
+ *
+ * 这里只负责跳转；保存动作在地址页里完成（会真正落库），保存成功后本页 `onShow` 会把
+ * 新地址（优先默认地址）回填成下单地址。
+ */
+function openAddressPage(): void {
+  pendingAddressPick.value = true
+  uni.navigateTo({ url: '/pages/settings/address/edit' })
 }
 
 /** 打开地址簿选择。 */
@@ -540,35 +564,11 @@ async function openAddressBookPicker(): Promise<void> {
   } finally { addressBookLoading.value = false }
 }
 
-/** 选中地址簿地址并填入下单地址。 */
+/** 选中地址簿地址并填入下单地址（地址页保存后返回也走这里）。 */
 function pickAddressBook(addr: AddressBookAddress): void {
   const full = [addr.province, addr.city, addr.district, addr.detail].filter(Boolean).join('')
-  addressForm.name = addr.receiverName
-  addressForm.phone = addr.receiverPhone
-  addressForm.detail = full
   selectedAddress.value = { name: addr.receiverName, phone: addr.receiverPhone, detail: full }
   addressBookVisible.value = false
-}
-
-/** 校验并保存本地地址。 */
-function saveAddress(): void {
-  const name = validateText(addressForm.name, { label: '收货人姓名', maxLength: PAYMENT_CONTACT_NAME_MAX_LENGTH })
-  const phone = validateMobile(normalizeEditableMobile(addressForm.phone))
-  const detail = validateText(addressForm.detail, { label: '详细地址', maxLength: PAYMENT_ADDRESS_MAX_LENGTH })
-  if (!name.ok) {
-    uni.showToast({ title: name.message, icon: 'none' })
-    return
-  }
-  if (!phone.ok) {
-    uni.showToast({ title: phone.message, icon: 'none' })
-    return
-  }
-  if (!detail.ok) {
-    uni.showToast({ title: detail.message, icon: 'none' })
-    return
-  }
-  selectedAddress.value = { name: name.value, phone: phone.value, detail: detail.value }
-  addressSheetVisible.value = false
 }
 
 /** 打开本地门店选择抽屉。 */
@@ -830,7 +830,7 @@ async function submitPayment(): Promise<void> {
   }
   if (!isExistingOrder && pickupType.value === 0 && !selectedAddress.value) {
     uni.showToast({ title: '请先添加配送地址', icon: 'none' })
-    openAddressEditor()
+    openAddressPage()
     return
   }
   if (!isExistingOrder && pickupType.value === 1 && !selectedShop.value) {
@@ -978,7 +978,7 @@ function backToCart(): void {
           <view>
             <view class="row-heading">
               <text class="section-title">配送信息</text>
-              <text class="action-text" @click.stop="openAddressEditor">添加新地址</text>
+              <text class="action-text" @click.stop="openAddressPage">添加新地址</text>
             </view>
             <text v-if="selectedAddress" class="address-value">{{ selectedAddress.name }} {{ selectedAddress.phone }}</text>
             <text v-if="selectedAddress" class="address-detail">{{ selectedAddress.detail }}</text>
@@ -1000,7 +1000,7 @@ function backToCart(): void {
               <text class="addr-detail">{{ [addr.province, addr.city, addr.district, addr.detail].filter(Boolean).join('') }}</text>
             </view>
           </scroll-view>
-          <button class="addr-add" @click="openAddressEditor">+ 添加新地址</button>
+          <button class="addr-add" @click="openAddressPage">+ 添加新地址</button>
         </view>
       </view>
 
@@ -1139,16 +1139,6 @@ function backToCart(): void {
       <view class="pay-now" :class="{ disabled: !items.length || paying || switchingToBalancePayment }" @click="submitPayment">
         <text v-if="showCancelOrder && countdownText" class="countdown">{{ countdownText }}</text>
         <text>{{ paying || switchingToBalancePayment ? '处理中...' : '立即支付' }}</text>
-      </view>
-    </view>
-
-    <view v-show="addressSheetVisible" class="mask" @click="addressSheetVisible = false">
-      <view class="sheet" @click.stop>
-        <view class="sheet-head"><text class="sheet-title">配送地址</text><text class="sheet-close" @click="addressSheetVisible = false">×</text></view>
-        <view class="sheet-form-line"><text class="form-label">姓名<span class="required">*</span></text><input v-model="addressForm.name" class="sheet-input" maxlength="32" placeholder="请输入" placeholder-class="input-placeholder" /></view>
-        <view class="sheet-form-line"><text class="form-label">手机号<span class="required">*</span></text><input v-model="addressForm.phone" class="sheet-input" type="number" maxlength="11" placeholder="请输入" placeholder-class="input-placeholder" /></view>
-        <view class="sheet-form-line"><text class="form-label">详细地址<span class="required">*</span></text><input v-model="addressForm.detail" class="sheet-input" maxlength="200" placeholder="请输入" placeholder-class="input-placeholder" /></view>
-        <view class="sheet-submit" @click="saveAddress">保存地址</view>
       </view>
     </view>
 

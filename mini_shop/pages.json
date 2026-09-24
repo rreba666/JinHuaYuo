@@ -69,6 +69,13 @@
       }
     },
     {
+      "path": "pages/settings/address/edit",
+      "style": {
+        "navigationBarTitleText": "添加收货地址",
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/settings/bank-card/bank-card",
       "style": {
         "navigationBarTitleText": "提现银行卡",
