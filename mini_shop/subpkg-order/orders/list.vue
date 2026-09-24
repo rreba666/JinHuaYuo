@@ -214,9 +214,11 @@ onShow(() => {
   <view class="page">
     <!-- 自定义导航栏，与胶囊按钮同一行 -->
     <view class="nav" :style="navStyle"><view class="nav-back" @click="goBack"><text class="back-icon">‹</text></view><text class="title">我的订单</text></view>
-    <view class="tabs" :style="{ marginTop: bodyTop + 'px' }">
+    <!-- 状态 tab（2026-09-24）：状态变多后一行塞不下，改为**横向可滑动**；
+         每个 tab 按内容宽 + 左右内边距，不再平分屏宽（那样「退款售后」会被挤成两行） -->
+    <scroll-view class="tabs" scroll-x :show-scrollbar="false" :style="{ marginTop: bodyTop + 'px' }">
       <view v-for="(tab, index) in tabs" :key="tab.label" class="tab" :class="{ active: activeIndex === index }" @click="selectTab(index)">{{ tab.label }}</view>
-    </view>
+    </scroll-view>
     <scroll-view class="list" scroll-y @scrolltolower="load(false)">
       <view v-show="loading && !(isAfterSaleTab ? afterSales.length : list.length)" class="state">加载中...</view>
 
@@ -293,8 +295,10 @@ onShow(() => {
 .nav { position: fixed; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: center; background: #fff; box-sizing: border-box; }
 .nav-back { position: absolute; left: 16rpx; display: flex; align-items: center; justify-content: center; width: 64rpx; height: 64rpx; }.back-icon { font-size: 48rpx; line-height: 1; color: #222; }
 .title { font-size: 32rpx; font-weight: 700; }
-.tabs { display: flex; width: 100%; height: 82rpx; flex-shrink: 0; background: #fff; }
-.tab { flex: 1; display: flex; align-items: center; justify-content: center; height: 82rpx; color: #888; font-size: 26rpx; border-bottom: 4rpx solid transparent; box-sizing: border-box; }
+/* 状态 tab：横向可滑动（scroll-view）。子项用 inline-flex + 父级 nowrap，否则 scroll-x 下不会横向排列；
+   ⚠️ 不要再用 `flex: 1` 平分宽度 —— 状态有 9 个时每个只剩 ~83rpx，「退款售后」会被挤断成两行。 */
+.tabs { width: 100%; height: 82rpx; flex-shrink: 0; background: #fff; white-space: nowrap; }
+.tab { display: inline-flex; align-items: center; justify-content: center; height: 82rpx; padding: 0 28rpx; color: #888; font-size: 26rpx; border-bottom: 4rpx solid transparent; box-sizing: border-box; white-space: nowrap; }
 .tab.active { color: #222; border-color: #222; font-weight: 700; }
 .list { flex: 1; min-height: 0; padding: 20rpx 24rpx; box-sizing: border-box; }
 .order-card { margin-bottom: 20rpx; padding: 26rpx 30rpx; background: #fff; border-radius: 16rpx; }
