@@ -104,6 +104,15 @@ export interface CategoryNode {
    * 商品表单选择分类时据此带出「肽金券抵扣」开关的默认值；后端保存商品时也会做同样兜底。
    */
   peptideEnabled?: number
+  /**
+   * 是否「复购专区」分类（1=是 / 0=否）。后端 2026-09-23 新增字段。
+   *
+   * ⚠️ 商品编辑表单据此判断「专区商品」：决定推广金/红包/应急池是否置灰、
+   * 是否显示专区资金规则说明、以及保存提示走哪个分支。
+   * ⚠️ 它必须能被 `api/product.ts` 的 `normalizeCategoryTree()` **显式重建**出来，
+   * 否则运行时恒为 `undefined` ⇒ 判断恒为 false（2026-09-24 踩过）。
+   */
+  special?: number
   children: CategoryNode[]
 }
 

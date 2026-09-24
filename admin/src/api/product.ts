@@ -215,12 +215,26 @@ function normalizeCategoryTree(value: unknown): CategoryNode[] {
       ? (value as { list: unknown[] }).list
       : []
   const nodes = source.map((item) => {
-    const raw = item as { id?: unknown; parentId?: unknown; name?: unknown; icon?: unknown; children?: unknown[] }
+    const raw = item as { id?: unknown; parentId?: unknown; name?: unknown; icon?: unknown; children?: unknown[]; special?: unknown; peptideEnabled?: unknown }
     return {
       id: String(raw.id ?? ''),
       parentId: String(raw.parentId ?? '0'),
       name: String(raw.name ?? ''),
       icon: String(raw.icon ?? ''),
+      /**
+       * ⚠️⚠️ 本函数是**白名单式重建** —— 漏一个字段就等于把它丢掉。
+       *
+       * 2026-09-24 修：此前漏了 `special` 与 `peptideEnabled`，导致「商品管理」页拿到的分类树
+       * **没有专区标识** ⇒ `isSpecialCategory` 恒为 false ⇒ 复购专区商品的
+       * 「推广金 / 平台红包 / 应急红包池」既不隐藏也不置灰、专区说明不显示、
+       * 保存提示也走普通商品分支（表现为「改了没生效」，实际是前端自己把字段丢了）。
+       *
+       * ⚠️ 兼容后端三种下发形态：boolean `true` / number `1` / string `'1'`。
+       * ⚠️ 与 `api/category.ts` 的 `normalizeList()` 保持同一套重建规则。
+       */
+      special: (() => { const v = raw.special; return v === true || String(v) === '1' ? 1 : 0 })(),
+      /** 该分类下商品是否默认支持肽金券抵扣（0/1）；同样必须显式重建，否则商品表单带不出默认值。 */
+      peptideEnabled: String(raw.peptideEnabled) === '1' || raw.peptideEnabled === 1 ? 1 : 0,
       children: Array.isArray(raw.children) ? raw.children as CategoryNode[] : [],
     }
   })
