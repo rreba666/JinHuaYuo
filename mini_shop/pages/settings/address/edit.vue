@@ -126,6 +126,68 @@ function onRegionChange(e: { detail: { value: number[] } }): void {
   form.district = districts.value[di]?.name || ''
 }
 
+/* ===================== 地图选点（自动填地区） ===================== */
+
+/**
+ * 从地图选点返回的地址串里拆出「省 / 市 / 区」。
+ *
+ * `uni.chooseLocation` 的 `address` 是「江西省九江市柴桑区水葵路」这样一整串，
+ * 整串塞进详细地址会和「所在地区」重复，而地区又一直空着 —— 所以先拆出省市区，
+ * 剩下的街道部分才留给详细地址。
+ */
+function parseRegion(text: string): { province: string; city: string; district: string; rest: string } | null {
+  const raw = String(text || '').trim()
+  if (!raw) return null
+  // 普通省份：江西省 / 广西壮族自治区 / 内蒙古自治区…
+  const normal = raw.match(/^(.{2,10}?(?:省|自治区|特别行政区))(.{2,12}?(?:市|自治州|地区|盟))(.{2,12}?(?:区|县|旗|市))(.*)$/)
+  if (normal) return { province: normal[1], city: normal[2], district: normal[3], rest: normal[4] || '' }
+  // 直辖市：北京市朝阳区…（省、市两级同名，联动里两级都填同一个名字）
+  const municipality = raw.match(/^(北京市|上海市|天津市|重庆市)(.{2,12}?(?:区|县))?(.*)$/)
+  if (municipality) {
+    return { province: municipality[1], city: municipality[1], district: municipality[2] || '', rest: municipality[3] || '' }
+  }
+  return null
+}
+
+/**
+ * 把省市区写进表单，并把三级联动定位过去。
+ * 识别出来的名字未必在区划表里，定位不到就退回第 0 项（用户仍可用「手选」纠正）。
+ */
+async function applyRegionText(province: string, city: string, district: string): Promise<void> {
+  form.province = province || ''
+  form.city = city || ''
+  form.district = district || ''
+  const pi = provinces.value.findIndex((item) => item.name === province)
+  regionIndex.value[0] = pi >= 0 ? pi : 0
+  await loadCities(city)
+}
+
+/**
+ * 地图选点（点击「选择地区」触发）：弹微信地图，选中后自动回填省市区与详细地址。
+ *
+ * ⚠️ 依赖 `chooseLocation` + `scope.userLocation`，两者都必须在 `manifest.json` 的
+ * `mp-weixin.requiredPrivateInfos` / `permission` 里声明，否则基础库直接让调用失败。
+ */
+function pickOnMap(): void {
+  uni.chooseLocation({
+    success: async (res) => {
+      const address = String(res.address || '').trim()
+      const pointName = String(res.name || '').trim()
+      const parsed = parseRegion(address)
+      if (parsed) await applyRegionText(parsed.province, parsed.city, parsed.district)
+      // 详细地址优先用选点名称（如「XX 小区」），没有就退回剥掉省市区后的街道部分
+      const detail = pointName || (parsed ? parsed.rest : address)
+      if (detail) form.detail = detail
+      uni.showToast({ title: '已按地图选点填写，请核对', icon: 'none' })
+    },
+    fail: (err) => {
+      const msg = String((err as { errMsg?: string })?.errMsg || '')
+      // 用户主动取消不打扰；其它失败（未授权 / 未声明隐私接口）给一句可操作的提示
+      if (!/cancel/i.test(msg)) uni.showToast({ title: '地图选点失败，可点「手选」或检查定位授权', icon: 'none' })
+    },
+  })
+}
+
 /* ===================== 快速录入（参考做法） ===================== */
 
 /**
@@ -160,29 +222,39 @@ function parseAddressText(raw: string): { name: string; phone: string; province:
 const pasteText = ref('')
 const recognizing = ref(false)
 
-/** 「粘贴并识别」：读剪贴板 → 解析 → 回填（识别完提示核对）。 */
+/** 解析一段文本并回填表单（识别完提示核对）。 */
+async function applyPastedText(text: string): Promise<void> {
+  const parsed = parseAddressText(text)
+  if (parsed.name) form.receiverName = parsed.name
+  if (parsed.phone) form.receiverPhone = parsed.phone
+  if (parsed.detail) form.detail = parsed.detail
+  // 省市区：识别到了就写进表单，并把三级联动定位过去
+  if (parsed.province) await applyRegionText(parsed.province, parsed.city, parsed.district)
+  uni.showToast({ title: '已识别，请核对后保存', icon: 'none' })
+}
+
+/**
+ * 「粘贴并识别」。
+ *
+ * ⚠️ **优先解析输入框里已有的文本**：`getClipboardData` 属于隐私接口，在小程序后台未配置
+ * 《用户隐私保护指引》或用户未同意时会直接 fail —— 此时用户仍可在输入框里长按粘贴。
+ * 所以只有输入框为空时才去读剪贴板，避免"接口不可用就整条路走不通"。
+ */
 function pasteAndRecognize(): void {
+  const typed = pasteText.value.trim()
+  if (typed) {
+    void applyPastedText(typed)
+    return
+  }
   recognizing.value = true
   uni.getClipboardData({
     success: async (res) => {
       const text = String((res as { data?: string })?.data || '').trim()
       pasteText.value = text
       if (!text) { uni.showToast({ title: '剪贴板是空的，请先复制收货信息', icon: 'none' }); return }
-      const parsed = parseAddressText(text)
-      if (parsed.name) form.receiverName = parsed.name
-      if (parsed.phone) form.receiverPhone = parsed.phone
-      if (parsed.detail) form.detail = parsed.detail
-      // 省市区：识别到了就写进表单，并把联动下拉定位过去
-      if (parsed.province) {
-        form.province = parsed.province
-        form.city = parsed.city
-        form.district = parsed.district
-        const pi = provinces.value.findIndex((item) => item.name === parsed.province)
-        if (pi >= 0) { regionIndex.value[0] = pi; await loadCities(parsed.city) }
-      }
-      uni.showToast({ title: '已识别，请核对后保存', icon: 'none' })
+      await applyPastedText(text)
     },
-    fail: () => uni.showToast({ title: '读取剪贴板失败，请手动填写', icon: 'none' }),
+    fail: () => uni.showToast({ title: '读取剪贴板失败，请长按上方输入框粘贴后再点识别', icon: 'none' }),
     complete: () => { recognizing.value = false },
   })
 }
@@ -195,13 +267,7 @@ function chooseWechatAddress(): void {
       if (r.userName) form.receiverName = r.userName
       if (r.telNumber) form.receiverPhone = r.telNumber
       if (r.detailInfo) form.detail = r.detailInfo
-      if (r.provinceName) {
-        form.province = r.provinceName
-        form.city = r.cityName || ''
-        form.district = r.countyName || ''
-        const pi = provinces.value.findIndex((item) => item.name === r.provinceName)
-        if (pi >= 0) { regionIndex.value[0] = pi; await loadCities(r.cityName || '') }
-      }
+      if (r.provinceName) await applyRegionText(r.provinceName, r.cityName || '', r.countyName || '')
       uni.showToast({ title: '已带入微信地址，请核对', icon: 'none' })
     },
     fail: (err) => {
@@ -323,8 +389,12 @@ onLoad(async (options) => {
           <text class="field-label">手机号码<text class="req">*</text></text>
           <input v-model="form.receiverPhone" class="field-input" type="number" maxlength="11" placeholder="请输入" />
         </view>
+        <!-- 选择地区：点左边文字区 → 地图选点自动回填；右边「手选」走省市区选择器（地图选不到时兜底） -->
         <view class="field">
           <text class="field-label">选择地区<text class="req">*</text></text>
+          <view class="region-value" @click="pickOnMap">
+            <text class="region-text" :class="{ placeholder: !form.province }">{{ regionText }}</text>
+          </view>
           <picker
             mode="multiSelector"
             :range="regionColumns"
@@ -332,7 +402,7 @@ onLoad(async (options) => {
             @columnchange="onRegionColumnChange"
             @change="onRegionChange"
           >
-            <view class="field-input picker-value" :class="{ placeholder: !form.province }">{{ regionText }}</view>
+            <view class="region-hand">手选</view>
           </picker>
         </view>
         <view class="field">
@@ -370,8 +440,11 @@ onLoad(async (options) => {
 .field-label { flex: 0 0 150rpx; color: #4e5969; font-size: 28rpx; }
 .req { color: #e0432a; }
 .field-input { flex: 1; min-width: 0; color: #1d2129; font-size: 28rpx; }
-.picker-value { line-height: 100rpx; }
-.picker-value.placeholder { color: #c9cdd4; }
+/* 选择地区：文字区点开地图选点，右侧「手选」是省市区选择器 */
+.region-value { flex: 1; min-width: 0; }
+.region-text { display: block; color: #1d2129; font-size: 28rpx; }
+.region-text.placeholder { color: #c9cdd4; }
+.region-hand { margin-left: 16rpx; padding: 6rpx 18rpx; border: 1rpx solid #e5e6eb; border-radius: 8rpx; color: #4e5969; font-size: 24rpx; }
 .switch-row { display: flex; align-items: center; justify-content: space-between; min-height: 100rpx; }
 .switch-label { color: #4e5969; font-size: 28rpx; }
 .save-btn { margin-top: 40rpx; border-radius: 8rpx; background: #010101; color: #fff; font-size: 30rpx; line-height: 92rpx; }

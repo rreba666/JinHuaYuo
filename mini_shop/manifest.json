@@ -56,6 +56,16 @@
         },
         "usingComponents" : true,
         "__usePrivacyCheck__" : true,
+        /* 微信要求（2022-07 起）：隐私接口必须在 app.json 的 requiredPrivateInfos 里声明，
+           否则基础库直接让调用失败 —— 地址页正是踩在这里（chooseAddress 取微信地址、
+           chooseLocation 地图选点、getLocation 定位都属此列），表现就是「未能获取微信地址，请手动填写」。 */
+        "requiredPrivateInfos" : [ "chooseAddress", "chooseLocation", "getLocation" ],
+        /* 微信要求：调用 getLocation / chooseLocation 前必须声明用途 */
+        "permission" : {
+            "scope.userLocation" : {
+                "desc" : "用于自动填写收货地址所在地区，方便您快速填写地址"
+            }
+        },
         "optimization" : {
             "subPackages" : true
         }

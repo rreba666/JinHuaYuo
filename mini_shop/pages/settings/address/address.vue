@@ -154,6 +154,7 @@ onShow(() => { void loadList() })
 .action { color: #475467; font-size: 24rpx; }
 .action.danger { color: #f04438; }
 .add-bar { position: fixed; right: 0; bottom: 0; left: 0; z-index: 20; padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom)); box-sizing: border-box; background: #fff; }
-.add-btn { height: 84rpx; margin: 0; border: 0; border-radius: 42rpx; background: linear-gradient(135deg, #ff6a2b, #ff5a1f); color: #fff; font-size: 30rpx; font-weight: 600; line-height: 84rpx; }
+/* 方形黑底白字：与新增/编辑地址整页的按钮保持一致（原来是橙色胶囊） */
+.add-btn { height: 88rpx; margin: 0; border: 0; border-radius: 8rpx; background: #010101; color: #fff; font-size: 30rpx; font-weight: 600; line-height: 88rpx; }
 .add-btn::after { border: 0; }
 </style>
