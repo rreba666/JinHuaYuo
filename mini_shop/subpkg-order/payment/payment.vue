@@ -212,10 +212,30 @@ const peptideDeduction = computed(() => {
   if (!usePeptide.value || !peptideUsable.value?.enabled) return 0
   return Math.max(0, Number(peptideUsable.value.usableAmount || 0))
 })
-/** 是否展示肽金券抵扣行：新建订单、平台已启用且有可抵扣额度（余额为 0 或商品不支持时不展示）。 */
-const peptideRowVisible = computed(() => FEATURE_FLAGS.peptide && !existingOrder.value && Boolean(peptideUsable.value?.enabled) && Number(peptideUsable.value?.usableAmount || 0) > 0)
+/**
+ * 是否展示肽金券抵扣行。
+ *
+ * ⚠️ 2026-09-24 口径调整：判据由「**有可用额度**」改为「**本单有商品支持肽金券**」。
+ * 旧判据（`usableAmount > 0`）会让「商品支持但余额为 0」与「商品根本不支持」在页面上**长得一模一样**
+ * —— 用户完全看不出差别（线上反馈：「勾选了可用肽金券的商品，却看不到肽金券抵扣」）。
+ * 现在只要本单含支持肽金券的商品就展示该行：余额为 0 时显示 -¥0.00 并给出「余额不足」说明。
+ *
+ * 仍然保留的三个前置条件：功能开关、新建订单（订单创建后无法再抵扣）、平台已启用肽金券
+ * （`enabled=false` 时按后端契约 `PeptideCoinUsableVO.enabled` 应隐藏入口）。
+ */
+const peptideRowVisible = computed(() =>
+  FEATURE_FLAGS.peptide
+  && !existingOrder.value
+  && Boolean(peptideUsable.value?.enabled)
+  && Number(peptideEnabledAmount.value || 0) > 0)
 /** 肽金券使用说明（后端下发文案，展示前把「肽金」归一化为「肽金券」）。 */
 const peptideUsageTip = computed(() => normalizePeptideWording(peptideUsable.value?.usageTip))
+/** 本单实际可用额度（后端已按 min(余额, 支持小计) 算好）。 */
+const peptideUsableAmount = computed(() => Math.max(0, Number(peptideUsable.value?.usableAmount || 0)))
+/** 是否「商品支持但余额不足」：此时该行仍展示，只是不可勾选。 */
+const peptideInsufficient = computed(() => peptideRowVisible.value && peptideUsableAmount.value <= 0)
+/** 肽金券行下方说明：余额不足时给出明确原因，否则用后端下发的使用说明。 */
+const peptideRowTip = computed(() => (peptideInsufficient.value ? '本单商品支持肽金券抵扣，但你的肽金券余额不足' : peptideUsageTip.value))
 /** 应付合计：实付减去肽金券抵扣，兜底不为负。 */
 const payableTotal = computed(() => Math.max(0, total.value - peptideDeduction.value))
 /** 历史订单已使用的肽金券抵扣金额（元）：只读展示，保证明细行与小计/合计对得上。 */
@@ -237,6 +257,12 @@ async function loadPeptideUsable(): Promise<void> {
 
 /** 可抵扣小计变化（商品/数量/模式切换）后重新取额度；最终抵扣以下单时服务端校验为准。 */
 watch(peptideEnabledAmount, () => { void loadPeptideUsable() }, { immediate: true })
+
+/** 切换「是否使用肽金券抵扣」；余额不足（可用额度为 0）时不允许勾选，避免无意义的空操作。 */
+function togglePeptide(): void {
+  if (peptideInsufficient.value) return
+  usePeptide.value = !usePeptide.value
+}
 
 /** 余额是否足够全额支付当前订单（不足时余额支付不可选）。 */
 const balanceEnough = computed(() => walletBalance.value >= payableTotal.value)
@@ -1053,15 +1079,16 @@ function backToCart(): void {
           <text>肽金券抵扣</text>
           <text class="peptide-text">-¥{{ formatMoney(existingPeptideAmount) }}</text>
         </view>
-        <!-- 肽金券抵扣：仅新建订单可用（订单创建后无法再抵扣），点击整行切换是否使用 -->
-        <view v-if="peptideRowVisible" class="amount-row peptide-row" @click="usePeptide = !usePeptide">
+        <!-- 肽金券抵扣：仅新建订单可用（订单创建后无法再抵扣），点击整行切换是否使用；
+             余额不足时该行仍展示（只是不可勾选），以便与「商品根本不支持」区分开 -->
+        <view v-if="peptideRowVisible" class="amount-row peptide-row" :class="{ disabled: peptideInsufficient }" @click="togglePeptide">
           <view class="peptide-left">
-            <view class="peptide-check" :class="{ active: usePeptide }"><view v-if="usePeptide" class="peptide-check-dot" /></view>
+            <view class="peptide-check" :class="{ active: usePeptide && !peptideInsufficient }"><view v-if="usePeptide && !peptideInsufficient" class="peptide-check-dot" /></view>
             <text>肽金券抵扣</text>
           </view>
           <text class="peptide-text">-¥{{ formatMoney(peptideDeduction) }}</text>
         </view>
-        <view v-if="peptideRowVisible && peptideUsageTip" class="peptide-tip">{{ peptideUsageTip }}</view>
+        <view v-if="peptideRowVisible && peptideRowTip" class="peptide-tip">{{ peptideRowTip }}</view>
         <view class="amount-row total-row"><text>合计</text><text>¥{{ formatMoney(payableTotal) }}</text></view>
       </view>
 
@@ -1228,6 +1255,8 @@ function backToCart(): void {
 .peptide-check.active { background: #b4772f; }
 .peptide-check-dot { width: 10rpx; height: 10rpx; background: #fff; }
 .peptide-row .peptide-text { color: #b4772f; }
+/* 余额不足：该行仍展示（便于与「商品不支持」区分），但弱化处理且不可勾选 */
+.peptide-row.disabled { opacity: .6; }
 .peptide-tip { margin: 6rpx 0 0; color: #b4772f; font-size: 20rpx; line-height: 28rpx; }
 .invoice-section, .remark-section { padding: 0; }
 .compact-row { min-height: 94rpx; }
