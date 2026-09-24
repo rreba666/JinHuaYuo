@@ -1,12 +1,21 @@
-/** 应急红包池总账（对应后端 EmergencyPoolVO）。 */
+/**
+ * 应急红包池总账（对应后端 `DividendEmergencyPoolEntity`）。
+ *
+ * ⚠️ 字段名**必须与后端逐字一致**（2026-09-24 修正）：后端是 `totalDeducted` / `totalInjected`（带 `ed`），
+ * 这里原本写成 `totalDeduct` / `totalInject`，于是 `api/emergencyPool.ts` 的白名单映射读到 `undefined`，
+ * 再被 `|| 0` 静默变成 **0** —— 后果有两个，都是线上事故：
+ * ① 页面「累计抽取 / 累计注入」**恒显示 ¥0.00**（后端有真值也是 0，运营会照假数字核对账务）；
+ * ② 总账自检恒等式 `balance = 累计抽取 − 累计注入` 变成 `0 − 0 = 0`，
+ *    与真实余额对不上 ⇒ 自检**永远不通过** ⇒ **应急池注入被彻底堵死**。
+ */
 export interface EmergencyPoolOverview {
-  /** 当前应急红包池余额（元）。 */
+  /** 当前应急红包池余额（元）= 累计抽取 − 累计注入。 */
   balance: number
-  /** 累计抽取（元）。 */
-  totalDeduct: number
-  /** 累计注入（元）。 */
-  totalInject: number
-  /** 待注入（元，下次结算加入父奖池）。 */
+  /** 累计抽取（元，来自订单红包贡献）。 */
+  totalDeducted: number
+  /** 累计注入红包池（元）。 */
+  totalInjected: number
+  /** 待注入（元，后台注入后挂账，下次结算加入父奖池后清零）。 */
   pendingInject: number
 }
 

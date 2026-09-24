@@ -7,14 +7,39 @@ function unwrap<T>(response: { data: EmergencyPoolResponse<T> }, fallback: strin
   return result.data as T
 }
 
+/**
+ * 总账字段白名单（用于下面的缺失告警）。
+ * ⚠️ 名字必须与后端 `DividendEmergencyPoolEntity` **逐字一致**（注意是 `totalDeducted` / `totalInjected`）。
+ */
+const OVERVIEW_FIELDS = ['balance', 'totalDeducted', 'totalInjected', 'pendingInject'] as const
+
+/**
+ * 字段缺失告警（防呆）。
+ *
+ * ⚠️ 这个白名单映射给每个字段都写了 `|| 0`：好处是后端返回 `null` 时页面不会崩，
+ * 坏处是**字段名写错时会被静默变成 0，页面上看起来就像「真的是 0」**。
+ * 2026-09-24 的线上事故正是如此：`totalDeduct` / `totalInject` 少了 `ed`，
+ * 导致「累计抽取 / 累计注入」恒显示 ¥0.00，并让总账自检恒等式永远不通过、**把注入功能彻底堵死**
+ * —— 排查时最难的一点就是「这个 0 到底是真值，还是字段没取到」。
+ *
+ * 所以这里只在字段**整个缺失**（`undefined` / `null`）时告警一条：后端合法的 0 不会触发。
+ */
+function warnMissingOverviewFields(data: Record<string, unknown>): void {
+  const missing = OVERVIEW_FIELDS.filter((key) => data[key] == null)
+  if (missing.length) {
+    console.warn('[应急红包池] 后端未下发字段（已按 0 兜底，请核对 api-docs.json 的 DividendEmergencyPoolEntity）:', missing.join(', '))
+  }
+}
+
 /** 查询应急红包池总账（仅超管）。 */
 export async function getEmergencyPool(): Promise<EmergencyPoolOverview> {
   const response = await request.get<EmergencyPoolResponse<EmergencyPoolOverview>>('/api/admin/profit/emergency-pool', { skipAuthRedirect: true })
-  const data = unwrap(response, '应急红包池查询失败') || {} as EmergencyPoolOverview
+  const data = (unwrap(response, '应急红包池查询失败') || {}) as unknown as Record<string, unknown>
+  warnMissingOverviewFields(data)
   return {
     balance: Number(data.balance) || 0,
-    totalDeduct: Number(data.totalDeduct) || 0,
-    totalInject: Number(data.totalInject) || 0,
+    totalDeducted: Number(data.totalDeducted) || 0,
+    totalInjected: Number(data.totalInjected) || 0,
     pendingInject: Number(data.pendingInject) || 0,
   }
 }

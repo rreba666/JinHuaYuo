@@ -90,7 +90,7 @@ function money(value?: number): string { return `¥ ${Number(value || 0).toFixed
 const balanceCheck = computed<{ ok: boolean; expected: number } | null>(() => {
   const current = overview.value
   if (!current) return null
-  const expectedCents = Math.round(Number(current.totalDeduct || 0) * 100) - Math.round(Number(current.totalInject || 0) * 100)
+  const expectedCents = Math.round(Number(current.totalDeducted || 0) * 100) - Math.round(Number(current.totalInjected || 0) * 100)
   return { ok: expectedCents === Math.round(Number(current.balance || 0) * 100), expected: expectedCents / 100 }
 })
 
@@ -269,8 +269,8 @@ onMounted(() => { void load() })
       </div>
       <el-descriptions :column="4" border>
         <el-descriptions-item label="当前余额">{{ money(overview?.balance) }}</el-descriptions-item>
-        <el-descriptions-item label="累计抽取">{{ money(overview?.totalDeduct) }}</el-descriptions-item>
-        <el-descriptions-item label="累计注入">{{ money(overview?.totalInject) }}</el-descriptions-item>
+        <el-descriptions-item label="累计抽取">{{ money(overview?.totalDeducted) }}</el-descriptions-item>
+        <el-descriptions-item label="累计注入">{{ money(overview?.totalInjected) }}</el-descriptions-item>
         <el-descriptions-item label="待注入">{{ money(overview?.pendingInject) }}</el-descriptions-item>
       </el-descriptions>
       <!-- 总账自检（文档 §7.7 / 附录 A.1）：恒等式 balance = total_deducted − total_injected 永远成立，
