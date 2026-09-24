@@ -1,5 +1,5 @@
 import { request } from './request'
-import type { EmergencyPoolInjectDTO, EmergencyPoolLog, EmergencyPoolLogPageResult, EmergencyPoolLogQuery, EmergencyPoolOverview, EmergencyPoolResponse } from '@/types/emergencyPool'
+import type { EmergencyPoolLog, EmergencyPoolLogPageResult, EmergencyPoolLogQuery, EmergencyPoolOverview, EmergencyPoolResponse } from '@/types/emergencyPool'
 
 function unwrap<T>(response: { data: EmergencyPoolResponse<T> }, fallback: string): T {
   const result = response.data
@@ -42,8 +42,8 @@ export async function getEmergencyPoolLogs(query: EmergencyPoolLogQuery): Promis
   }
 }
 
-/** 注入应急红包池（下次结算加入父奖池，仅超管）。 */
-export async function injectEmergencyPool(amount: number): Promise<void> {
-  const payload: EmergencyPoolInjectDTO = { amount }
-  unwrap(await request.post<EmergencyPoolResponse<null>>('/api/admin/profit/emergency-pool/inject', payload, { skipAuthRedirect: true }), '应急红包池注入失败')
-}
+// ⚠️ 本文件**不再**导出 `injectEmergencyPool`（2026-09-24 删除）。
+// 原因：应急池注入在 2026-09-24 由「只传金额」升级为「传注入层 / 目标池 / 备注 / 是否允许同日」，
+// 请求体类型与服务端校验都变了。旧签名 `injectEmergencyPool(amount: number)` 与
+// `@/api/profit` 的新签名**同名不同参**，留着极易被后人 import 错（编译期不报错、运行时后端报错）。
+// 注入请统一用：`import { injectEmergencyPool } from '@/api/profit'`（入参 `BonusInjectDTO`）。

@@ -83,10 +83,9 @@ export interface EmergencyPoolLogPageResult {
   summary?: EmergencyPoolLogSummary | null
 }
 
-/** 注入应急红包池请求体。 */
-export interface EmergencyPoolInjectDTO {
-  amount: number
-}
+// ⚠️ 原 `EmergencyPoolInjectDTO { amount: number }` 已于 2026-09-24 删除：
+// 应急池注入请求体升级为 `@/types/profit` 的 `BonusInjectDTO`（多了注入层 / 目标池 / 备注 / 是否允许同日）。
+// 旧 DTO 只描述 `{ amount }`，留着会被误当成现行协议。
 
 export interface EmergencyPoolResponse<T> {
   code: number
