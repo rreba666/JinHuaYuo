@@ -278,9 +278,113 @@ export interface ProfitAdjustDailyDTO {
   dailyUserCount: number
 }
 
+/**
+ * 应急池注入的目标层（2026-09-24 新增字段 `layer`）。
+ *
+ * - `NEW`：只加新用户层 —— 钱按**订单**分给本周新单；
+ * - `OLD`：只加老用户层 —— 钱按**槽位**分给老用户；
+ * - `BOTH`（不传时的默认）：按池子 70/30 拆成两层。
+ *
+ * ⚠️ 两层「钱跟着什么走」不同，到账对象**完全不同**，所以确认弹窗里必须显示清楚注入的是哪一层。
+ */
+export type BonusInjectLayer = 'NEW' | 'OLD' | 'BOTH'
+
+/**
+ * 应急池注入分红池的请求体（后端 `BonusInjectDTO`，2026-09-24 扩展）。
+ *
+ * ⚠️ 新字段请走新接口 `POST /api/admin/profit/emergency-pool/inject`（见 `injectEmergencyPool`）；
+ * 旧接口 `/api/admin/profit/inject` 只认 `poolDate` + `amount`。
+ */
 export interface BonusInjectDTO {
   poolDate?: string
   amount: number
+  /**
+   * 目标分红池 ID。**给正在发放中的周池注入务必传**；
+   * 不传 = 不限池 ⇒ 可能流到后面的周池。
+   */
+  poolId?: number
+  /** 注入目标层，不传 = `BOTH`。 */
+  layer?: BonusInjectLayer
+  /**
+   * `true` = 允许「发放日 = 注入日」的批次消费，**仅供当日特别重发**；
+   * 默认 `false` = 次日生效（正常业务口径）。
+   * ⚠️ 传错会让**当天**的批次把这笔注入吃掉，与"次日生效"的预期不符 ⇒ 界面上应折叠/隐藏。
+   */
+  allowSameDay?: boolean
+  /** 操作留痕备注（会写进应急池流水）。 */
+  remark?: string
+}
+
+/* ===================== 老层一次性发放（2026-09-24 新增） ===================== */
+
+/** 老层一次性补发的逐人明细（提交后返回）。 */
+export interface OldLayerOneShotMember {
+  userId: number
+  slotId: number
+  amount: number
+}
+
+/**
+ * 老层一次性补发的**预演 / 提交共用 VO**（后端 `OldLayerOneShotVO`）。
+ *
+ * ⚠️ **金额一律由后端推导，前端只展示、不计算、也不回传**：
+ * 服务端提交时会**重新预演**，不信任前端传来的名单或金额（对接文档 §四）。
+ */
+export interface OldLayerOneShotVO {
+  poolId: number
+  /** 池首成交日（= 池窗口起始日）。 */
+  poolStartDate: string
+  poolStatus: string
+  /** 当前后台配置的老层发放模式：`ROTATION` / `ONE_SHOT`。 */
+  oldLayerMode: string
+  /** 本池合格老层槽位总数（建池前创建、未锁死/未作废/未领满）。 */
+  eligibleSlotCount: number
+  /** 本池已经发过的槽位数（轮转已轮到的）。 */
+  alreadyPaidSlotCount: number
+  /** 本次待发槽位数。 */
+  pendingSlotCount: number
+  /** 该层目标总额 = 老层基础 + 老层注入。 */
+  targetAmount: number
+  /** 本池该层已发（取自发放明细真值）。 */
+  alreadyPaidAmount: number
+  /** 本次应发合计（含注入）。 */
+  pendingAmount: number
+  /** 本次应发中的「基础池」部分。 */
+  baseAmount: number
+  /** 本次应发中的「注入」部分。 */
+  injectAmount: number
+  /** 人均约数（= 本次应发 ÷ 待发槽位数，**仅展示用**；实际逐人带 ±浮动）。 */
+  perSlotAvg: number
+  /** 人均浮动下限（元）。 */
+  floatMin: number
+  /** 人均浮动上限（元）。 */
+  floatMax: number
+  /** ⚠️ **阻断项；非空表示不可执行**，前端应直接展示并禁用提交按钮。 */
+  blockers: string[]
+  /** 预演令牌（提交时原样回传；30 分钟有效，计划一变即失效）。有阻断项时为 null。 */
+  confirmToken: string | null
+  /** 计划摘要（池 + 槽位集合 + 金额的哈希），仅用于排查。 */
+  planHash: string
+  executed: boolean
+  /** 执行说明（含操作人、时间）。 */
+  executedInfo: string
+  executedAt: string
+  /** 本次落账批次 ID（= 一次性补发批次，`batch_no = 8`）。 */
+  batchId: number | null
+  /** 实发合计，应等于预演的 `pendingAmount`（无尾差）。 */
+  distributedAmount: number | null
+  /** 因封顶截断等原因未能发出、进应急池的金额；**正常应为 0**，非 0 要提示运营关注。 */
+  toEmergencyPool: number | null
+  /** 逐人明细（提交后返回）。 */
+  members: OldLayerOneShotMember[]
+}
+
+/** 老层一次性补发的提交请求体（后端 `OldLayerOneShotCommitDTO`）。 */
+export interface OldLayerOneShotCommitDTO {
+  /** 奖池 ID；建议原样回传预演时的值。 */
+  poolId?: number
+  /** ⚠️ 预演返回的确认令牌，**必填、30 分钟有效、一次性**。 */
+  confirmToken: string
 }
 
 export interface WalletTestResult {

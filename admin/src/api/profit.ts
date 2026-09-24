@@ -1,5 +1,5 @@
 import { request } from './request'
-import type { AdminDividendSlot, BonusInjectDTO, DailyContributionUser, DividendContribution, DividendContributionPage, DividendPacket, DividendPacketDetail, DividendRecordTestItem, DividendRecordTestResult, DividendSlotTestItem, DividendSlotTestResult, LeaderboardPeriod, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, ProfitLeaderboard, ProfitLeaderboardRow, ProfitResponse, PromotionBinding, PromotionBindingPage, PromotionBindingQuery, PromotionPage, PendingPromotionRecord, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
+import type { AdminDividendSlot, BonusInjectDTO, DailyContributionUser, DividendContribution, DividendContributionPage, DividendPacket, DividendPacketDetail, DividendRecordTestItem, DividendRecordTestResult, DividendSlotTestItem, DividendSlotTestResult, LeaderboardPeriod, OldLayerOneShotCommitDTO, OldLayerOneShotVO, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, ProfitLeaderboard, ProfitLeaderboardRow, ProfitResponse, PromotionBinding, PromotionBindingPage, PromotionBindingQuery, PromotionPage, PendingPromotionRecord, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
 
 function unwrap<T>(response: { data: ProfitResponse<T> }, fallback: string): T {
   const result = response.data
@@ -309,6 +309,67 @@ export async function injectBonusPool(payload: BonusInjectDTO): Promise<void> {
   const amount = Number(payload.amount)
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('注入金额必须大于 0')
   unwrap(await request.post<ProfitResponse<null>>('/api/admin/profit/inject', { ...payload, amount }), '红包注入失败')
+}
+
+/* ===================== 应急池注入（2026-09-24 扩展：可选注入新层/老层） ===================== */
+
+/**
+ * 向分红池注入应急池资金（**新接口** `POST /api/admin/profit/emergency-pool/inject`）。
+ *
+ * ⚠️ 与上面的 `injectBonusPool` 的区别：本接口的 DTO 多了
+ * `poolId`（目标池，给正在发放中的周池注入**务必传**）/ `layer`（注入新层还是老层）/
+ * `allowSameDay`（当日特别重发专用）/ `remark`（留痕备注），共 4 个新字段。
+ *
+ * ⚠️ `layer` 决定「钱加给谁」——`NEW` 给本周新单（按订单分）、`OLD` 给老用户（按槽位分）、
+ * `BOTH`（不传时默认）按 70/30 拆两层。**到账对象完全不同**，界面上必须显示清楚。
+ */
+export async function injectEmergencyPool(payload: BonusInjectDTO): Promise<void> {
+  const amount = Number(payload.amount)
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('注入金额必须大于 0')
+  if (payload.layer && !['NEW', 'OLD', 'BOTH'].includes(payload.layer)) {
+    throw new Error('注入目标层只能是 NEW / OLD / BOTH')
+  }
+  unwrap(await request.post<ProfitResponse<null>>('/api/admin/profit/emergency-pool/inject', { ...payload, amount }), '应急池注入失败')
+}
+
+/* ===================== 老层一次性发放（2026-09-24 新增） ===================== */
+
+/**
+ * 老层一次性补发 —— **预演（只读）**：还剩哪些槽位、还剩多少钱、能不能发。
+ *
+ * ⚠️ 金额完全由后端按「该层目标总额（基础 + 注入）− 本池已发」推导，
+ * **前端不填也不计算**（对接文档 §三 / FAQ Q1）。
+ * ⚠️ `blockers` 非空即不可执行，前端应直接展示并禁用提交按钮。
+ *
+ * @param poolId 奖池 ID；不传则取当前未关闭的池（正常只有一个）。
+ */
+export async function previewOldLayerOneShot(poolId?: number | string): Promise<OldLayerOneShotVO> {
+  const params = poolId === undefined || poolId === '' ? undefined : { poolId }
+  return unwrap(
+    await request.get<ProfitResponse<OldLayerOneShotVO>>('/api/admin/profit/dividend/old-layer/preview', { params, skipAuthRedirect: true }),
+    '老层一次性补发预演失败',
+  )
+}
+
+/**
+ * 老层一次性补发 —— **提交（不可逆）**。
+ *
+ * ⚠️ 服务端会**重新预演**，不信任前端传来的任何名单/金额 —— 所以这里只回传
+ * `poolId` + `confirmToken`，**不要**传槽位列表或金额。
+ * ⚠️ `confirmToken` 一次性、30 分钟有效，且绑定「池 + 槽位集合 + 金额摘要」：
+ * 期间账务一变就失效，提交会被拒并要求重新预演（这是设计如此，前端**不要**重试到成功）。
+ * ⚠️ 失败时（`code != 0`）应**自动回到预演**再让运营确认。
+ */
+export async function commitOldLayerOneShot(payload: OldLayerOneShotCommitDTO): Promise<OldLayerOneShotVO> {
+  const token = String(payload.confirmToken ?? '').trim()
+  if (!token) throw new Error('缺少预演令牌，请重新预演后再提交')
+  return unwrap(
+    await request.post<ProfitResponse<OldLayerOneShotVO>>('/api/admin/profit/dividend/old-layer/commit', {
+      poolId: payload.poolId,
+      confirmToken: token,
+    }),
+    '老层一次性补发提交失败',
+  )
 }
 
 export async function settleProfit(startDate: string, endDate: string): Promise<void> { unwrap(await request.post<ProfitResponse<null>>('/api/admin/profit/settle', null, { params: { startDate, endDate } }), '红包结算失败') }
