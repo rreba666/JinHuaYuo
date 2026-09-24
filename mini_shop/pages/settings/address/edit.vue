@@ -40,6 +40,44 @@ const menuHeight = ref(32)
 const navStyle = computed(() => ({ top: `${menuTop.value}px`, height: `${menuHeight.value}px` }))
 const bodyStyle = computed(() => ({ paddingTop: `${menuTop.value + menuHeight.value + uni.upx2px(20)}px` }))
 
+/* ===================== 隐私 / 权限类接口的失败处理 ===================== */
+
+/**
+ * 把微信隐私 / 权限类接口的失败原因翻成用户看得懂的话，并把原始 `errMsg` 打进 console。
+ *
+ * ⚠️ 为什么必须打日志：`chooseAddress` / `chooseLocation` / `getClipboardData` 失败的原因可能是
+ * 「用户拒绝授权」「未在 app.json 声明」「隐私协议未审核通过」「地理位置接口未开通」中的任意一种，
+ * 而用户看到的 toast 只有一句友好文案 —— 排查时只能靠这条 console 日志区分。
+ *
+ * @returns `text` 为要提示给用户的文案（用户主动取消时为空串，不打扰）；
+ *          `authDenied` 表示是授权被拒，需引导用户去设置页开启（微信不会再自动弹框）。
+ */
+function describePrivateApiError(api: string, err: unknown): { text: string; authDenied: boolean } {
+  const msg = String((err as { errMsg?: string })?.errMsg || '')
+  console.warn(`[address] ${api} 调用失败：${msg || String(err)}`)
+  if (/cancel/i.test(msg)) return { text: '', authDenied: false }
+  if (/auth deny|auth denied|authorize:fail/i.test(msg)) {
+    return { text: '未获得授权，请在「···」→ 设置里开启位置权限', authDenied: true }
+  }
+  if (/requiredPrivateInfos/i.test(msg)) {
+    return { text: '接口未在 app.json 中声明，需重新编译小程序', authDenied: false }
+  }
+  if (/privacy/i.test(msg)) {
+    return { text: '隐私协议尚未生效，请稍后再试', authDenied: false }
+  }
+  return { text: '调用失败，请手动填写', authDenied: false }
+}
+
+/** 授权被拒时微信不会再自动弹框，只能引导用户去设置页重新开启。 */
+function guideToSetting(content: string): void {
+  uni.showModal({
+    title: '需要授权',
+    content: `${content}。是否现在去设置？`,
+    confirmText: '去设置',
+    success: (r) => { if (r.confirm) uni.openSetting({}) },
+  })
+}
+
 /* ===================== 省市区三级联动 ===================== */
 
 const provinces = ref<Region[]>([])
@@ -181,9 +219,11 @@ function pickOnMap(): void {
       uni.showToast({ title: '已按地图选点填写，请核对', icon: 'none' })
     },
     fail: (err) => {
-      const msg = String((err as { errMsg?: string })?.errMsg || '')
-      // 用户主动取消不打扰；其它失败（未授权 / 未声明隐私接口）给一句可操作的提示
-      if (!/cancel/i.test(msg)) uni.showToast({ title: '地图选点失败，可点「手选」或检查定位授权', icon: 'none' })
+      const { text, authDenied } = describePrivateApiError('chooseLocation', err)
+      if (!text) return
+      // 授权被拒：引导去设置页开启；其它原因（接口未开通 / 未声明）给一句提示并让用户走「手选」
+      if (authDenied) guideToSetting(text)
+      else uni.showToast({ title: `${text}，可点「手选」`, icon: 'none' })
     },
   })
 }
@@ -254,7 +294,11 @@ function pasteAndRecognize(): void {
       if (!text) { uni.showToast({ title: '剪贴板是空的，请先复制收货信息', icon: 'none' }); return }
       await applyPastedText(text)
     },
-    fail: () => uni.showToast({ title: '读取剪贴板失败，请长按上方输入框粘贴后再点识别', icon: 'none' }),
+    fail: (err) => {
+      // 剪贴板的失败原因同样只在 console 可见（多为隐私协议未审核通过）；用户侧统一指向长按粘贴
+      console.warn('[address] getClipboardData 调用失败：', err)
+      uni.showToast({ title: '读取剪贴板失败，请长按上方输入框粘贴后再点识别', icon: 'none' })
+    },
     complete: () => { recognizing.value = false },
   })
 }
@@ -271,8 +315,8 @@ function chooseWechatAddress(): void {
       uni.showToast({ title: '已带入微信地址，请核对', icon: 'none' })
     },
     fail: (err) => {
-      const msg = String((err as { errMsg?: string })?.errMsg || '')
-      if (!/cancel/i.test(msg)) uni.showToast({ title: '未能获取微信地址，请手动填写', icon: 'none' })
+      const { text } = describePrivateApiError('chooseAddress', err)
+      if (text) uni.showToast({ title: text, icon: 'none' })
     },
   })
 }
