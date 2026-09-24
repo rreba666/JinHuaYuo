@@ -279,3 +279,47 @@ export async function getDividendRecords(params: { page?: number; pageSize?: num
   const result = await request<DividendRecordPage>({ url: `/api/wallet/dividend-records?${query}`, method: 'GET' })
   return { ...result, list: (result.list || []).map((record) => ({ ...record, id: String(record.id) })) }
 }
+
+/**
+ * 特殊补贴记录（复购专区商品成交后给**买家本人**的一次性补贴，对应后端 `SpecialSubsidyVO`）。
+ *
+ * ⚠️ 与「红包来源」（`/api/wallet/dividend-records`）的**关键区别**：
+ * 那个接口**只返回已到账流水**；而本接口**会返回还没到账的（`status = PENDING`）**。
+ * 所以「用户下单了、但补贴还没到账」这种情况**只能靠这里展示**，
+ * 否则用户会以为补贴没发（2026-09-24 线上反馈：「下单了补贴没显示，即使冻结也要显示」）。
+ *
+ * 业务口径：每用户**终身一次**（仅首次购买特殊商品时产生）；金额 = 该单特殊商品的
+ * **定价小计** × 比例（默认 5%，基数是**定价不是实付**，用肽金券抵扣不减少基数）；
+ * 成交日 **+7 天**自动打进「待提现红包」（`wallet.pending_bonus`）。
+ */
+export interface SpecialSubsidyRecord {
+  /** 补贴记录 ID（int64，按 string 处理防精度丢失）。 */
+  id: string
+  /** 触发本笔补贴的**首单**订单号。 */
+  orderNo?: string | null
+  /** 计费基数 = 该单特殊商品的**定价**小计（元）。 */
+  baseAmount: number
+  /** 补贴比例（如 0.05）。 */
+  rate: number
+  /** 补贴金额（元，纯数值）。 */
+  amount: number
+  /** `PENDING` 待到账 / `CLAIMING` 发放中 / `GRANTED` 已到账 / `VOIDED` 已作废。 */
+  status: string
+  /** 状态中文名（后端下发，可直接展示）。 */
+  statusDesc?: string | null
+  /** 成交时间。 */
+  payTime?: string | null
+  /** 预计到账时间（成交日 +7 天）。 */
+  maturityAt?: string | null
+  /** 实际到账时间（未到账为 `null`）。 */
+  grantedAt?: string | null
+}
+
+/**
+ * 查询我的特殊补贴台账（**含未到账记录**，不分页）。
+ * 返回数组直接是列表；调用方应把失败当作"增强展示不可用"静默处理，不要影响红包主数据。
+ */
+export async function getSpecialSubsidies(): Promise<SpecialSubsidyRecord[]> {
+  const result = await request<SpecialSubsidyRecord[]>({ url: '/api/wallet/special-subsidy', method: 'GET' })
+  return (result || []).map((item) => ({ ...item, id: String(item.id) }))
+}

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { convertWallet, getDividendRecords, getWalletInfo, getUserProfile, getWithdrawRules, type DividendRecord, type UserProfile, type WalletInfo, type WithdrawRules } from '@/api/user'
+import { convertWallet, getDividendRecords, getSpecialSubsidies, getWalletInfo, getUserProfile, getWithdrawRules, type DividendRecord, type SpecialSubsidyRecord, type UserProfile, type WalletInfo, type WithdrawRules } from '@/api/user'
 import { isLoggedIn, isRegisteredUser } from '@/utils/auth'
 import { ApiRequestError } from '@/utils/request'
 import { normalizeLegacyWording } from '@/utils/wording'
@@ -20,6 +20,31 @@ const menuTop = ref(0)
 const menuHeight = ref(32)
 const wallet = ref<WalletInfo | null>(null)
 const records = ref<DividendRecord[]>([])
+/**
+ * 特殊补贴台账（复购专区商品给买家的一次性补贴，**含未到账**）。
+ *
+ * ⚠️ 为什么必须单独拉、单独展示：`records`（红包来源）走 `/wallet/dividend-records`，
+ * 它**只返回已到账流水**。用户下单后补贴还在 7 天窗口内（`status = PENDING`）时，
+ * 那条记录在红包来源里**根本不存在**，用户就会以为"补贴没发"（2026-09-24 线上反馈：
+ * 「下单了补贴没显示，即使冻结也要显示」）。`/wallet/special-subsidy` 才会返回待到账记录。
+ */
+const subsidies = ref<SpecialSubsidyRecord[]>([])
+/** 是否为「未到账」（待到账 / 发放中）。 */
+function isSubsidyPending(status: string): boolean { return status === 'PENDING' || status === 'CLAIMING' }
+/** 补贴状态文案：优先用后端下发的中文名，缺失时按状态码兜底。 */
+function subsidyStatusText(item: SpecialSubsidyRecord): string {
+  if (item.statusDesc) return item.statusDesc
+  return ({ PENDING: '待到账', CLAIMING: '发放中', GRANTED: '已到账', VOIDED: '已作废' } as Record<string, string>)[item.status] || '—'
+}
+/** 比例文案：0.05 → 5%（先取整再拼，避免 5.000000000000001% 这种浮点尾巴）。 */
+function subsidyRateText(rate: number): string {
+  const percent = Math.round(Number(rate) * 10000) / 100
+  return `${Number.isInteger(percent) ? percent : String(percent)}%`
+}
+/** 行内时间文案（不换行，用于「预计到账」这类说明）。 */
+function formatDateTime(value?: string | null): string {
+  return value ? String(value).replace('T', ' ').slice(0, 16) : '--'
+}
 
 /**
  * 红包来源标签文案。
@@ -137,6 +162,13 @@ async function loadData(): Promise<void> {
       recordsTotal.value = result.total || 0
     } catch {
       failed = true
+    }
+    // 特殊补贴台账（含待到账）：单独拉，失败**不置 failed** —— 它只是补充展示，
+    // 不该因为一个增强接口把整页判成"加载失败"（原有红包数据仍然可用）。
+    try {
+      subsidies.value = await getSpecialSubsidies()
+    } catch {
+      subsidies.value = []
     }
     if (failed) loadError.value = '部分红包数据加载失败，请重试'
   } finally {
@@ -282,6 +314,22 @@ onShow(() => { void refreshData() })
         <!-- 可转 / 锁定（2026-09-24 新口径）：待领取总额里有多少能立刻转走、多少还在锁定期 -->
         <text v-if="bonusQuotaHint" class="quota-hint">{{ bonusQuotaHint }}</text>
 
+        <!-- 特殊补贴（复购专区商品给买家的一次性补贴）：**含未到账** —— 用户下单后补贴还在
+             7 天窗口内时也要看得见，否则会以为补贴没发（2026-09-24 线上反馈） -->
+        <view v-if="subsidies.length" class="subsidy-section">
+          <text class="subsidy-title">特殊补贴</text>
+          <view v-for="item in subsidies" :key="item.id" class="subsidy-card">
+            <view class="subsidy-head">
+              <text class="subsidy-amount">¥{{ formatPoints(item.amount) }}</text>
+              <text class="subsidy-status" :class="{ pending: isSubsidyPending(item.status) }">{{ subsidyStatusText(item) }}</text>
+            </view>
+            <text v-if="isSubsidyPending(item.status) && item.maturityAt" class="subsidy-tip">
+              {{ formatDateTime(item.maturityAt) }} 自动到账（成交后 7 天进红包）
+            </text>
+            <text class="subsidy-desc">复购专区商品补贴 = 商品定价 × {{ subsidyRateText(item.rate) }}，每用户终身一次</text>
+          </view>
+        </view>
+
         <view class="source-section">
           <text class="source-title">红包来源</text>
           <view class="table-head">
@@ -336,6 +384,16 @@ onShow(() => { void refreshData() })
 .convert-btn.disabled { opacity: 0.6; }
 /* 可转 / 锁定提示（2026-09-24 新口径） */
 .quota-hint { display: block; margin: 16rpx 40rpx 0; color: #916448; font-size: 22rpx; line-height: 1.5; }
+/* 特殊补贴区（2026-09-24 新增）：与「红包来源」并列，**含待到账记录** */
+.subsidy-section { margin-top: 60rpx; }
+.subsidy-title { display: block; margin-left: 56rpx; color: #000; font-size: 28rpx; }
+.subsidy-card { margin: 20rpx 40rpx 0; padding: 24rpx 26rpx; border-radius: 16rpx; background: #fff8ec; }
+.subsidy-head { display: flex; align-items: baseline; justify-content: space-between; }
+.subsidy-amount { color: #916448; font-size: 34rpx; font-weight: 700; }
+.subsidy-status { color: #916448; font-size: 22rpx; }
+.subsidy-status.pending { color: #d48806; }
+.subsidy-tip { display: block; margin-top: 8rpx; color: #b4772f; font-size: 22rpx; line-height: 1.5; }
+.subsidy-desc { display: block; margin-top: 8rpx; color: #999; font-size: 20rpx; line-height: 1.5; }
 .source-section { margin-top: 60rpx; }
 .source-title { display: block; margin-left: 56rpx; color: #000; font-size: 28rpx; }
 .table-head { display: grid; grid-template-columns: 240rpx 240rpx 150rpx; width: 630rpx; margin: 30rpx 0 0 56rpx; color: #959595; font-size: 22rpx; }
