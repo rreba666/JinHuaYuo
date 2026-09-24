@@ -26,6 +26,80 @@ const formVisible = ref(false)
 const editingId = ref<string | null>(null)
 const loginGuideVisible = ref(false)
 const navigationThrottle = createThrottle(500)
+/* ===================== 地址快速录入（2026-09-23 新增） ===================== */
+
+/**
+ * 从粘贴的整段文本里识别收货信息（参考别家小程序的「粘贴并识别」）。
+ *
+ * ⚠️ 中文地址没有固定格式 ⇒ 这里只做**启发式**识别：手机号最可靠（`1[3-9]\d{9}`），
+ * 省/市/区按「以省/市/区县结尾的连续片段」从前到后切，剩下的进「详细地址」。
+ * 因此识别后**必须让用户核对**（识别完给 toast 提示）。
+ */
+function parseAddressText(raw: string): { name: string; phone: string; province: string; city: string; district: string; detail: string } {
+  const text = String(raw || '').replace(/\s+/g, ' ').trim()
+  const phone = (text.match(/1[3-9]\d{9}/) || [''])[0]
+  let rest = (phone ? text.replace(phone, ' ') : text).replace(/[,，;；]/g, ' ').replace(/\s+/g, ' ').trim()
+
+  const province = (rest.match(/([^\s]{2,10}?(?:省|自治区|特别行政区))/) || ['', ''])[1]
+  const afterProvince = province ? rest.slice(rest.indexOf(province) + province.length) : rest
+  const city = (afterProvince.match(/([^\s]{2,10}?(?:市|自治州|地区|盟))/) || ['', ''])[1]
+  const afterCity = city ? afterProvince.slice(afterProvince.indexOf(city) + city.length) : afterProvince
+  const district = (afterCity.match(/([^\s]{2,10}?(?:区|县|旗))/) || ['', ''])[1]
+  const detail = (district ? afterCity.slice(afterCity.indexOf(district) + district.length) : afterCity).trim()
+
+  // 姓名：手机号前后最靠近的 2~4 个汉字，且不含地址关键字
+  let name = ''
+  const idx = phone ? text.indexOf(phone) : -1
+  const segs = idx >= 0 ? [text.slice(idx + phone.length).trim(), text.slice(0, idx).trim()] : [text]
+  for (const seg of segs) {
+    const m = seg.match(/^([\u4e00-\u9fa5·]{2,4})/)
+    if (m && !/省|市|区|县|路|街|号|栋|室|楼|镇|村/.test(m[1])) { name = m[1]; break }
+  }
+  return { name, phone, province, city, district, detail: detail || rest }
+}
+
+/** 「粘贴并识别」：读剪贴板 → 解析 → 回填表单。 */
+function pasteAndRecognize(): void {
+  uni.getClipboardData({
+    success: (res) => {
+      const text = String((res as { data?: string })?.data || '').trim()
+      if (!text) { uni.showToast({ title: '剪贴板是空的，请先复制收货信息', icon: 'none' }); return }
+      const parsed = parseAddressText(text)
+      if (parsed.name) form.receiverName = parsed.name
+      if (parsed.phone) form.receiverPhone = parsed.phone
+      if (parsed.province) form.province = parsed.province
+      if (parsed.city) form.city = parsed.city
+      if (parsed.district) form.district = parsed.district
+      if (parsed.detail) form.detail = parsed.detail
+      uni.showToast({ title: '已识别，请核对后保存', icon: 'none' })
+    },
+    fail: () => uni.showToast({ title: '读取剪贴板失败，请手动填写', icon: 'none' }),
+  })
+}
+
+/**
+ * 「授权微信地址」：调微信原生地址簿（`uni.chooseAddress`）。
+ * ⚠️ 仅微信小程序支持；其它端会走 fail 分支，给"请手动填写"的提示。
+ */
+function chooseWechatAddress(): void {
+  uni.chooseAddress({
+    success: (res) => {
+      const r = res as unknown as { userName?: string; telNumber?: string; provinceName?: string; cityName?: string; countyName?: string; detailInfo?: string }
+      if (r.userName) form.receiverName = r.userName
+      if (r.telNumber) form.receiverPhone = r.telNumber
+      if (r.provinceName) form.province = r.provinceName
+      if (r.cityName) form.city = r.cityName
+      if (r.countyName) form.district = r.countyName
+      if (r.detailInfo) form.detail = r.detailInfo
+      uni.showToast({ title: '已带入微信地址，请核对', icon: 'none' })
+    },
+    fail: (err) => {
+      const msg = String((err as { errMsg?: string })?.errMsg || '')
+      if (!/cancel/i.test(msg)) uni.showToast({ title: '未能获取微信地址，请手动填写', icon: 'none' })
+    },
+  })
+}
+
 const form = reactive<AddressPayload>({ receiverName: '', receiverPhone: '', province: '', city: '', district: '', detail: '', isDefault: 0 })
 
 /** 省市区三级联动数据（region/list）。 */
@@ -253,7 +327,11 @@ onShow(() => { void loadList() })
 
     <view v-if="formVisible" class="mask" @click="closeForm">
       <view class="sheet" @click.stop>
-        <view class="sheet-head"><text class="sheet-title">{{ editingId ? '编辑地址' : '新增地址' }}</text><text class="sheet-close" @click="closeForm">×</text></view>
+        <view class="quick-row">
+            <text class="quick-btn" @click="pasteAndRecognize">粘贴并识别</text>
+            <text class="quick-btn" @click="chooseWechatAddress">授权微信地址</text>
+          </view>
+          <view class="sheet-head"><text class="sheet-title">{{ editingId ? '编辑地址' : '新增地址' }}</text><text class="sheet-close" @click="closeForm">×</text></view>
         <view class="form-line"><text class="label">收货人</text><input v-model="form.receiverName" class="input" maxlength="32" placeholder="请输入" /></view>
         <view class="form-line"><text class="label">手机号</text><input v-model="form.receiverPhone" class="input" maxlength="20" type="number" placeholder="请输入" /></view>
         <picker mode="multiSelector" :range="regionColumns" :value="regionIndex" @columnchange="onRegionColumnChange" @change="onRegionConfirm">
@@ -274,6 +352,9 @@ onShow(() => { void loadList() })
 </template>
 
 <style scoped>
+/* 地址快速录入：粘贴识别 / 授权微信地址 */
+.quick-row { display: flex; gap: 16rpx; padding: 0 32rpx 16rpx; }
+.quick-btn { padding: 10rpx 24rpx; border: 1rpx solid #e5e6eb; border-radius: 30rpx; color: #4e5969; font-size: 24rpx; }
 .page { position: relative; height: 100vh; overflow: hidden; background: #f5f6f8; color: #172033; font-family: 'PingFang SC', '苹方-简', sans-serif; }
 .nav { position: fixed; right: 0; left: 0; z-index: 20; display: flex; align-items: center; padding: 0 32rpx; box-sizing: border-box; background: #f5f6f8; }
 .back-button { width: 34rpx; height: 34rpx; flex-shrink: 0; }
