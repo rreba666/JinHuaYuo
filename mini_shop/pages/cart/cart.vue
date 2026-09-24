@@ -15,8 +15,35 @@ const navStyle = computed(() => ({ top: menuTop.value + 'px', height: menuHeight
 const navActionStyle = computed(() => ({ top: `${menuHeight.value + uni.upx2px(8)}px` }))
 const bodyTop = computed(() => menuTop.value + menuHeight.value + uni.upx2px(48))
 
-const items = ref<CartItem[]>([])
-const loading = ref(true)
+/**
+ * 上次的购物车快照（本地缓存）。
+ *
+ * ⚠️ 2026-09-24 为什么要它：购物车是 tab 页，每次进入都会重新拉数据。若首屏先渲染
+ * 「加载中…」（居中一行小字）再切成整页商品行，**两者形态差异极大** ⇒ 用户会看到"抖一下"。
+ * 用上次快照**按最终形态**先把列表渲染出来、请求回来再静默替换，首屏就不再有形变。
+ * 数据实时性仍由随后的 `refreshList()` 保证（库存/价格以服务端为准）。
+ */
+const CART_CACHE_KEY = 'cart_snapshot_v1'
+/** 读取本地快照。解析失败或结构不对一律当空 —— 绝不因为缓存把页面搞崩。 */
+function readCartSnapshot(): CartItem[] {
+  try {
+    const raw = uni.getStorageSync(CART_CACHE_KEY)
+    return Array.isArray(raw) ? (raw as CartItem[]) : []
+  } catch {
+    return []
+  }
+}
+/** 写入本地快照（失败静默：缓存只是体验优化，不能影响主流程）。 */
+function saveCartSnapshot(list: CartItem[]): void {
+  try { uni.setStorageSync(CART_CACHE_KEY, list) } catch { /* 忽略 */ }
+}
+/** 清空本地快照（登出 / 换账号时必须调用，否则会看到上一个人的购物车）。 */
+function clearCartSnapshot(): void {
+  try { uni.removeStorageSync(CART_CACHE_KEY) } catch { /* 忽略 */ }
+}
+const items = ref<CartItem[]>(readCartSnapshot())
+// ⚠️ 有快照时不显示加载态：直接按快照渲染列表（否则「加载中→列表」的形变就是那一下抖）
+const loading = ref(items.value.length === 0)
 const loadError = ref('')
 const editMode = ref(false)
 const busy = ref(false)
@@ -35,12 +62,15 @@ async function loadList(): Promise<void> {
   loadError.value = ''
   if (!isLoggedIn()) {
     items.value = []
+    // 未登录要清掉快照：否则登出/换账号后再进来会看到上一个人的购物车
+    clearCartSnapshot()
     loading.value = false
     loginGuideVisible.value = true
     return
   }
   try {
     items.value = await getCartList({ resolveDividendEligibility: true })
+    saveCartSnapshot(items.value)
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : '购物车加载失败，请重试'
     console.error('购物车列表加载失败:', e)
