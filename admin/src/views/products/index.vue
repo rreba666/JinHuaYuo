@@ -215,7 +215,14 @@ async function submitForm(): Promise<void> {
     }
     await store.saveProduct(payload)
     formVisible.value = false
-    ElMessage.success(editingId.value ? '商品修改成功' : '商品新增成功')
+    if (isSpecialCategory.value) {
+      // 复购专区商品的推广金/红包/应急池由后端强制收口 —— 报「商品修改成功」会让人以为这些配置也改了
+      ElMessage.success(editingId.value
+        ? '商品已保存；推广资金、平台红包、应急红包池由系统按复购专区口径自动处理'
+        : '商品已新增；推广资金、平台红包、应急红包池由系统按复购专区口径自动处理')
+    } else {
+      ElMessage.success(editingId.value ? '商品修改成功' : '商品新增成功')
+    }
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '商品保存失败')
   }
@@ -352,7 +359,7 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="产地"><el-input v-model="form.originPlace" /></el-form-item>
         <el-form-item label="排序权重"><el-input-number v-model="form.sortOrder" :min="0" /></el-form-item>
-        <div v-if="!isSpecialCategory" class="fund-config-row form-item-full"><el-form-item label="推广资金"><div class="fund-control"><el-switch v-model="promotionUseDefault" active-text="默认比例" inactive-text="手动金额" /><el-input-number v-model="form.promotionFund" :min="0" :precision="2" :disabled="promotionUseDefault" /><el-switch v-model="form.promotionEnabled" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="禁用" /></div></el-form-item><el-form-item label="平台红包"><div class="fund-control"><el-switch v-model="dividendUseDefault" active-text="默认比例" inactive-text="手动金额" /><el-input-number v-model="form.dividendFund" :min="0" :precision="2" :disabled="dividendUseDefault" /><el-switch v-model="form.dividendEnabled" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="禁用" /></div></el-form-item><el-form-item label="应急红包池"><div class="fund-control"><el-switch v-model="form.emergencyPoolEnabled" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="关闭" /><el-input-number v-model="form.emergencyPoolAmount" :min="0" :precision="2" :disabled="normalizeBinary(form.emergencyPoolEnabled) === 0" placeholder="每单抽取金额" /></div></el-form-item><el-form-item label="肽金券抵扣"><div class="fund-control"><el-switch v-model="form.peptideEnabled" :active-value="1" :inactive-value="0" active-text="开启" inactive-text="关闭" /></div><p class="peptide-tip">肽金券不可提现，仅可用于抵扣；开启后买家下单时可用肽金券抵扣本商品（无门槛、无上限）。选择分类时会自动带出该分类的默认设置，可在此单独修改。</p></el-form-item></div>
+        <div class="fund-config-row form-item-full"><p v-if="isSpecialCategory" class="special-fund-tip">复购专区商品由系统按专区口径统一收口：推广资金、平台红包、应急红包池均不可手动配置（肽金券抵扣仍可单独设置）。此处显示的是系统实际生效的值。</p><el-form-item label="推广资金"><div class="fund-control"><el-switch v-model="promotionUseDefault" :disabled="isSpecialCategory" active-text="默认比例" inactive-text="手动金额" /><el-input-number v-model="form.promotionFund" :min="0" :precision="2" :disabled="promotionUseDefault || isSpecialCategory" /><el-switch v-model="form.promotionEnabled" :disabled="isSpecialCategory" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="禁用" /></div></el-form-item><el-form-item label="平台红包"><div class="fund-control"><el-switch v-model="dividendUseDefault" :disabled="isSpecialCategory" active-text="默认比例" inactive-text="手动金额" /><el-input-number v-model="form.dividendFund" :min="0" :precision="2" :disabled="dividendUseDefault || isSpecialCategory" /><el-switch v-model="form.dividendEnabled" :disabled="isSpecialCategory" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="禁用" /></div></el-form-item><el-form-item label="应急红包池"><div class="fund-control"><el-switch v-model="form.emergencyPoolEnabled" :disabled="isSpecialCategory" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="关闭" /><el-input-number v-model="form.emergencyPoolAmount" :min="0" :precision="2" :disabled="normalizeBinary(form.emergencyPoolEnabled) === 0 || isSpecialCategory" placeholder="每单抽取金额" /></div></el-form-item><el-form-item label="肽金券抵扣"><div class="fund-control"><el-switch v-model="form.peptideEnabled" :active-value="1" :inactive-value="0" active-text="开启" inactive-text="关闭" /></div><p class="peptide-tip">肽金券不可提现，仅可用于抵扣；开启后买家下单时可用肽金券抵扣本商品（无门槛、无上限）。选择分类时会自动带出该分类的默认设置，可在此单独修改。</p></el-form-item></div>
         <el-form-item label="商品状态"><el-switch v-model="form.status" :active-value="1" :inactive-value="0" active-text="上架" inactive-text="下架" /></el-form-item>
         <el-form-item label="首页推荐"><el-switch v-model="form.isRecommended" :disabled="normalizeBinary(form.status) === 0" :active-value="1" :inactive-value="0" /></el-form-item>
         <el-form-item label="推荐文本"><el-switch v-model="form.recommendTextEnabled" :disabled="normalizeBinary(form.status) === 0 || normalizeBinary(form.isRecommended) === 0" :active-value="1" :inactive-value="0" /></el-form-item>
@@ -390,6 +397,7 @@ onMounted(() => {
 .form-hint { margin-left: 8px; color: #909399; font-size: 12px; }
 /* 肽金券抵扣开关下方的说明文字：独占一行，保证说明与开关成组显示 */
 .peptide-tip { flex-basis: 100%; margin: 4px 0 0; color: #909399; font-size: 12px; line-height: 1.5; }
+.special-fund-tip { grid-column: 1 / -1; margin: 0 0 12px; padding: 10px 12px; border-radius: 6px; background: #fdf6ec; color: #b88230; font-size: 13px; line-height: 20px; }
 .fund-config-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; }
 .fund-config-row :deep(.el-form-item) { min-width: 0; }
 .fund-control { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; min-width: 0; }
