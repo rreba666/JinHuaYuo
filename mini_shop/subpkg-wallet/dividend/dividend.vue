@@ -127,6 +127,18 @@ const promotionBalanceAmount = computed(() => promotionDisplay.value.amount)
 const promotionSettling = computed(() => promotionDisplay.value.settling)
 
 /**
+ * 该笔推广收益是否来自**特殊推广**（复购专区商品）。
+ *
+ * ⚠️ 为什么必须标出来：两种来源**算法不同** —— 普通推广金是商品级**固定额**（或全局比例），
+ * 特殊推广是 **定价 × 商品级比例**（默认 5%）。同一推广人、同样金额的订单，两者可能差很多，
+ * 而明细里原来只有一列金额、没有任何依据解释它是怎么算出来的（2026-09-24 线上反馈）。
+ * 判据优先用后端下发的 `sourceType`，缺失时兜底看 `sourceTypeDesc`。
+ */
+function isSpecialPromotion(record: PromotionRecord): boolean {
+  return record.sourceType === 'SPECIAL_PROMOTION' || record.sourceTypeDesc === '特殊推广'
+}
+
+/**
  * 推广金展示值 = **可转余额 + 平台尚未结算到账（待到账）** 的合计。
  * 不再叠加后端 `totalPromotion`（累计口径受后端定时同步影响，会出现"昨天 1182、今天 396"的跳变）。
  * 推广概要接口未返回时保持空态 `--`。
@@ -521,7 +533,7 @@ onShow(() => {
           </view>
           <view v-show="!promotionLoading && promotionRecords.length" class="promotion-list">
             <view v-for="record in promotionRecords" :key="record.orderNo" class="promotion-row">
-              <text class="promotion-cell buyer-name">{{ record.buyerName || '--' }}</text>
+              <text class="promotion-cell buyer-name">{{ record.buyerName || '--' }}<text v-if="isSpecialPromotion(record)" class="promotion-source-mark">特殊推广</text></text>
               <text class="promotion-cell order-time">{{ formatDate(record.createTime) }}</text>
               <text class="promotion-cell order-amount">{{ formatMoney(record.payAmount) }}</text>
               <view class="promotion-cell promotion-amount"><text>+{{ formatMoney(record.amount) }}</text><text v-if="isPendingSettlementRecord(record)" class="promotion-unsettled-mark">待到账</text></view>
@@ -601,6 +613,9 @@ onShow(() => {
 .order-time, .order-amount { text-align: center; }
 .promotion-amount { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; color: #010101; text-align: right; }
 .promotion-unsettled-mark { margin-top: 4rpx; padding: 2rpx 8rpx; color: #b4772f; background: #fff4e5; font-size: 18rpx; line-height: 22rpx; }
+/* 「特殊推广」来源标签（2026-09-24）：与「待到账」同族视觉（小标签），但底色略深以便区分 ——
+   一个是"钱还没到"，一个是"钱从哪来"，不要用同一个颜色让人误判。 */
+.promotion-source-mark { margin-left: 8rpx; padding: 2rpx 8rpx; color: #916448; background: #f5eee4; font-size: 18rpx; line-height: 22rpx; }
 .promotion-more { padding: 18rpx 0; color: #959595; font-size: 20rpx; text-align: center; }
 .sheet-head { position: relative; display: flex; align-items: center; justify-content: center; min-height: 54rpx; }
 .sheet-title { color: #222; font-size: 30rpx; font-weight: 600; }

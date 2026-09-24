@@ -31,6 +31,21 @@ export interface PromotionRecord {
    * 后端 2026-09-16 起还会在钱包/汇总接口直接下发 `unsettledPromotion`，这里是兜底口径。
    */
   promotionStatus?: string
+  /**
+   * 来源类型（后端 **2026-09-24 新增**）：
+   * - `PROMOTION`：推广金（老商品：商品级固定额，未配置时回落全局比例）；
+   * - `SPECIAL_PROMOTION`：**特殊推广**（复购专区商品：**定价 × 商品级 `specialPromotionRate`**，默认 5%）。
+   * ⚠️ 两种来源**算法不同**、金额可能差很多 ⇒ 必须在明细里标出来，
+   *    否则推广人看到金额却不知道钱是怎么来的（线上反馈的根源）。
+   */
+  sourceType?: string
+  /** 来源中文名（后端下发，如「推广金」/「特殊推广」）**可直接展示**；前端仅做兜底映射。 */
+  sourceTypeDesc?: string | null
+  /**
+   * 订单**首个**明细的商品名快照（后端 2026-09-24 新增）。
+   * ⚠️ **可能为 `null`**（订单明细缺失时）⇒ 展示必须留兜底，不要直接拼串。
+   */
+  productName?: string | null
 }
 
 /** 推广明细分页结果。 */
