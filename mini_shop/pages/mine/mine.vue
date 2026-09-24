@@ -103,6 +103,16 @@ const visibleMenuItems = computed(() => {
   return menuItems.filter((item) => item.key !== 'service' && isModuleEnabled(modules, moduleOf[item.key] || 'basic'))
 })
 
+/**
+ * 收益卡是否已就绪（首屏不"跳数目"的关键）。
+ *
+ * ⚠️ 第 4 格「肽金券」的**有无**取决于异步拉取的肽金券账户（平台是否启用 / 是否仍有余额），
+ * 而前 3 格只用同步的钱包数据 ⇒ 不等它就把卡片渲染出来，首屏必然是
+ * 「**先 3 格 → 数据回来变 4 格**」，用户会看到明显的数目跳动（线上反馈）。
+ * 所以这两项数据一起回来后再渲染整张卡（两者已改为并行请求，不会因此变慢）。
+ */
+const incomeReady = ref(false)
+
 /** 收益卡可见性按模块开关过滤：推广收益/平台红包→promotion，我的余额→basic（停用 wallet 后余额仍展示）。 */
 const incomeEntries = computed(() => {
   const modules = moduleConfig.value
@@ -159,11 +169,14 @@ function incomeValueClass(value?: number): string {
 async function loadData(): Promise<void> {
   // 公告为公开接口，游客也能查看
   void loadAnnouncements()
+  // 重新加载时先收起收益卡：否则会先按旧数据渲染一次、再跳到新数目
+  incomeReady.value = false
   if (!isLoggedIn()) {
     user.value = null
     wallet.value = null
     peptideAccount.value = null
     promotionPendingAmount.value = 0
+    incomeReady.value = true
     return
   }
   try { user.value = await getUserProfile() } catch { user.value = null /* 资料失败按游客处理 */ }
@@ -171,30 +184,35 @@ async function loadData(): Promise<void> {
     wallet.value = null
     peptideAccount.value = null
     promotionPendingAmount.value = 0
+    incomeReady.value = true
     return
   }
-  try {
-    const walletInfo = await getWalletInfo()
-    wallet.value = walletInfo
+  // 钱包与肽金券账户**并行**拉取：收益卡要等两者都就绪才渲染（见 incomeReady 的注释），
+  // 串行会白白多花一个 RTT，卡片出现得更晚。
+  // 用 catch 包成结果对象，而不是 Promise.allSettled，避免依赖较新的基础库 API。
+  const [walletOutcome, peptideOutcome] = await Promise.all([
+    getWalletInfo().then((info) => ({ ok: true as const, info })).catch(() => ({ ok: false as const })),
+    getPeptideAccount().then((account) => ({ ok: true as const, account })).catch(() => ({ ok: false as const })),
+  ])
+  if (walletOutcome.ok) {
+    wallet.value = walletOutcome.info
     // 待到账金额：后端 2026-09-16 起在钱包接口直接下发 unsettledPromotion（权威口径）；
     // 未返回时才回退到前端按推广明细汇总（老环境），避免每次都发多页明细请求。
-    const backendUnsettled = walletInfo?.unsettledPromotion
+    const backendUnsettled = walletOutcome.info?.unsettledPromotion
     promotionPendingAmount.value = typeof backendUnsettled === 'number' && Number.isFinite(backendUnsettled)
       ? backendUnsettled
       : await loadPendingSettlementAmount()
     if (!redPacketVisible.value) redPacketDisplayAmount.value = Number(wallet.value?.pendingBonus || 0)
     // 校准转余额兜底：后端已追平则清除本地兜底值，未追平则继续按兜底值展示（避免「推广收益」显示 0）
     syncPromotionSettlement(livePromotionAmount.value, user.value?.id)
-  } catch {
+  } else {
     wallet.value = null
     promotionPendingAmount.value = 0
   }
   // 肽金券账户：收益卡第 4 格的金额与可见性；失败时静默隐藏该格，不影响其他收益数据展示
-  try {
-    peptideAccount.value = await getPeptideAccount()
-  } catch {
-    peptideAccount.value = null
-  }
+  peptideAccount.value = peptideOutcome.ok ? peptideOutcome.account : null
+  // 两项都到齐，此刻才允许渲染收益卡 ⇒ 首屏不会再「先三项后四项」
+  incomeReady.value = true
 }
 
 /** 加载启用中的公告列表，失败时保持空态。 */
@@ -573,7 +591,8 @@ onShow(() => { void refreshData() })
           <view v-if="!registeredUser" class="member-end" />
         </view>
 
-        <view v-if="registeredUser" class="income-strip">
+        <!-- ⚠️ 必须等 incomeReady：第 4 格「肽金券」的有无取决于异步数据，先渲染会「先 3 格后 4 格」跳一下 -->
+        <view v-if="registeredUser && incomeReady" class="income-strip">
           <view v-for="(item, index) in incomeEntries" :key="item.label" class="income-item" @click="goIncome(index)">
             <text :class="['income-value', incomeValueClass(item.value)]">{{ formatIncome(item.value) }}</text>
             <text class="income-label">{{ item.label }}<text v-if="item.settling" class="income-label-tag">（结算中）</text></text>
