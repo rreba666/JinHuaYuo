@@ -67,11 +67,14 @@ const availableBalance = computed(() => Number(wallet.value?.balance ?? 0))
 const DEFAULT_WITHDRAW_FEE_RATE = 0.05
 const DEFAULT_WITHDRAW_LOCK_DAYS = 10
 /**
- * 单笔提现上限（元）：**商户后台（微信商户 / 支付渠道）侧的限额**，后端 `WithdrawRuleVO` 暂无对应字段，
- * 因此这里保持写死；后续若后端接入商户侧限额再改为配置驱动
+ * 单笔提现上限（元）。
+ *
+ * ⚠️ 2026-09-23 按需求由 200 放宽到 **5000**（**提现到银行卡**单笔可到 5000）。
+ * 后端 `WithdrawRuleVO` 暂无对应字段 ⇒ 仍写死；后续后端接入商户侧限额再改为配置驱动
  * （见 `docs/logs/2026-09-16-提现规则改为后台配置驱动.md`）。
+ * ⚠️ 这里只是**前端提示**，最终以渠道/后端校验为准。
  */
-const WITHDRAW_SINGLE_LIMIT = 200
+const WITHDRAW_SINGLE_LIMIT = 5000
 /** 到账时间后端未下发，保留固定文案。 */
 const WITHDRAW_ARRIVAL_TEXT = '审核通过后 1-3 个工作日'
 /** 后台下发的提现规则（最低额 / 费率 / 每日金额与次数上限 / 支付后锁定期；后端还会返回活跃笔数与冻结上限，页面暂不展示）。 */
