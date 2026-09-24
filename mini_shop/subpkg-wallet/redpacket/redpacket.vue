@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { convertWallet, getDividendRecords, getWalletInfo, getUserProfile, type DividendRecord, type UserProfile, type WalletInfo } from '@/api/user'
+import { convertWallet, getDividendRecords, getWalletInfo, getUserProfile, getWithdrawRules, type DividendRecord, type UserProfile, type WalletInfo, type WithdrawRules } from '@/api/user'
 import { isLoggedIn, isRegisteredUser } from '@/utils/auth'
 import { ApiRequestError } from '@/utils/request'
 import { normalizeLegacyWording } from '@/utils/wording'
@@ -10,6 +10,8 @@ import RequestState from '@/components/RequestState.vue'
 import LoginGuide from '@/components/LoginGuide.vue'
 import RealnameVerifySheet from '@/components/RealnameVerifySheet.vue'
 import { useModuleGuard } from '@/utils/config'
+// 提现额度口径（可转余额 / 锁定中）：与提现页、推广金页共用同一套实现
+import { buildLockedRemainderHint, buildQuotaHint, pickWithdrawQuota, quotaWithdrawable } from '@/utils/withdraw-quota'
 
 /** promotion 模块守卫：停用则拦截平台红包（深链防护）。 */
 const { moduleEnabled: promotionEnabled, loadModuleConfig: loadPromotionModule } = useModuleGuard('promotion')
@@ -72,6 +74,31 @@ const bonusAmount = computed(() => {
   return Number.isFinite(value) && value > 0 ? value : 0
 })
 
+/** 提现规则（含各类收益的「可提现 / 锁定中」额度，`byType.BONUS` 即红包口径）。 */
+const withdrawRules = ref<WithdrawRules | null>(null)
+
+/**
+ * 红包的提现额度（2026-09-24 后端「逐笔解锁」新口径）。
+ *
+ * ⚠️ `wallet.pendingBonus` 是**待领取总额**，其中可能有一部分仍在**提现锁定期**内
+ * （每笔收益自其**来源订单**支付时刻起 10 天）—— 那部分点了「转余额」也转不走。
+ * 所以总额照旧展示，但「能转多少 / 还锁着多少」必须另说，否则用户会以为点一下就能全转走。
+ */
+const bonusQuota = computed(() => pickWithdrawQuota(withdrawRules.value, 'BONUS'))
+/** 当前**可转余额**的红包；后端未下发额度（旧后端）时回退总额，保持原行为。 */
+const withdrawableBonus = computed(() => (bonusQuota.value ? quotaWithdrawable(bonusQuota.value) : bonusAmount.value))
+/** 红包额度提示：「当前可转余额 ¥X；另有 ¥Y 锁定中，Z 后解锁」。 */
+const bonusQuotaHint = computed(() => buildQuotaHint(bonusQuota.value, '转余额'))
+
+/** 拉取提现额度（可转 / 锁定中）；失败时置空 ⇒ 页面回退旧口径展示，不打断主流程。 */
+async function loadWithdrawRules(): Promise<void> {
+  try {
+    withdrawRules.value = await getWithdrawRules()
+  } catch {
+    withdrawRules.value = null
+  }
+}
+
 /** 将积分格式化为整数（无小数位），避免出现货币感。 */
 function formatPoints(value: unknown): string {
   const amount = Number(value)
@@ -92,6 +119,9 @@ async function loadData(): Promise<void> {
   try {
     await ensureUser()
     if (!registeredUser.value) return
+
+    // 提现额度与钱包一起刷新（可转 / 锁定中，见 utils/withdraw-quota.ts）；不阻塞主数据加载
+    void loadWithdrawRules()
 
     let failed = false
     try {
@@ -147,23 +177,50 @@ async function loadMoreRecords(): Promise<void> {
 async function convertBonus(): Promise<void> {
   if (!registeredUser.value) return
   if (converting.value) return
-  if (bonusAmount.value <= 0) {
-    uni.showToast({ title: '暂无可转余额', icon: 'none' })
+  // ⚠️ 用「已解锁」金额判断，而不是待领取总额：总额里可能有一部分还在锁定期，点了也转不走
+  if (withdrawableBonus.value <= 0) {
+    const lockedHint = buildLockedRemainderHint(bonusQuota.value)
+    if (lockedHint) {
+      uni.showModal({ title: '暂无可转余额', content: `当前可转余额 ¥0.00，${lockedHint}`, showCancel: false, confirmText: '知道了' })
+    } else {
+      uni.showToast({ title: '暂无可转余额', icon: 'none' })
+    }
     return
   }
   // 转余额前实名门禁：未实名则弹实名，认证成功后自动续跑本次转账
   if (!(await ensureRealname(() => { void convertBonus() }))) return
   converting.value = true
   try {
+    // 转走的就是「转前已解锁的那部分」（convert 只结转已解锁金额）⇒ 用它作为成功提示的金额
+    const transferred = withdrawableBonus.value
     await convertWallet('BONUS')
     // 转余额后待领取红包清零，重置红点已读标记，下次新红包重新亮红点
     uni.setStorageSync('bonus_last_seen', 0)
     await loadData()
-    uni.showToast({ title: '已转入余额', icon: 'success' })
+    // ⚠️ 必须显式再等一次额度刷新：`loadData()` 内部是 `void loadWithdrawRules()`（不阻塞主数据），
+    //    否则下面用到的还是**转前**的旧额度，"还锁着多少"会算错。
+    await loadWithdrawRules()
+    // 锁定期内那部分仍留在「待领取」⇒ 提示里带上"还锁着多少"，否则用户会以为钱少了
+    const lockedHint = buildLockedRemainderHint(bonusQuota.value)
+    if (lockedHint) {
+      uni.showModal({ title: '转余额成功', content: `已转入 ¥${formatPoints(transferred)}；${lockedHint}`, showCancel: false, confirmText: '知道了' })
+    } else {
+      uni.showToast({ title: `已转入余额 ¥${formatPoints(transferred)}`, icon: 'success' })
+    }
   } catch (error) {
     // 后端兜底：8601 = 未实名（前置查询失败/状态过期时走到这里），引导实名并自动续跑
     if (error instanceof ApiRequestError && error.code === 8601) {
       handleConvertDenied(() => { void convertBonus() })
+      return
+    }
+    // 7006 = 可用金额不足（新口径文案较长，含锁定金额与解锁时刻）⇒ toast 会截断，改用弹窗完整展示
+    if (error instanceof ApiRequestError && error.code === 7006) {
+      uni.showModal({
+        title: '暂时无法转余额',
+        content: error.message || '当前可转余额不足',
+        showCancel: false,
+        confirmText: '知道了',
+      })
       return
     }
     uni.showToast({ title: error instanceof Error ? error.message : '转余额失败', icon: 'none' })
@@ -219,8 +276,11 @@ onShow(() => { void refreshData() })
         <view class="packet-card">
           <image class="packet-bg" src="/static/bg/红包页背景.jpg" mode="aspectFill" />
           <text class="packet-amount">{{ formatPoints(bonusAmount) }}</text>
-          <view class="convert-btn" :class="{ disabled: converting || bonusAmount <= 0 }" @click="convertBonus">转余额</view>
+          <view class="convert-btn" :class="{ disabled: converting || withdrawableBonus <= 0 }" @click="convertBonus">转余额</view>
         </view>
+
+        <!-- 可转 / 锁定（2026-09-24 新口径）：待领取总额里有多少能立刻转走、多少还在锁定期 -->
+        <text v-if="bonusQuotaHint" class="quota-hint">{{ bonusQuotaHint }}</text>
 
         <view class="source-section">
           <text class="source-title">红包来源</text>
@@ -274,6 +334,8 @@ onShow(() => { void refreshData() })
 .packet-amount { position: absolute; left: 0; right: 0; top: 46%; z-index: 1; color: #916448; font-size: 64rpx; font-weight: 700; text-align: center; }
 .convert-btn { position: absolute; left: 50%; bottom: 20rpx; z-index: 1; display: flex; align-items: center; justify-content: center; width: 200rpx; height: 72rpx; border-radius: 36rpx; color: #fff; background: rgba(145, 100, 72, 0.9); font-size: 28rpx; transform: translateX(-50%); }
 .convert-btn.disabled { opacity: 0.6; }
+/* 可转 / 锁定提示（2026-09-24 新口径） */
+.quota-hint { display: block; margin: 16rpx 40rpx 0; color: #916448; font-size: 22rpx; line-height: 1.5; }
 .source-section { margin-top: 60rpx; }
 .source-title { display: block; margin-left: 56rpx; color: #000; font-size: 28rpx; }
 .table-head { display: grid; grid-template-columns: 240rpx 240rpx 150rpx; width: 630rpx; margin: 30rpx 0 0 56rpx; color: #959595; font-size: 22rpx; }

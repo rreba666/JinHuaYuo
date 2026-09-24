@@ -11,6 +11,8 @@ import { MERCHANT_TRANSFER_APP_ID, MERCHANT_TRANSFER_MCH_ID, TRANSFER_MIN_AMOUNT
 import { validateAmount, validatePositiveInteger } from '@/utils/input-validation'
 import LoginGuide from '@/components/LoginGuide.vue'
 import { useModuleGuard } from '@/utils/config'
+// 提现额度口径（可提现 / 锁定中）：与推广金页、红包页共用，避免三处各写一份
+import { buildQuotaHint, pickWithdrawQuota, quotaLocked, quotaWithdrawable } from '@/utils/withdraw-quota'
 
 /** wallet 模块守卫：停用则拦截提现/转账（深链防护）。 */
 const { moduleEnabled: walletEnabled, loadModuleConfig: loadWalletModule } = useModuleGuard('wallet')
@@ -116,13 +118,22 @@ const withdrawLockDays = computed(() => {
   const value = Number(withdrawRules.value?.payLockDays)
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_WITHDRAW_LOCK_DAYS
 })
-/** 下次可提现时刻（空 = 当前不在锁定期，可立即提现）——后端已按精确 240 小时口径算好。 */
-const withdrawNextWithdrawableAt = computed(() => {
-  const value = withdrawRules.value?.nextWithdrawableAt
-  return typeof value === 'string' && value.trim() ? value.trim() : ''
-})
-/** 锁定期提示：命中锁定时直接告诉用户具体可提现时间，避免"撞错"后才知道。 */
-const withdrawLockHint = computed(() => (withdrawNextWithdrawableAt.value ? `最近有订单支付，暂时无法提现；${withdrawNextWithdrawableAt.value} 后可提现` : ''))
+/**
+ * 本页的提现额度明细（2026-09-24 新口径）—— 取 `byType.BALANCE`
+ * （本页提的是**余额**，`executeWithdraw` 提交的 `type` 恒为 `BALANCE`）。
+ *
+ * ⚠️ **不要再用 `nextWithdrawableAt` 判断"整账户是否被锁"**：它的语义已变为「**本 type 的下一笔**解锁时刻」，
+ * 余额页恒为 `null`（余额永远可提）。旧的账户级一刀切锁定已下线。
+ *
+ * 取值与文案统一走 `utils/withdraw-quota.ts`，与推广金页 / 红包页共用同一套口径。
+ */
+const withdrawQuota = computed(() => pickWithdrawQuota(withdrawRules.value, 'BALANCE'))
+/** 当前可提现金额（元）；后端未下发额度时为 null（此时不做上限校验、不显示额度提示）。 */
+const withdrawableAmount = computed(() => (withdrawQuota.value ? quotaWithdrawable(withdrawQuota.value) : null))
+/** 锁定中金额（元）：尚未到解锁时刻、当前提不出来的部分。 */
+const withdrawLockedAmount = computed(() => quotaLocked(withdrawQuota.value))
+/** 提现额度提示（**始终展示**「当前可提现 ¥X」，有锁定时追加锁定金额与解锁时刻）。 */
+const withdrawAmountHint = computed(() => buildQuotaHint(withdrawQuota.value))
 /** 是否超过单笔上限（商户后台限额，前端仅作提示，最终以后端校验为准）。 */
 /**
  * 是否**银行卡提现**。
@@ -144,6 +155,16 @@ const withdrawAmountNumber = computed(() => {
   const value = Number(withdrawAmount.value)
   return Number.isFinite(value) ? value : 0
 })
+/** 是否超过**当前可提现金额**（新口径按 `withdrawableAmount` 校验，而不是账户总余额）。 */
+const overWithdrawableAmount = computed(() => {
+  if (withdrawableAmount.value == null) return false
+  // 换算成「分」再比，避免 0.1+0.2 这类浮点误差误报
+  return Math.round(withdrawAmountNumber.value * 100) > Math.round(withdrawableAmount.value * 100)
+})
+/** 超额提示文案（模板里不做表达式运算，统一在这里拼好）。 */
+const overWithdrawableText = computed(() => (withdrawableAmount.value == null
+  ? '超过当前可提现金额，请调整提现金额'
+  : `当前可提现 ¥${formatMoney(withdrawableAmount.value)}，请调整提现金额`))
 /** 提现手续费：按后台配置费率计算。 */
 const withdrawFee = computed(() => (withdrawAmountNumber.value > 0 ? withdrawAmountNumber.value * withdrawFeeRate.value : 0))
 /** 扣除手续费后的实际到账金额。 */
@@ -493,6 +514,17 @@ function showWalletActionError(error: unknown, fallback: string): void {
     uni.showToast({ title: '微信服务暂时不可用，请稍后重试', icon: 'none' })
     return
   }
+  // 7006 = 可用金额不足（新口径文案可能是「可用金额不足：当前可提现 ¥X，另有 ¥Y 处于锁定期，Z 后可用」）。
+  // ⚠️ 这句较长，uni.showToast 最多两行会截断金额与解锁时刻 ⇒ 改用弹窗完整展示（2026-09-24 新口径）。
+  if (isApiRequestError(error) && error.code === 7006) {
+    uni.showModal({
+      title: '暂时无法提现',
+      content: error.message || '当前可提现金额不足，请调整提现金额',
+      showCancel: false,
+      confirmText: '知道了',
+    })
+    return
+  }
   uni.showToast({ title: error instanceof Error ? error.message : fallback, icon: 'none' })
 }
 
@@ -743,7 +775,9 @@ onUnload(() => {
           <text v-if="withdrawAmountNumber > 0" class="fee-calc">手续费 ¥{{ formatMoney(withdrawFee) }}，实际到账 ¥{{ formatMoney(withdrawActual) }}</text>
           <text v-if="overSingleLimit" class="fee-calc fee-warning">单笔最高可提现 {{ withdrawSingleLimit }} 元，请调整提现金额</text>
           <text v-if="overDailyAmountLimit" class="fee-calc fee-warning">单日累计提现上限 {{ withdrawDailyAmountLimit }} 元，请调整提现金额</text>
-          <text v-if="withdrawLockHint" class="fee-calc fee-warning">{{ withdrawLockHint }}</text>
+          <!-- 提现额度（始终展示，2026-09-24 新口径）：让用户随时看清「能提多少 / 还有多少锁着、何时解锁」 -->
+          <text v-if="withdrawAmountHint" class="fee-hint amount-quota-hint">{{ withdrawAmountHint }}</text>
+          <text v-if="overWithdrawableAmount" class="fee-calc fee-warning">{{ overWithdrawableText }}</text>
 
           <!-- 提现规则：金额/次数/锁定期全部取自后台配置（GET /api/wallet/withdraw-rules），接口失败时用本地默认值兜底 -->
           <view class="rule-card">
@@ -753,7 +787,9 @@ onUnload(() => {
             <view class="rule-item"><text class="rule-label">每日提现次数</text><text class="rule-text">{{ withdrawDailyCountLimit > 0 ? '每日最多可提现 ' + withdrawDailyCountLimit + ' 次' : '每日提现次数不限' }}</text></view>
             <view class="rule-item"><text class="rule-label">提现时间</text><text class="rule-text">全天可提现（00:00–24:00），提交后进入平台审核</text></view>
             <!-- 提现锁口径：天数为后台配置（精确 N×24 小时，自支付时刻起算），不写实现细节 -->
-            <view class="rule-item"><text class="rule-label">可提现时间</text><text class="rule-text">收益有 {{ withdrawLockDays }} 天锁定期（自订单支付时刻起算），需满 {{ withdrawLockDays }} 天才可提现</text></view>
+            <!-- 锁定期口径（2026-09-24 起）：**每笔收益各自**解锁，不再是"账户最近有没有订单"的一刀切 -->
+            <view class="rule-item"><text class="rule-label">可提现时间</text><text class="rule-text">每笔收益各自有 {{ withdrawLockDays }} 天锁定期，自该笔收益来源订单的支付时刻起算，满 {{ withdrawLockDays }} 天后自动解锁，即可提现</text></view>
+            <view class="rule-item"><text class="rule-label">余额与锁定</text><text class="rule-text">已解锁的收益可一键转入余额，余额随时可提现；仍在锁定期的收益会留在「待入账」，到期后可再转余额</text></view>
             <view class="rule-item"><text class="rule-label">到账时间</text><text class="rule-text">{{ WITHDRAW_ARRIVAL_TEXT }}到账（银行卡提现为审核通过后人工打款）</text></view>
             <view class="rule-item"><text class="rule-label">实名认证</text><text class="rule-text">依据法律法规要求，首次提现前需完成实名认证（仅需一次），认证后即可正常提现</text></view>
             <view class="rule-item"><text class="rule-label">收款授权</text><text class="rule-text">零钱提现首次需在微信中确认一次收款授权，授权后后续提现无需重复操作</text></view>
@@ -888,6 +924,8 @@ onUnload(() => {
 .fee-hint { display: block; margin-top: 14rpx; color: #b45309; font-size: 22rpx; line-height: 1.5; }
 .fee-calc { display: block; margin-top: 8rpx; color: #ff5a1f; font-size: 24rpx; font-weight: 600; line-height: 1.5; }
 .fee-warning { color: #d40000; }
+/* 提现额度提示（当前可提现 / 锁定中）：比普通说明醒目，但不用报错色 */
+.amount-quota-hint { color: #916448; font-weight: 600; }
 /* 提现规则（微信审核要求：清晰展示额度 / 次数 / 提现与到账时间） */
 .rule-card { margin-top: 20rpx; padding: 20rpx 24rpx; border-radius: 12rpx; background: #f7f8fa; }
 .rule-title { display: block; margin-bottom: 14rpx; color: #1f2329; font-size: 26rpx; font-weight: 600; }

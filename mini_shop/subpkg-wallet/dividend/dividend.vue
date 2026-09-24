@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { onLoad, onShareAppMessage, onShow } from '@dcloudio/uni-app'
 import { getPromotionRecords, getPromotionSummary, type PromotionRecord, type PromotionSummary } from '@/api/promotion'
-import { convertWallet, getUserProfile, getWalletInfo, type UserProfile, type WalletInfo } from '@/api/user'
+import { convertWallet, getUserProfile, getWalletInfo, getWithdrawRules, type UserProfile, type WalletInfo, type WithdrawRules } from '@/api/user'
 import { isLoggedIn, isRegisteredUser } from '@/utils/auth'
 import { bindStoredPromotionIfLoggedIn, buildPromotionSharePath, capturePromotionContext } from '@/utils/promotion'
 import { formatPromotionQueryDate, getPendingSettlementAmount, isPendingSettlementRecord, PROMOTION_SETTLEMENT_MAX_PAGES, PROMOTION_SETTLEMENT_PAGE_SIZE, PROMOTION_SETTLEMENT_QUERY_MS } from '@/utils/promotion-freeze'
@@ -13,6 +13,8 @@ import { useConvertRealnameGate } from '@/utils/realname-gate'
 import LoginGuide from '@/components/LoginGuide.vue'
 import RealnameVerifySheet from '@/components/RealnameVerifySheet.vue'
 import { FEATURE_FLAGS, useModuleGuard } from '@/utils/config'
+// 提现额度口径（可转余额 / 锁定中）：与提现页、红包页共用同一套实现
+import { buildLockedRemainderHint, buildQuotaHint, pickWithdrawQuota, quotaLocked, quotaWithdrawable } from '@/utils/withdraw-quota'
 
 /** promotion 模块守卫：停用则拦截推广/红包（深链防护）。 */
 const { moduleEnabled: promotionEnabled, loadModuleConfig: loadPromotionModule } = useModuleGuard('promotion')
@@ -71,14 +73,47 @@ const navStyle = computed(() => ({ top: `${menuTop.value}px`, height: `${menuHei
 /** 内容区从胶囊按钮下方开始，避免标题被系统导航遮挡。 */
 const bodyStyle = computed(() => ({ paddingTop: `${menuTop.value + menuHeight.value + uni.upx2px(100)}px` }))
 
-/** 当前可转余额的推广金（后端钱包 pendingPromotion，未结算到账的部分不在其中）。 */
+/** 提现规则（含各类收益的「可提现 / 锁定中」额度，`byType.PROMOTION` 即推广金口径）。 */
+const withdrawRules = ref<WithdrawRules | null>(null)
+
+/**
+ * 推广金的提现额度（2026-09-24 后端「逐笔解锁」新口径）。
+ *
+ * ⚠️ 为什么必须单独取：`wallet.pendingPromotion` 装的是**已入账**（已过 7 天退款窗口）的推广金，
+ * 但「能不能转走」还取决于**提现锁定期**（每笔收益自其**来源订单**支付时刻起 10 天）。
+ * 锁定期内的钱**仍留在 pendingPromotion 里** ⇒ 直接拿它当"可转余额"会让用户**以为能转、点了却失败**。
+ * 后端 `byType.PROMOTION.withdrawableAmount` 才是真正的可转金额。
+ */
+const promotionQuota = computed(() => pickWithdrawQuota(withdrawRules.value, 'PROMOTION'))
+/** 锁定中的推广金（已入账但未过锁定期）。 */
+const lockedPromotion = computed(() => quotaLocked(promotionQuota.value))
+/**
+ * 当前**可转余额**的推广金。
+ * 后端未下发额度（旧后端）时回退 `pendingPromotion` 全额，保持原行为。
+ */
 const withdrawablePromotion = computed(() => {
+  if (promotionQuota.value) return quotaWithdrawable(promotionQuota.value)
   const value = Number(promotionSummary.value?.pendingPromotion ?? wallet.value?.pendingPromotion)
   return Number.isFinite(value) && value > 0 ? value : 0
 })
 
-/** 当前已产生的推广金合计 = 钱包可转金额 + 平台尚未结算到账的部分（仅用于展示）。 */
-const displayedPromotionAmount = computed(() => withdrawablePromotion.value + pendingSettlementAmount.value)
+/**
+ * 当前已产生的推广金合计 = **可转 + 锁定中 + 平台尚未结算到账**（仅用于展示）。
+ * ⚠️ 必须把「锁定中」也算进来：否则新口径下合计会凭空变小（可转金额扣掉了锁定部分），用户会以为收益丢了。
+ */
+const displayedPromotionAmount = computed(() => withdrawablePromotion.value + lockedPromotion.value + pendingSettlementAmount.value)
+
+/** 推广金额度提示：「当前可转余额 ¥X；另有 ¥Y 锁定中，Z 后解锁」。 */
+const promotionQuotaHint = computed(() => buildQuotaHint(promotionQuota.value, '转余额'))
+
+/** 拉取提现额度（可转 / 锁定中）；失败时置空 ⇒ 页面回退旧口径展示，不打断主流程。 */
+async function loadWithdrawRules(): Promise<void> {
+  try {
+    withdrawRules.value = await getWithdrawRules()
+  } catch {
+    withdrawRules.value = null
+  }
+}
 
 /**
  * 转余额兜底：后端转余额后会先把 pending 清零、约 1 小时后才把未转出部分重新累计回来，
@@ -222,7 +257,13 @@ async function handleConvertPromotion(): Promise<void> {
   }
   if (converting.value) return
   if (withdrawablePromotion.value <= 0) {
-    uni.showToast({ title: '暂无可转余额', icon: 'none' })
+    // 新口径下「有推广金但全在锁定期」很常见 ⇒ 明确告诉用户还差多少、什么时候能转（文案较长，用弹窗）
+    const lockedHint = buildLockedRemainderHint(promotionQuota.value)
+    if (lockedHint) {
+      uni.showModal({ title: '暂无可转余额', content: `当前可转余额 ¥0.00，${lockedHint}`, showCancel: false, confirmText: '知道了' })
+    } else {
+      uni.showToast({ title: '暂无可转余额', icon: 'none' })
+    }
     return
   }
   // 转余额前实名门禁：未实名则弹实名，认证成功后自动续跑本次转账
@@ -234,14 +275,20 @@ async function handleConvertPromotion(): Promise<void> {
     const beforeBalance = Number(wallet.value?.balance || 0)
     // 直接调用 /api/wallet/convert，避免前端只改界面不改余额。
     await convertWallet('PROMOTION')
-    await Promise.all([loadWallet(), loadPromotionSummary()])
+    await Promise.all([loadWallet(), loadPromotionSummary(), loadWithdrawRules()])
     if (backendUnsettledPromotion.value === null) await loadSettlementPromotionRecords()
     const transferred = Math.max(0, Number(wallet.value?.balance || 0) - beforeBalance)
     // 兜底：转账后仍应展示的推广金 = 转账前合计 − 实际到账金额（冻结/待到账部分不该凭空消失）
     savePromotionSettlement(user.value?.id, Math.max(0, beforeDisplay - transferred))
     // 立即按兜底口径重算，避免后端 pending 清零期间页面显示 0
     syncPromotionSettlement(displayedPromotionAmount.value, user.value?.id)
-    uni.showToast({ title: '已转入余额', icon: 'success' })
+    // 转后额度会变（锁定期内那部分仍留在「待入账」）⇒ 提示里带上"还锁着多少"，否则用户会以为钱少了
+    const lockedHint = buildLockedRemainderHint(promotionQuota.value)
+    if (lockedHint) {
+      uni.showModal({ title: '转余额成功', content: `已转入 ¥${formatMoney(transferred)}；${lockedHint}`, showCancel: false, confirmText: '知道了' })
+    } else {
+      uni.showToast({ title: `已转入 ¥${formatMoney(transferred)}`, icon: 'success' })
+    }
   } catch (error) {
     // 后端兜底：8601 = 未实名（前置查询失败/状态过期时走到这里），引导实名并自动续跑
     if (error instanceof ApiRequestError && error.code === 8601) {
@@ -259,7 +306,7 @@ function showPromotionIncomeInfo(): void {
   const total = promotionBalanceAmount.value
   const withdrawable = withdrawablePromotion.value
   const unsettled = pendingSettlementAmount.value
-  const common = `\n\n· 待到账的推广金是已产生、但平台尚未结算到账的收益（订单满 7 天退款窗口后结算入账），结算后会自动进入可转余额；\n· 提现（余额 / 推广金）另有锁定期：需在订单支付满 10 天后才能提现，详见钱包提现页的「提现规则」；\n· 本页「推广金」按「可转余额 + 待到账」合计展示，不等于已结算到账金额。`
+  const common = `\n\n· 待到账的推广金是已产生、但平台尚未结算到账的收益（订单满 7 天退款窗口后结算入账）；\n· 结算入账后还需过提现锁定期：每笔收益各自自其来源订单的支付时刻起算，满 10 天（240 小时）后自动解锁，届时才能一键转入余额；\n· 锁定期的钱会留在「待入账」里，页面上的「可转余额」只统计已解锁部分，剩余金额到期后自动可转；\n· 已转入余额的钱随时可提现；\n· 本页「推广金」按「可转余额 + 锁定中 + 待到账」合计展示，不等于已结算到账金额。`
   // 结算中：后端 pending 尚未追平，等式不再成立，改用说明剩余金额的口径
   const content = promotionSettling.value
     ? `你刚刚将可转余额的推广金转入了余额，页面仍显示 ${formatMoney(total)} 元在结算中（其中待到账 ${formatMoney(unsettled)} 元），最迟 1 小时内更新为最新金额。${common}`
@@ -336,7 +383,7 @@ async function ensureRegisteredAccess(): Promise<boolean> {
 /** 初始化或刷新推广中心，身份升级后重新进入即可获得完整功能。 */
 async function loadPage(): Promise<void> {
   if (!(await ensureRegisteredAccess())) return
-  await Promise.all([loadWallet(), loadPromotionSummary(), loadPromotionRecords()])
+  await Promise.all([loadWallet(), loadPromotionSummary(), loadPromotionRecords(), loadWithdrawRules()])
   // 后端已下发 unsettledPromotion 时无需再拉明细汇总（省一次多页请求），仅在字段缺失时兜底
   if (backendUnsettledPromotion.value === null) await loadSettlementPromotionRecords()
   // 数据加载完成后校准兜底快照：后端已追平则清除，未追平则继续按兜底值展示
@@ -427,6 +474,9 @@ onShow(() => {
           </view>
         </view>
 
+        <!-- 可转 / 锁定（2026-09-24 新口径）：让用户看清"能转多少、还有多少锁着、何时解锁" -->
+        <text v-if="promotionQuotaHint" class="card-quota-hint">{{ promotionQuotaHint }}</text>
+
         <view class="share-actions">
           <button class="share-button" open-type="share" @click="handleShare">立即分享赚钱 <view class="share-arrow" /></button>
         </view>
@@ -516,6 +566,8 @@ onShow(() => {
 .balance-value { color: #fbd69d; font-size: 45.8rpx; font-weight: 600; line-height: 54.96rpx; }
 .balance-settling { margin-left: 12rpx; padding: 2rpx 10rpx; border: 1rpx solid #fbd69d; color: #fbd69d; font-size: 18rpx; line-height: 26rpx; }
 .card-actions { position: absolute; right: 62rpx; bottom: 40rpx; z-index: 1; display: flex; align-items: center; gap: 24rpx; }
+/* 可转 / 锁定提示（2026-09-24 新口径）：紧跟在推广金卡片下方 */
+.card-quota-hint { display: block; margin: 16rpx 32rpx 0; color: #916448; font-size: 22rpx; line-height: 1.5; }
 .wallet-button { display: flex; align-items: center; justify-content: center; width: 136rpx; height: 56rpx; box-sizing: border-box; border: 1rpx solid #fbd69d; color: #fbd69d; background: transparent; font-size: 22.9rpx; white-space: nowrap; }
 .wallet-button.wallet-link { color: #000; background: #fbd69d; }
 .wallet-button.disabled { opacity: .65; }

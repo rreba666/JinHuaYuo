@@ -87,6 +87,31 @@ export function getWalletInfo(): Promise<WalletInfo> {
  * 提现页展示与金额下限前置校验用；**实际下限与限额仍由后端二次校验**。
  * 不含任何测试豁免配置（后端刻意不下发）。
  */
+/**
+ * 单类收益（`type`）的提现口径 —— 对应 `withdraw-rules` 响应里的 `byType[type]`（2026-09-24 后端新增）。
+ *
+ * ⚠️ 口径变更（2026-09-24）：提现锁定期由「账户级：240 小时内有无已支付订单」改为「**每笔收益各自**解锁」，
+ * 解锁时刻 = **该笔收益来源订单**的支付时间 + `payLockDays`。
+ * 所以必须按 `type` 分开看：推广金 `PROMOTION`、红包 `BONUS`、余额 `BALANCE`。
+ * 这解决了「账户里早就有钱、只因最近买过东西就全都提不出来」的问题。
+ */
+export interface WithdrawTypeQuota {
+  /** 该口径对应的扣款来源。 */
+  type: WithdrawType
+  /** **当前可提现金额**（元）—— 提现金额上限按它校验。 */
+  withdrawableAmount: number
+  /** **锁定中金额**（元）：尚未到解锁时刻、当前提不出来的部分。 */
+  lockedAmount: number
+  /** **下一笔**解锁时刻（`yyyy-MM-dd HH:mm:ss`）；`null` = 当前无锁定。 */
+  nextUnlockAt?: string | null
+  /** 下一笔解锁金额（元）。 */
+  nextUnlockAmount: number
+  /** 该类收益的待处理金额（元，含锁定部分）。 */
+  pendingAmount: number
+  /** 后端拼好的提示文案（例：「当前可提现 ¥12.00；另有 ¥204.30 锁定中，2026-10-01 14:24:01 后解锁」）；无锁定时可能为 `null`。 */
+  message?: string | null
+}
+
 export interface WithdrawRules {
   /** 最低提现金额（元），后端已按当前登录用户身份计算。 */
   minAmount: number
@@ -100,11 +125,32 @@ export interface WithdrawRules {
   maxConcurrent: number
   /** 当前提现冻结总额上限（元）。 */
   frozenLimit: number
-  /** 支付后锁定期天数（支付时刻起 N×24 小时内不可提现）。 */
+  /** 支付后锁定期天数（**每笔收益各自的来源订单**支付时刻起 N×24 小时内不可提现）。 */
   payLockDays: number
   /**
-   * 下次可提现时刻（`yyyy-MM-dd HH:mm:ss`）；**null = 当前不在锁定期，可立即提现**（2026-09-16 后端新增）。
-   * 后端口径：支付时刻起 240 小时内不可提现，解锁时刻 = 支付时刻 + 240 小时（不再按自然日零点）。
+   * 本次口径对应的扣款来源，默认 `BALANCE`（2026-09-24 新增）。
+   * ⚠️ 与「提现方式」（`WECHAT_BALANCE` 零钱 / `BANK_CARD` 银行卡）**不是一个维度**，别混。
+   */
+  type?: WithdrawType
+  /** **当前可提现金额**（元，2026-09-24 新增）—— 提现金额上限按它校验。 */
+  withdrawableAmount?: number
+  /** **锁定中金额**（元，2026-09-24 新增）。 */
+  lockedAmount?: number
+  /** **下一笔**解锁时刻；`null` = 当前无锁定（2026-09-24 新增）。 */
+  nextUnlockAt?: string | null
+  /** 下一笔解锁金额（元，2026-09-24 新增）。 */
+  nextUnlockAmount?: number
+  /**
+   * 三类收益各自的口径（2026-09-24 新增）。
+   * 提现页取 `byType.BALANCE`、推广金页取 `byType.PROMOTION`、红包页取 `byType.BONUS`。
+   */
+  byType?: Partial<Record<WithdrawType, WithdrawTypeQuota>>
+  /**
+   * 下次可提现时刻（`yyyy-MM-dd HH:mm:ss`）。
+   *
+   * ⚠️ **语义已变更（2026-09-24）**：由「全部订单的解锁时刻」改为「**本次 `type`（默认 `BALANCE`）的下一笔解锁时刻**」。
+   * 于是余额页拿到的是 **`null`**（余额恒为可提）⇒ 不要再把它当作「整账户是否被锁」的判据，
+   * 也不要再用它拼「最近有订单支付，暂时无法提现」这种一刀切文案（那套账户级锁定已下线）。
    */
   nextWithdrawableAt?: string | null
 }
