@@ -1272,7 +1272,8 @@ function backToCart(): void {
 .addr-item:last-child { border-bottom: 0; }
 .addr-name { display: block; color: #172033; font-size: 28rpx; font-weight: 600; }
 .addr-detail { display: block; margin-top: 8rpx; color: #667085; font-size: 24rpx; line-height: 1.4; }
-.addr-add { height: 80rpx; margin-top: 20rpx; border: 0; border-radius: 40rpx; background: linear-gradient(135deg, #ff6a2b, #ff5a1f); color: #fff; font-size: 28rpx; font-weight: 600; line-height: 80rpx; }
+/* 方形黑底白字：与地址簿页、新增/编辑地址整页的按钮风格统一（原来是橙色胶囊） */
+.addr-add { height: 84rpx; margin-top: 20rpx; border: 0; border-radius: 8rpx; background: #010101; color: #fff; font-size: 28rpx; font-weight: 600; line-height: 84rpx; }
 .addr-add::after { border: 0; }
 .sheet-title { color: #222; font-size: 30rpx; font-weight: 700; }
 .sheet-close { position: absolute; right: 30rpx; color: #888; font-size: 42rpx; font-weight: 300; line-height: 1; }
