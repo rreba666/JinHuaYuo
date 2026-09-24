@@ -207,7 +207,7 @@ export interface DividendRecord {
   createTime: string
   /**
    * 红包**来源类型**（2026-09-23 新增）：
-   * `DIVIDEND` 分红红包 / `SPECIAL_SUBSIDY` 特殊商品补贴。
+   * `DIVIDEND` 平台红包 / `SPECIAL_SUBSIDY` 特殊商品补贴。
    * ⚠️ 后端 `default-property-inclusion: non_null` ⇒ 老数据可能**整个 key 都不存在**。
    */
   sourceType?: string

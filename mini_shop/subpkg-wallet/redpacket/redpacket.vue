@@ -4,6 +4,7 @@ import { onShow } from '@dcloudio/uni-app'
 import { convertWallet, getDividendRecords, getWalletInfo, getUserProfile, type DividendRecord, type UserProfile, type WalletInfo } from '@/api/user'
 import { isLoggedIn, isRegisteredUser } from '@/utils/auth'
 import { ApiRequestError } from '@/utils/request'
+import { normalizeLegacyWording } from '@/utils/wording'
 import { useConvertRealnameGate } from '@/utils/realname-gate'
 import RequestState from '@/components/RequestState.vue'
 import LoginGuide from '@/components/LoginGuide.vue'
@@ -21,16 +22,21 @@ const records = ref<DividendRecord[]>([])
 /**
  * 红包来源标签文案。
  *
- * ⚠️ 2026-09-23：后端新增 `sourceType` 打标（`DIVIDEND` 分红红包 / `SPECIAL_SUBSIDY` 特殊补贴），
- * 文档说 `sourceTypeDesc` 可直接展示；但本项目展示口径是**前端映射** ——
- * 特殊商品补贴对外叫「**商品补贴**」（后端下发的是"特殊补贴"）。
- * 所以这里按 `sourceType` 映射，`sourceTypeDesc` 仅在没有 sourceType 时兜底
- * （后端 `non_null` ⇒ 老数据可能整个 key 缺失）。
+ * ⚠️ 2026-09-23：后端新增 `sourceType` 打标（`DIVIDEND` / `SPECIAL_SUBSIDY`）。
+ * 文档说 `sourceTypeDesc` 可直接展示，但本项目展示口径是**前端映射**：
+ * 特殊商品补贴对外叫「**商品补贴**」（后端下发的是"特殊补贴"），
+ * 常规那类对外叫「**平台红包**」。所以这里按 `sourceType` 映射，
+ * `sourceTypeDesc` 只在没有 `sourceType` 时兜底（后端 `non_null` ⇒ 老数据可能整个 key 缺失）。
+ *
+ * ⚠️ 两条红线（2026-09-24 线上截图事故后补，别再犯）：
+ * 1. **本函数返回的字面量不得含旧术语**。之前这里硬编码了「旧词+红包」四个字 ——
+ *    前端自己写的字串不经过任何归一化就上屏了，这是那次事故的直接原因。
+ * 2. **兜底值必须过 `normalizeLegacyWording()`**：后端 `sourceTypeDesc` 的示例值本身就含旧词。
  */
 function sourceTagText(record: DividendRecord): string {
   if (record.sourceType === 'SPECIAL_SUBSIDY') return '商品补贴'
-  if (record.sourceType === 'DIVIDEND') return '分红红包'
-  return record.sourceTypeDesc || ''
+  if (record.sourceType === 'DIVIDEND') return '平台红包'
+  return normalizeLegacyWording(record.sourceTypeDesc)
 }
 
 const recordsPage = ref(1)
@@ -278,7 +284,7 @@ onShow(() => { void refreshData() })
 .source-list { margin-top: 10rpx; }
 .source-row { display: grid; grid-template-columns: 240rpx 240rpx 150rpx; min-height: 90rpx; margin: 0 40rpx; align-items: center; border-bottom: 1rpx solid #f6f6f6; color: #959595; font-size: 20rpx; }
 .source-cell { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre-line; }
-/* 红包来源标签（分红红包 / 商品补贴）：跟在商品名后的小号标记 */
+/* 红包来源标签（平台红包 / 商品补贴）：跟在商品名后的小号标记 */
 .source-tag { margin-left: 8rpx; padding: 0 8rpx; border: 1rpx solid #e8d5b7; border-radius: 6rpx; color: #916448; font-size: 18rpx; }
 .source-cell.time { text-align: center; }
 .source-cell.amount { color: #010101; text-align: right; }

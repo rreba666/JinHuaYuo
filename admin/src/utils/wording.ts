@@ -22,7 +22,18 @@
  */
 export function normalizeLegacyWording(text: string | null | undefined): string {
   return String(text ?? '')
-    .replace(/\u5206\u7ea2/g, '红包')
+    // ⚠️ 顺序关键：先替换「旧词 + 红包」这个复合词，再替换旧词本身。
+    //    只用下面那行的话，后端的 `sourceTypeDesc`（旧词红包）会被替换成「红包红包」（2026-09-24 踩到）。
+    .replace(/\u5206\u7ea2\u7ea2\u5305/g, '红包')
+    // ⚠️ 这里必须用回调保护合规词：「部分红包」里恰好含旧词子串，
+    //    纯正则替换会把它毁成「部红包包」（2026-09-24 复查时发现）。
+    //    判定「前一字为『部』且后一字为『包』」⇒ 原样保留；
+    //    这样后端真下发「部分旧词…」时仍会正常替换。
+    //    （刻意不用 lookbehind：低版本 iOS 的 JSC 不支持，正则字面量会解析期报错。）
+    .replace(/\u5206\u7ea2/g, (match: string, offset: number, whole: string) => {
+      if (whole[offset - 1] === '\u90e8' && whole[offset + match.length] === '\u5305') return match
+      return '红包'
+    })
     // 负向断言 (?!) 保证已经是「肽金券」的文案不会被二次追加成「肽金券券」
     .replace(/\u80bd\u91d1(?!\u5238)/g, '肽金券')
 }

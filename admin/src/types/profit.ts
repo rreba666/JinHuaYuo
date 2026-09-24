@@ -290,7 +290,7 @@ export interface ProfitAdjustDailyDTO {
 export type BonusInjectLayer = 'NEW' | 'OLD' | 'BOTH'
 
 /**
- * 应急池注入分红池的请求体（后端 `BonusInjectDTO`，2026-09-24 扩展）。
+ * 应急池注入红包池的请求体（后端 `BonusInjectDTO`，2026-09-24 扩展）。
  *
  * ⚠️ 新字段请走新接口 `POST /api/admin/profit/emergency-pool/inject`（见 `injectEmergencyPool`）；
  * 旧接口 `/api/admin/profit/inject` 只认 `poolDate` + `amount`。
@@ -299,7 +299,7 @@ export interface BonusInjectDTO {
   poolDate?: string
   amount: number
   /**
-   * 目标分红池 ID。**给正在发放中的周池注入务必传**；
+   * 目标红包池 ID。**给正在发放中的周池注入务必传**；
    * 不传 = 不限池 ⇒ 可能流到后面的周池。
    */
   poolId?: number

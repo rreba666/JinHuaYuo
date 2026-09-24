@@ -162,7 +162,7 @@ async function loadPools(): Promise<void> {
     pools.value = [...list].sort((a, b) => String(b.startDate).localeCompare(String(a.startDate)))
   } catch (error) {
     pools.value = []
-    ElMessage.warning(error instanceof Error ? error.message : '分红池列表加载失败，请刷新后重试再注入')
+    ElMessage.warning(error instanceof Error ? error.message : '红包池列表加载失败，请刷新后重试再注入')
   } finally {
     poolsLoading.value = false
   }
@@ -213,7 +213,7 @@ async function submitInject(): Promise<void> {
   //    这是「钱发错地方」的资金错误且不可逆，所以宁可挡住操作，也不允许空着提交。
   const poolId = Number(injectPoolId.value)
   if (!injectPoolId.value || !Number.isFinite(poolId) || poolId <= 0) {
-    ElMessage.warning('请选择目标分红池（给正在发放中的周池注入必须指定池号，否则这笔注入可能流到后面的周池）')
+    ElMessage.warning('请选择目标红包池（给正在发放中的周池注入必须指定池号，否则这笔注入可能流到后面的周池）')
     return
   }
   const pool = pools.value.find((item) => String(item.id) === injectPoolId.value)
@@ -346,7 +346,7 @@ onMounted(() => { void load() })
         <!-- ⚠️ 目标池**必填**（文档 §7.5）：给正在发放中的周池注入务必指定池号；
              不传 = 不限池 ⇒ 这笔钱可能流到后面的周池。列表按池起始日倒序，最上面是最近的周池。 -->
         <el-form-item label="目标池" required>
-          <el-select v-model="injectPoolId" :loading="poolsLoading" clearable filterable placeholder="请选择目标分红池（按周次核对池号）" style="width: 100%">
+          <el-select v-model="injectPoolId" :loading="poolsLoading" clearable filterable placeholder="请选择目标红包池（按周次核对池号）" style="width: 100%">
             <el-option v-for="pool in pools" :key="pool.id" :label="poolLabel(pool)" :value="pool.id" />
           </el-select>
         </el-form-item>

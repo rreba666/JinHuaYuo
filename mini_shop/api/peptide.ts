@@ -19,7 +19,7 @@ export interface PeptideAccount {
   withdrawable: boolean
 }
 
-/** 肽金券流水类型：EARN=分红获得 / USE=下单抵扣 / REFUND=订单关闭或退款返还 / ADMIN_ADJUST=后台调整。 */
+/** 肽金券流水类型：EARN=红包获得 / USE=下单抵扣 / REFUND=订单关闭或退款返还 / ADMIN_ADJUST=后台调整。 */
 export type PeptideLogType = 'EARN' | 'USE' | 'REFUND' | 'ADMIN_ADJUST'
 
 /** 肽金券流水（对应后端 PeptideCoinLogVO）。 */

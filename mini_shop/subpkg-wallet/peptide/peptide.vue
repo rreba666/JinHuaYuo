@@ -3,10 +3,11 @@ import { computed, onMounted, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getPeptideAccount, getPeptideLogs, normalizePeptideWording, type PeptideAccount, type PeptideLog } from '@/api/peptide'
 import { isLoggedIn } from '@/utils/auth'
+import { normalizeLegacyWording } from '@/utils/wording'
 import LoginGuide from '@/components/LoginGuide.vue'
 import { FEATURE_FLAGS } from '@/utils/config'
 
-/** 流水类型兜底文案（后端 typeText 缺失时使用；产品内统一用「红包」，不出现「分红」）。 */
+/** 流水类型兜底文案（后端 typeText 缺失时使用；产品内统一用「红包」，不出现旧术语）。 */
 const LOG_TYPE_TEXT: Record<string, string> = {
   EARN: '红包获得',
   USE: '下单抵扣',
@@ -51,9 +52,13 @@ function formatTime(value?: string | null): string {
   return String(value).replace('T', ' ').slice(0, 16)
 }
 
-/** 流水类型文案：后端 typeText 先归一卷名、再归一「分红→红包」，缺失时用本地兜底。 */
+/**
+ * 流水类型文案：后端 typeText 先归一卷名（肽金→肽金券）、再归一旧术语，缺失时用本地兜底。
+ * ⚠️ 旧术语归一必须走 `normalizeLegacyWording()` —— 它先处理「旧词+红包」这个复合词；
+ *    直接 `.replace(/旧词/g, '红包')` 会把「旧词红包」变成「红包红包」。
+ */
 function logTypeText(log: PeptideLog): string {
-  const normalized = normalizePeptideWording(log.typeText).replace(/分红/g, '红包')
+  const normalized = normalizeLegacyWording(normalizePeptideWording(log.typeText))
   return normalized || LOG_TYPE_TEXT[String(log.type)] || '肽金券变动'
 }
 
@@ -61,7 +66,7 @@ function logTypeText(log: PeptideLog): string {
 function logSubText(log: PeptideLog): string {
   const orderNo = log.orderNo || log.sourceOrderNo
   if (orderNo) return `订单 ${orderNo}`
-  return normalizePeptideWording(log.remark).replace(/分红/g, '红包')
+  return normalizeLegacyWording(normalizePeptideWording(log.remark))
 }
 
 /** 加载账户信息与流水首屏。 */

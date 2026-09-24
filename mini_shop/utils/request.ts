@@ -1,15 +1,19 @@
 import developmentEnv from '../.env?raw'
 import productionEnv from '../.env.production?raw'
 import { clearAuth } from './auth'
+import { normalizeLegacyWording } from './wording'
 
 /**
  * 展示层术语归一化：后端错误文案里若出现旧术语，统一按产品口径显示为「红包」。
  * 只处理提示文本，不改动业务码与任何接口字段；放在 `ApiRequestError` 构造函数里
  * 可覆盖 request / uploadFile 的全部报错出口，避免逐个调用点遗漏。
- * 用 Unicode 转义而非字面量，是为了让源码本身不出现旧术语（便于全工程 grep 校验）。
+ *
+ * ⚠️ 2026-09-24：规则已抽到 `utils/wording.ts` 的 `normalizeLegacyWording()`，
+ * 与后台 `admin/src/utils/wording.ts` 同口径 —— 它还会先处理「旧词+红包」这个复合词，
+ * 避免只替换单词时把「旧词红包」变成「红包红包」。本函数保留为语义化别名。
  */
 function normalizeMessage(message: string): string {
-  return String(message || '').replace(/\u5206\u7EA2/g, '红包')
+  return normalizeLegacyWording(message)
 }
 
 /** 统一表示网络、HTTP 和后端业务失败，并保留后端业务码。 */

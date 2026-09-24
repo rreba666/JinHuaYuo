@@ -314,7 +314,7 @@ export async function injectBonusPool(payload: BonusInjectDTO): Promise<void> {
 /* ===================== 应急池注入（2026-09-24 扩展：可选注入新层/老层） ===================== */
 
 /**
- * 向分红池注入应急池资金（**新接口** `POST /api/admin/profit/emergency-pool/inject`）。
+ * 向红包池注入应急池资金（**新接口** `POST /api/admin/profit/emergency-pool/inject`）。
  *
  * ⚠️ 与上面的 `injectBonusPool` 的区别：本接口的 DTO 多了
  * `poolId`（目标池，给正在发放中的周池注入**务必传**）/ `layer`（注入新层还是老层）/
