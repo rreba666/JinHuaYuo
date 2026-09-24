@@ -321,7 +321,7 @@ onShow(() => { void refreshData() })
           <view v-for="item in subsidies" :key="item.id" class="subsidy-card">
             <view class="subsidy-head">
               <text class="subsidy-amount">¥{{ formatPoints(item.amount) }}</text>
-              <text class="subsidy-status" :class="{ pending: isSubsidyPending(item.status) }">{{ subsidyStatusText(item) }}</text>
+              <text class="subsidy-status" :class="{ granted: !isSubsidyPending(item.status) }">{{ subsidyStatusText(item) }}</text>
             </view>
             <text v-if="isSubsidyPending(item.status) && item.maturityAt" class="subsidy-tip">
               {{ formatDateTime(item.maturityAt) }} 自动到账（成交后 7 天进红包）
@@ -390,8 +390,12 @@ onShow(() => { void refreshData() })
 .subsidy-card { margin: 20rpx 40rpx 0; padding: 24rpx 26rpx; border-radius: 16rpx; background: #fff8ec; }
 .subsidy-head { display: flex; align-items: baseline; justify-content: space-between; }
 .subsidy-amount { color: #916448; font-size: 34rpx; font-weight: 700; }
-.subsidy-status { color: #916448; font-size: 22rpx; }
-.subsidy-status.pending { color: #d48806; }
+/* 状态标签：**与推广金明细的「待到账」标签同一套视觉**（dividend.vue 的 .promotion-unsettled-mark：
+   橙字 #b4772f + 浅橙底 #fff4e5 + 2/8rpx 内边距）—— 用户要求"冻结的也要像冻结的推广金那样标识出来"，
+   所以这里刻意复用同款样式而不是普通文字，让两种"待到账"在两端看起来是一回事。 */
+.subsidy-status { padding: 2rpx 8rpx; color: #b4772f; background: #fff4e5; font-size: 18rpx; line-height: 22rpx; }
+/* 已到账：低调灰字，不跟「待到账」抢注意力 */
+.subsidy-status.granted { padding: 0; color: #999; background: transparent; font-size: 22rpx; }
 .subsidy-tip { display: block; margin-top: 8rpx; color: #b4772f; font-size: 22rpx; line-height: 1.5; }
 .subsidy-desc { display: block; margin-top: 8rpx; color: #999; font-size: 20rpx; line-height: 1.5; }
 .source-section { margin-top: 60rpx; }
