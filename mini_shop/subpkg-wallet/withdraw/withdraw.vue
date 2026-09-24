@@ -92,11 +92,15 @@ const withdrawMinAmount = computed(() => {
 const withdrawMinimumLabel = computed(() => (Number.isInteger(withdrawMinAmount.value) ? String(withdrawMinAmount.value) : formatMoney(withdrawMinAmount.value)))
 /** 每日累计提现金额上限（元）；0/未配置 = 不限制（不展示该限制）。 */
 const withdrawDailyAmountLimit = computed(() => {
+  // ⚠️ 银行卡人工打款无渠道限额 ⇒ 不受后台每日累计上限约束（0 = 不限制）
+  if (isBankWithdraw.value) return 0
   const value = Number(withdrawRules.value?.dailyAmountLimit)
   return Number.isFinite(value) && value > 0 ? value : 0
 })
 /** 每日提现次数上限；0/未配置 = 不限制。 */
 const withdrawDailyCountLimit = computed(() => {
+  // ⚠️ 同上：银行卡不受后台每日次数上限约束（0 = 不限制）
+  if (isBankWithdraw.value) return 0
   const value = Number(withdrawRules.value?.dailyCountLimit)
   return Number.isFinite(value) && value > 0 ? value : 0
 })
@@ -120,6 +124,15 @@ const withdrawNextWithdrawableAt = computed(() => {
 /** 锁定期提示：命中锁定时直接告诉用户具体可提现时间，避免"撞错"后才知道。 */
 const withdrawLockHint = computed(() => (withdrawNextWithdrawableAt.value ? `最近有订单支付，暂时无法提现；${withdrawNextWithdrawableAt.value} 后可提现` : ''))
 /** 是否超过单笔上限（商户后台限额，前端仅作提示，最终以后端校验为准）。 */
+/**
+ * 是否**银行卡提现**。
+ *
+ * ⚠️ 2026-09-23：银行卡是**人工打款**，不经过微信支付渠道 ⇒ **规则由前端写死**，
+ * 不受后台那套提现规则（`dailyAmountLimit` / `dailyCountLimit`，原本是为**零钱**设的）约束。
+ * 否则会出现"单笔最高 5000、单日累计却只有 2000"这种自相矛盾的提示。
+ * ⇒ **零钱提现才走后台配置的规则**。
+ */
+const isBankWithdraw = computed(() => withdrawOption.value === 'BANK_CARD')
 /** 当前提现方式的单笔上限（银行卡人工打款无渠道限额；微信零钱受商户侧限额约束）。 */
 const withdrawSingleLimit = computed(() => (withdrawOption.value === 'BANK_CARD' ? WITHDRAW_SINGLE_LIMIT_BANK : WITHDRAW_SINGLE_LIMIT_WECHAT))
 
