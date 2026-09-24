@@ -67,14 +67,18 @@ const availableBalance = computed(() => Number(wallet.value?.balance ?? 0))
 const DEFAULT_WITHDRAW_FEE_RATE = 0.05
 const DEFAULT_WITHDRAW_LOCK_DAYS = 10
 /**
- * 单笔提现上限（元）。
+ * 单笔提现上限（元）——**按渠道区分**（2026-09-23）。
  *
- * ⚠️ 2026-09-23 按需求由 200 放宽到 **5000**（**提现到银行卡**单笔可到 5000）。
- * 后端 `WithdrawRuleVO` 暂无对应字段 ⇒ 仍写死；后续后端接入商户侧限额再改为配置驱动
+ * - **银行卡（`BANK_CARD`）＝ 5000**：银行卡是**人工打款**，不经过支付渠道 ⇒ 没有渠道侧限额。
+ * - **微信零钱（`WECHAT_BALANCE`）＝ 200**：零钱受**商户（微信商户号）侧限额**约束，
+ *   前端放行也没用、提交时渠道会失败，所以这里保持保守值。
+ *
+ * ⚠️ 后端 `WithdrawRuleVO` 暂无对应字段 ⇒ 仍写死；后续后端接入商户侧限额再改为配置驱动
  * （见 `docs/logs/2026-09-16-提现规则改为后台配置驱动.md`）。
  * ⚠️ 这里只是**前端提示**，最终以渠道/后端校验为准。
  */
-const WITHDRAW_SINGLE_LIMIT = 5000
+const WITHDRAW_SINGLE_LIMIT_BANK = 5000
+const WITHDRAW_SINGLE_LIMIT_WECHAT = 200
 /** 到账时间后端未下发，保留固定文案。 */
 const WITHDRAW_ARRIVAL_TEXT = '审核通过后 1-3 个工作日'
 /** 后台下发的提现规则（最低额 / 费率 / 每日金额与次数上限 / 支付后锁定期；后端还会返回活跃笔数与冻结上限，页面暂不展示）。 */
@@ -116,7 +120,10 @@ const withdrawNextWithdrawableAt = computed(() => {
 /** 锁定期提示：命中锁定时直接告诉用户具体可提现时间，避免"撞错"后才知道。 */
 const withdrawLockHint = computed(() => (withdrawNextWithdrawableAt.value ? `最近有订单支付，暂时无法提现；${withdrawNextWithdrawableAt.value} 后可提现` : ''))
 /** 是否超过单笔上限（商户后台限额，前端仅作提示，最终以后端校验为准）。 */
-const overSingleLimit = computed(() => withdrawAmountNumber.value > WITHDRAW_SINGLE_LIMIT)
+/** 当前提现方式的单笔上限（银行卡人工打款无渠道限额；微信零钱受商户侧限额约束）。 */
+const withdrawSingleLimit = computed(() => (withdrawOption.value === 'BANK_CARD' ? WITHDRAW_SINGLE_LIMIT_BANK : WITHDRAW_SINGLE_LIMIT_WECHAT))
+
+const overSingleLimit = computed(() => withdrawAmountNumber.value > withdrawSingleLimit.value)
 /** 单次输入是否超过单日累计上限（后台配置，前端仅作提示，最终以后端校验为准）。 */
 const overDailyAmountLimit = computed(() => withdrawDailyAmountLimit.value > 0 && withdrawAmountNumber.value > withdrawDailyAmountLimit.value)
 /** 用户输入的提现金额（非法输入按 0 处理）。 */
@@ -721,7 +728,7 @@ onUnload(() => {
           <text v-else class="fee-hint">提现将收取 {{ withdrawFeePercentLabel }} 手续费，提交后进入审核。</text>
           <text v-if="!realnameVerified" class="fee-hint">首次提现需完成实名认证（仅一次），认证后余额满 {{ withdrawMinimumLabel }} 元即可提现，无其他门槛。</text>
           <text v-if="withdrawAmountNumber > 0" class="fee-calc">手续费 ¥{{ formatMoney(withdrawFee) }}，实际到账 ¥{{ formatMoney(withdrawActual) }}</text>
-          <text v-if="overSingleLimit" class="fee-calc fee-warning">单笔最高可提现 {{ WITHDRAW_SINGLE_LIMIT }} 元，请调整提现金额</text>
+          <text v-if="overSingleLimit" class="fee-calc fee-warning">单笔最高可提现 {{ withdrawSingleLimit }} 元，请调整提现金额</text>
           <text v-if="overDailyAmountLimit" class="fee-calc fee-warning">单日累计提现上限 {{ withdrawDailyAmountLimit }} 元，请调整提现金额</text>
           <text v-if="withdrawLockHint" class="fee-calc fee-warning">{{ withdrawLockHint }}</text>
 
@@ -729,7 +736,7 @@ onUnload(() => {
           <view class="rule-card">
             <text class="rule-title">提现规则</text>
             <view class="rule-item"><text class="rule-label">提现门槛</text><text class="rule-text">账户余额满 {{ withdrawMinimumLabel }} 元即可提现，无需邀请好友、无需消费</text></view>
-            <view class="rule-item"><text class="rule-label">可提现额度</text><text class="rule-text">最低提现 {{ withdrawMinimumLabel }} 元，单笔最高 {{ WITHDRAW_SINGLE_LIMIT }} 元{{ withdrawDailyAmountLimit > 0 ? '，单日累计上限 ' + withdrawDailyAmountLimit + ' 元' : '' }}</text></view>
+            <view class="rule-item"><text class="rule-label">可提现额度</text><text class="rule-text">最低提现 {{ withdrawMinimumLabel }} 元，单笔最高 {{ withdrawSingleLimit }} 元{{ withdrawDailyAmountLimit > 0 ? '，单日累计上限 ' + withdrawDailyAmountLimit + ' 元' : '' }}</text></view>
             <view class="rule-item"><text class="rule-label">每日提现次数</text><text class="rule-text">{{ withdrawDailyCountLimit > 0 ? '每日最多可提现 ' + withdrawDailyCountLimit + ' 次' : '每日提现次数不限' }}</text></view>
             <view class="rule-item"><text class="rule-label">提现时间</text><text class="rule-text">全天可提现（00:00–24:00），提交后进入平台审核</text></view>
             <!-- 提现锁口径：天数为后台配置（精确 N×24 小时，自支付时刻起算），不写实现细节 -->
