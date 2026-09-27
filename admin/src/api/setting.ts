@@ -299,8 +299,8 @@ function normalizeWithdrawRules(value: Partial<WithdrawRulesConfig> | null): Wit
     // ★2026-09-27 新增单笔限额：微信侧额度 / 平台风控口径。
     // ⚠️ 这里**只能用 toFiniteNumber 透传**：`0` 是合法值（表示"不限"），
     // 一旦写成 `|| 默认值` 就会把后台特意关掉限额的 0 变成 200，属于静默改配置。
-    wechatSingleLimit: toFiniteNumber(row.wechatSingleLimit),
-    bankCardSingleLimit: toFiniteNumber(row.bankCardSingleLimit),
+    wechatSingleLimit: row.wechatSingleLimit == null ? 200 : toFiniteNumber(row.wechatSingleLimit), // 缺失兜底 200（不是 0=不限，否则会误关掉微信单笔上限、放行 >200 的单导致微信拒付）
+    bankCardSingleLimit: row.bankCardSingleLimit == null ? 0 : toFiniteNumber(row.bankCardSingleLimit), // 缺失兜底 0 是对的（后端默认也是 0=不限，线下打款无额度约束）
     remark: String(row.remark ?? ''),
     // 只读字段：后端 VO 有、保存 DTO 没有（缺省 0 表示后端未返回）
     payLockDays: toFiniteNumber(row.payLockDays),
