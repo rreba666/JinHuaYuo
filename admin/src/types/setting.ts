@@ -81,6 +81,20 @@ export interface WithdrawRulesConfig {
   testSkipLock: boolean
   maxConcurrent: number
   frozenLimit: number
+  /**
+   * 微信零菜单笔限额（元）——**微信侧额度**（2026-09-27 新增）。
+   *
+   * 微信「商家转账」默认单笔 200 元，后端把该值前置到申请阶段校验（超限 `code=7008`）。
+   * ⚠️ 微信提额成功后必须回来同步调大本值，否则用户会被我们自己的校验拦住。
+   * ⚠️ `0 = 不限`（仅关掉我们的前置校验，微信侧仍会拒付 >200 的转账，**不建议填 0**）。
+   */
+  wechatSingleLimit: number
+  /**
+   * 银行卡单笔限额（元）——**平台自己的风控口径**（2026-09-27 新增）。
+   *
+   * 银行卡是线下人工打款，**不适用微信额度**；**`0 = 不限`（默认值）**，填正数即对该通道单笔封顶。
+   */
+  bankCardSingleLimit: number
   remark: string
   /**
    * 支付后锁定期天数（`WithdrawRuleVO.payLockDays`）：最近 N 天有订单支付的用户不可提现。
@@ -90,7 +104,13 @@ export interface WithdrawRulesConfig {
   payLockDays: number
 }
 
-/** 保存用 DTO：不含只读的 `payLockDays`。 */
+/**
+ * 保存用 DTO：不含只读的 `payLockDays`。
+ *
+ * ⚠️ 后端对 `wechatSingleLimit` / `bankCardSingleLimit` **均可选**（不传 = 不改动现有值），
+ * 但本项目的类型把它们设为必填 —— 后台「提现规则」表单就是这两个限额的配置入口，始终会带上它们；
+ * 这样也能让 TS 提前拦住"新增了字段却忘了提交"的情况。
+ */
 export type WithdrawRulesSaveDTO = Omit<WithdrawRulesConfig, 'payLockDays'>
 
 /** 兼容旧版单项比例类型。 */

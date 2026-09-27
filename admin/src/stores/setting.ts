@@ -11,7 +11,14 @@ export const useSettingStore = defineStore('setting', () => {
   const randomFloat = ref<RandomFloatConfig>({ floatAmount: 10, remark: '' })
   const slotCount = ref<SlotCountConfig>({ slotCount: 3, remark: '' })
   const profitRates = ref<ProfitRatesConfig>({ promotionRate: 0.2, bonusPoolRate: 0.26, remark: '' })
-  const withdrawRules = ref<WithdrawRulesConfig>({ minAmount: 0, dailyAmountLimit: 0, dailyCountLimit: 0, feeRate: 0, testUserMinAmount: 0, testUserId: null, testSkipLock: false, maxConcurrent: 0, frozenLimit: 0, remark: '', payLockDays: 0 })
+  /**
+   * 提现规则默认值（接口未返回时的兜底）。
+   *
+   * ⚠️ 单笔限额两个字段（2026-09-27 新增）：
+   * - `wechatSingleLimit` 微信零菜单笔限额，默认 **200**（微信侧额度，微信「商家转账」默认单笔上限）；
+   * - `bankCardSingleLimit` 银行卡单笔限额，默认 **0 = 不限**（平台风控口径，线下人工打款无外部约束）。
+   */
+  const withdrawRules = ref<WithdrawRulesConfig>({ minAmount: 0, dailyAmountLimit: 0, dailyCountLimit: 0, feeRate: 0, testUserMinAmount: 0, testUserId: null, testSkipLock: false, maxConcurrent: 0, frozenLimit: 0, wechatSingleLimit: 200, bankCardSingleLimit: 0, remark: '', payLockDays: 0 })
   const customerServiceLoading = ref(false)
   const dividendCapLoading = ref(false)
   const randomDividendLoading = ref(false)

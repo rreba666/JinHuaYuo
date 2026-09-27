@@ -22,7 +22,11 @@ const randomFloatForm = reactive<{ floatAmount: number; remark: string }>({ floa
 const slotCountForm = reactive<{ slotCount: number; remark: string }>({ slotCount: 3, remark: '' })
 const profitRatesForm = reactive<ProfitRatesSaveDTO>({ promotionRate: 20, bonusPoolRate: 26, remark: '' })
 type WithdrawRulesForm = Omit<WithdrawRulesConfig, 'feeRate'> & { feeRate: number }
-const withdrawRulesForm = reactive<WithdrawRulesForm>({ minAmount: 0, dailyAmountLimit: 0, dailyCountLimit: 0, feeRate: 0, testUserMinAmount: 0, testUserId: null, testSkipLock: false, maxConcurrent: 0, frozenLimit: 0, remark: '', payLockDays: 0 })
+/**
+ * 提现规则表单（`feeRate` 在界面上按百分数输入，提交时再 ÷100 换回后端的小数口径）。
+ * ⚠️ 单笔限额默认值：微信零钱 200（微信侧额度）、银行卡 0 = 不限（平台风控口径）。
+ */
+const withdrawRulesForm = reactive<WithdrawRulesForm>({ minAmount: 0, dailyAmountLimit: 0, dailyCountLimit: 0, feeRate: 0, testUserMinAmount: 0, testUserId: null, testSkipLock: false, maxConcurrent: 0, frozenLimit: 0, wechatSingleLimit: 200, bankCardSingleLimit: 0, remark: '', payLockDays: 0 })
 
 const customerServiceRules: FormRules = {
   configValue: [{ required: true, message: '请输入客服电话', trigger: 'blur' }],
@@ -201,9 +205,24 @@ async function saveProfitRates(): Promise<void> {
 
 async function saveWithdrawRules(): Promise<void> {
   if (!(await withdrawRulesFormRef.value?.validate().catch(() => false))) return
+  // 单笔限额需 ≤ 每日累计上限（后端硬校验，超出返回 code=1000），先在前端给出明确提示。
+  // 每日累计上限 ≤0 时跳过比较，避免"每日不限"的配置被误拦。
+  const dailyAmountLimit = Number(withdrawRulesForm.dailyAmountLimit)
+  if (dailyAmountLimit > 0) {
+    if (withdrawRulesForm.wechatSingleLimit > dailyAmountLimit) {
+      ElMessage.error('微信零菜单笔限额不能超过每日累计上限')
+      return
+    }
+    if (withdrawRulesForm.bankCardSingleLimit > dailyAmountLimit) {
+      ElMessage.error('银行卡单笔限额不能超过每日累计上限')
+      return
+    }
+  }
   try {
     await ElMessageBox.confirm('保存后会影响后续新提交的提现申请，确认继续吗？', '保存提现规则', { type: 'warning' })
     // payLockDays 是后端只读字段（保存 DTO 里没有），提交时剔除，避免后端严格校验未知字段报错
+    // wechatSingleLimit / bankCardSingleLimit 由 WithdrawRulesForm 直接继承自 WithdrawRulesConfig，
+    // 所以 rest 里已自动带上这两个新字段，不需要额外拼装。
     const { payLockDays: _payLockDays, ...rest } = withdrawRulesForm
     await store.saveWithdrawRulesConfig({ ...rest, feeRate: withdrawRulesForm.feeRate / 100 })
     ElMessage.success('提现规则已保存')
@@ -325,6 +344,23 @@ onMounted(reload)
           <el-form-item label="每日次数上限" prop="dailyCountLimit"><el-input-number v-model="withdrawRulesForm.dailyCountLimit" :min="1" :precision="0" controls-position="right" class="rule-number" /></el-form-item>
           <el-form-item label="最大并行笔数" prop="maxConcurrent"><el-input-number v-model="withdrawRulesForm.maxConcurrent" :min="1" :precision="0" controls-position="right" class="rule-number" /></el-form-item>
           <el-form-item label="冻结总额上限" prop="frozenLimit"><el-input-number v-model="withdrawRulesForm.frozenLimit" :min="0" :precision="2" controls-position="right" class="rule-number" /></el-form-item>
+          <!-- ★2026-09-27 新增：两种收款方式**各自独立**的单笔限额（微信侧额度 / 平台风控口径），0 = 不限 -->
+          <el-form-item label="微信零菜单笔限额" prop="wechatSingleLimit">
+            <div class="rate-control">
+              <el-input-number v-model="withdrawRulesForm.wechatSingleLimit" :min="0" :precision="2" controls-position="right" class="rule-number" />
+              <span class="rate-suffix">元</span>
+            </div>
+          </el-form-item>
+          <el-form-item label="银行卡单笔限额" prop="bankCardSingleLimit">
+            <div class="rate-control">
+              <el-input-number v-model="withdrawRulesForm.bankCardSingleLimit" :min="0" :precision="2" controls-position="right" class="rule-number" />
+              <span class="rate-suffix">元</span>
+            </div>
+          </el-form-item>
+          <!-- 两项限额共用一句说明，避免每个输入框下重复挂提示 -->
+          <el-form-item label="单笔限额说明" class="rule-remark-item">
+            <span class="readonly-value">0 = 不限；两项均需 ≤ 每日累计上限。微信零钱是微信侧额度（「商家转账」默认单笔 200 元，微信提额后需回来同步调大）；银行卡是平台风控口径（线下人工打款，默认 0 = 不限）。</span>
+          </el-form-item>
           <el-form-item label="手续费率" prop="feeRate"><div class="rate-control"><el-input-number v-model="withdrawRulesForm.feeRate" :min="0" :max="100" :precision="2" :step="0.1" controls-position="right" class="rule-number" /><span class="rate-suffix">%</span></div></el-form-item>
           <el-form-item label="测试用户 ID"><el-input-number v-model="withdrawRulesForm.testUserId" :min="1" :precision="0" controls-position="right" class="rule-number" placeholder="可选" /></el-form-item>
           <el-form-item label="测试用户跳过提现锁"><el-switch v-model="withdrawRulesForm.testSkipLock" active-text="开启" inactive-text="关闭" /></el-form-item>

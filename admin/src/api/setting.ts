@@ -296,6 +296,11 @@ function normalizeWithdrawRules(value: Partial<WithdrawRulesConfig> | null): Wit
     testSkipLock: row.testSkipLock === true,
     maxConcurrent: toFiniteNumber(row.maxConcurrent),
     frozenLimit: toFiniteNumber(row.frozenLimit),
+    // ★2026-09-27 新增单笔限额：微信侧额度 / 平台风控口径。
+    // ⚠️ 这里**只能用 toFiniteNumber 透传**：`0` 是合法值（表示"不限"），
+    // 一旦写成 `|| 默认值` 就会把后台特意关掉限额的 0 变成 200，属于静默改配置。
+    wechatSingleLimit: toFiniteNumber(row.wechatSingleLimit),
+    bankCardSingleLimit: toFiniteNumber(row.bankCardSingleLimit),
     remark: String(row.remark ?? ''),
     // 只读字段：后端 VO 有、保存 DTO 没有（缺省 0 表示后端未返回）
     payLockDays: toFiniteNumber(row.payLockDays),
