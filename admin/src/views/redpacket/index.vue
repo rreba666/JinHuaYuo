@@ -2,13 +2,13 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Refresh, Search, Setting, View } from '@element-plus/icons-vue'
-import { getDividendRecordTestResult, getDividendSlotTestResult, getWalletTestResult } from '@/api/profit'
+import { cancelPoolHoldPlan, createPoolHoldPlan, getDividendRecordTestResult, getDividendSlotTestResult, getPoolHoldPlans, getPoolHoldPreview, getWalletTestResult, holdPool, releasePool } from '@/api/profit'
 import { useProfitStore } from '@/stores/profit'
 import { normalizeLegacyWording } from '@/utils/wording'
 import DividendPacketPanel from '@/components/profit/DividendPacketPanel.vue'
 import EmergencyPoolPanel from '@/components/profit/EmergencyPoolPanel.vue'
 import OldLayerPanel from '@/components/profit/OldLayerPanel.vue'
-import type { DividendRecordTestResult, DividendSlotTestResult, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
+import type { HoldPreview, DividendPoolHoldPlan, DividendRecordTestResult, DividendSlotTestResult, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
 
 /**
  * 红包管理页（原「推广资金」拆分而来，仅超级管理员可见）。
@@ -112,6 +112,171 @@ async function submitPoolAdjust(): Promise<void> { if (!(await adjustPoolFormRef
 /** 打开每日红包调整弹窗。 */
 function openDailyAdjust(detail: SevenDayBonusDetail): void { dailyId.value = detail.id; Object.assign(adjustDailyForm, { dailyAmount: detail.dailyAmount, dailyUserCount: detail.dailyUserCount }); adjustDailyVisible.value = true }
 /** 提交每日红包调整。 */
+// ===== 暂停发放 / 释放（2026-09-28 后端新增；放假期间让某周红包一分不发、节后顺延补发）=====
+const holdPlanVisible = ref(false)
+const holdPlanSubmitting = ref(false)
+const holdPlans = ref<DividendPoolHoldPlan[]>([])
+const holdPlanForm = reactive({ poolStartDate: '', reason: '' })
+const holdPreview = ref<HoldPreview | null>(null)
+const holdPreviewLoading = ref(false)
+const releaseVisible = ref(false)
+const releaseSubmitting = ref(false)
+const releaseForm = reactive({ poolId: '', releaseDate: '' })
+
+/** 释放目标池（用于弹窗里显示"未发金额"等上下文）。 */
+const releaseTarget = computed(() => store.sevenDayPools.find((pool) => pool.id === releaseForm.poolId) || null)
+
+/** 格式化日期为 yyyy-MM-dd。 */
+function formatDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/**
+ * 预约的默认目标周：**本周一**；若该周的池**已经建出**，则顺延一周。
+ * ⚠️ 预约只能停「**还没建出**」的池（建池那一刻才自动生效）——已建出的池要用「立即暂停」。
+ */
+function defaultHoldWeekStart(): string {
+  const now = new Date()
+  const weekday = now.getDay() || 7 // 周一=1 … 周日=7
+  const monday = new Date(now)
+  monday.setDate(now.getDate() - (weekday - 1))
+  let week = formatDate(monday)
+  if (store.sevenDayPools.some((pool) => pool.startDate === week)) {
+    monday.setDate(monday.getDate() + 7)
+    week = formatDate(monday)
+  }
+  return week
+}
+
+/** 暂停状态文案（⚠️ 用户可见，禁用旧词）。 */
+function holdStatusText(pool: SevenDayBonusPool): string {
+  if (pool.holdStatus === 'HELD' || pool.held) return '已暂停发放'
+  if (pool.holdStatus === 'RELEASED') return '已释放补发'
+  return '正常发放'
+}
+
+/** 暂停状态标签类型。 */
+function holdStatusType(pool: SevenDayBonusPool): 'success' | 'warning' | 'info' {
+  if (pool.holdStatus === 'HELD' || pool.held) return 'warning'
+  if (pool.holdStatus === 'RELEASED') return 'info'
+  return 'success'
+}
+
+/** 该池是否处于「已暂停待释放」（只有这种状态才能点释放）。 */
+function isPoolHeld(pool: SevenDayBonusPool): boolean {
+  return pool.holdStatus === 'HELD' || pool.held === true
+}
+
+/** 该池是否已经开始发放（前端粗判，最终以后端 hold-preview 的 blockers 为准）。 */
+function isPoolStarted(pool: SevenDayBonusPool): boolean {
+  return Number(pool.totalAmount || 0) > 0 && pool.settleTime !== '' && !isPoolHeld(pool)
+}
+
+/** 加载预约记录列表。 */
+async function loadHoldPlans(): Promise<void> {
+  try {
+    holdPlans.value = await getPoolHoldPlans()
+  } catch (error) {
+    // 预约列表只是辅助信息，失败不打断主流程
+    console.warn('[redpacket] 预约列表加载失败：', error)
+    holdPlans.value = []
+  }
+}
+
+/** 打开「预约暂停」弹窗。 */
+function openHoldPlan(): void {
+  holdPlanForm.poolStartDate = defaultHoldWeekStart()
+  holdPlanForm.reason = ''
+  holdPreview.value = null
+  holdPlanVisible.value = true
+}
+
+/** 预约前先调 hold-preview：拿未发金额、受影响批次与阻断原因（blockers）。 */
+async function previewHoldPlan(): Promise<void> {
+  if (!holdPlanForm.poolStartDate) return
+  holdPreviewLoading.value = true
+  try {
+    holdPreview.value = await getPoolHoldPreview({ poolStartDate: holdPlanForm.poolStartDate })
+  } catch (error) {
+    showError(error, '暂停预览失败')
+    holdPreview.value = null
+  } finally {
+    holdPreviewLoading.value = false
+  }
+}
+
+/** 提交预约暂停。 */
+async function submitHoldPlan(): Promise<void> {
+  if (!holdPlanForm.poolStartDate) { ElMessage.warning('请填写成交周起始日（周一）'); return }
+  holdPlanSubmitting.value = true
+  try {
+    await createPoolHoldPlan({ poolStartDate: holdPlanForm.poolStartDate, reason: holdPlanForm.reason || undefined })
+    ElMessage.success('预约已提交：该周建池时将自动暂停发放')
+    holdPlanVisible.value = false
+    await loadHoldPlans()
+    await load()
+  } catch (error) {
+    showError(error, '预约暂停失败')
+  } finally {
+    holdPlanSubmitting.value = false
+  }
+}
+
+/** 取消预约。 */
+async function cancelPlan(plan: DividendPoolHoldPlan): Promise<void> {
+  try {
+    await ElMessageBox.confirm(`确认取消「${plan.poolStartDate} 当周」的暂停预约？`, '取消预约', { type: 'warning' })
+  } catch { return }
+  try {
+    await cancelPoolHoldPlan(plan.id)
+    ElMessage.success('预约已取消')
+    await loadHoldPlans()
+  } catch (error) {
+    showError(error, '取消预约失败')
+  }
+}
+
+/** 立即暂停（用于**已经建出**的池；要求该池一分未发，否则后端拒绝）。 */
+async function applyHoldNow(pool: SevenDayBonusPool): Promise<void> {
+  try {
+    const reason = await ElMessageBox.prompt(
+      `确认立即暂停「${pool.startDate} 至 ${pool.endDate}」这一周的红包发放？暂停后该周一分不发、金额冻结在池内，需手动「释放发放」。`,
+      '立即暂停发放',
+      { type: 'warning', inputPlaceholder: '暂停原因（选填）', confirmButtonText: '确认暂停', cancelButtonText: '取消' },
+    )
+    await holdPool(pool.id, { reason: reason.value || undefined })
+    ElMessage.success('已暂停发放')
+    await load()
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    showError(error, '暂停发放失败')
+  }
+}
+
+/** 打开「释放发放」弹窗（默认首日 = 今天）。 */
+function openRelease(pool: SevenDayBonusPool): void {
+  releaseForm.poolId = pool.id
+  releaseForm.releaseDate = formatDate(new Date())
+  releaseVisible.value = true
+}
+
+/** 提交释放发放：7 个批次重排为该日 +0…+6 逐日补发。 */
+async function submitRelease(): Promise<void> {
+  releaseSubmitting.value = true
+  try {
+    await releasePool(releaseForm.poolId, { releaseDate: releaseForm.releaseDate || undefined })
+    ElMessage.success('已释放：7 个批次将从所选首日起逐日补发')
+    releaseVisible.value = false
+    await load()
+  } catch (error) {
+    showError(error, '释放发放失败')
+  } finally {
+    releaseSubmitting.value = false
+  }
+}
+
+/** 页面挂载后补拉预约记录（失败静默）。 */
+onMounted(() => { void loadHoldPlans() })
 async function submitDailyAdjust(): Promise<void> { if (!(await adjustDailyFormRef.value?.validate().catch(() => false))) return; try { await store.adjustDetail(dailyId.value, { ...adjustDailyForm }); adjustDailyVisible.value = false; ElMessage.success('每日红包已调整') } catch (error) { showError(error, '每日红包调整失败') } }
 
 /** 查询后台「用户红包资格」槽位（按 userId 过滤，留空查全部；只读）。 */
@@ -187,8 +352,8 @@ onMounted(() => { void load(); void loadContributions() })
         </div>
       </el-tab-pane>
       <el-tab-pane label="周红包" name="pools">
-        <el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>周红包</strong><span class="toolbar-count">按周期管理红包</span></div><div class="toolbar-actions"><el-button :loading="store.loading" :icon="Refresh" @click="load">刷新</el-button></div></div>
-          <el-table :data="store.sevenDayPools" v-loading="store.loading" border stripe><el-table-column prop="id" label="红包 ID" width="110" /><el-table-column label="周期" min-width="200"><template #default="{ row }">{{ row.startDate }} 至 {{ row.endDate }}</template></el-table-column><el-table-column label="总金额" width="140"><template #default="{ row }">{{ money(row.totalAmount) }}</template></el-table-column><el-table-column prop="settledUserCount" label="已结算人数" width="120" /><el-table-column prop="settleTime" label="结算时间" min-width="180" /><el-table-column label="操作" width="160" fixed="right"><template #default="{ row }"><div class="operator-actions"><el-button size="small" @click="showPoolDetails(row)"><el-icon><View /></el-icon>明细</el-button><el-button size="small" @click="openPoolAdjust(row)"><el-icon><Setting /></el-icon>调整</el-button></div></template></el-table-column></el-table>
+        <el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>周红包</strong><span class="toolbar-count">按周期管理红包</span></div><div class="toolbar-actions"><el-button type="warning" plain :icon="Setting" @click="openHoldPlan">预约暂停下一池</el-button><el-button :loading="store.loading" :icon="Refresh" @click="load">刷新</el-button></div></div>
+          <el-table :data="store.sevenDayPools" v-loading="store.loading" border stripe><el-table-column prop="id" label="红包 ID" width="110" /><el-table-column label="周期" min-width="200"><template #default="{ row }">{{ row.startDate }} 至 {{ row.endDate }}</template></el-table-column><el-table-column label="总金额" width="140"><template #default="{ row }">{{ money(row.totalAmount) }}</template></el-table-column><el-table-column prop="settledUserCount" label="已结算人数" width="120" /><el-table-column prop="settleTime" label="结算时间" min-width="180" /><el-table-column label="发放状态" width="130"><template #default="{ row }"><el-tag :type="holdStatusType(row)" size="small">{{ holdStatusText(row) }}</el-tag></template></el-table-column><el-table-column label="未发金额（暂停快照）" width="180"><template #default="{ row }">{{ row.heldAmount == null ? '—' : money(row.heldAmount) }}<div v-if="row.holdReason" class="hold-reason">{{ row.holdReason }}</div></template></el-table-column><el-table-column label="操作" width="290" fixed="right"><template #default="{ row }"><div class="operator-actions"><el-button size="small" @click="showPoolDetails(row)"><el-icon><View /></el-icon>明细</el-button><el-button size="small" @click="openPoolAdjust(row)"><el-icon><Setting /></el-icon>调整</el-button><el-button v-if="isPoolHeld(row)" size="small" type="warning" @click="openRelease(row)">释放发放</el-button><el-button v-else-if="!isPoolStarted(row)" size="small" type="danger" plain @click="applyHoldNow(row)">暂停</el-button></div></template></el-table-column></el-table>
         </el-card>
         <el-card shadow="never" class="content-card"><div class="toolbar"><strong>未结算每日红包</strong></div><el-table :data="store.unsettledDaily" v-loading="store.loading" border stripe><el-table-column prop="id" label="明细 ID" width="110" /><el-table-column prop="poolDate" label="日期" width="160" /><el-table-column label="每日金额" width="140"><template #default="{ row }">{{ money(row.dailyAmount) }}</template></el-table-column><el-table-column prop="dailyUserCount" label="参与人数" width="100" /><el-table-column label="累计人数" width="100"><template #default="{ row }">{{ row.cumulativeUserCount ?? row.dailyUserCount }}</template></el-table-column><el-table-column label="操作" width="110"><template #default="{ row }"><el-button size="small" @click="openDailyAdjust(row)"><el-icon><Setting /></el-icon>调整</el-button></template></el-table-column></el-table></el-card>
         <el-card shadow="never" class="content-card"><div class="toolbar"><strong>已结算每日红包</strong></div><el-table :data="store.settledDaily" v-loading="store.loading" border stripe><el-table-column prop="id" label="明细 ID" width="110" /><el-table-column prop="poolId" label="父红包 ID" width="120" /><el-table-column prop="poolDate" label="日期" width="160" /><el-table-column label="每日金额" width="140"><template #default="{ row }">{{ money(row.dailyAmount) }}</template></el-table-column><el-table-column label="实发金额" width="140"><template #default="{ row }">{{ row.settledAmount == null ? '--' : money(row.settledAmount) }}</template></el-table-column><el-table-column prop="dailyUserCount" label="参与人数" width="100" /><el-table-column label="累计人数" width="100"><template #default="{ row }">{{ row.cumulativeUserCount ?? row.dailyUserCount }}</template></el-table-column><el-table-column prop="settlementVersion" label="版本" width="90" /><el-table-column label="操作" width="110"><template #default="{ row }"><el-button size="small" @click="viewDailyUsers(row)"><el-icon><View /></el-icon>累计用户</el-button></template></el-table-column></el-table></el-card>
@@ -224,11 +389,73 @@ onMounted(() => { void load(); void loadContributions() })
     <el-dialog v-model="poolDetailVisible" title="每日红包明细" width="760px" append-to-body><el-table :data="store.poolDetails" border><el-table-column prop="poolDate" label="日期" /><el-table-column label="每日金额"><template #default="{ row }">{{ money(row.dailyAmount) }}</template></el-table-column><el-table-column prop="dailyUserCount" label="用户数" /><el-table-column prop="updateTime" label="更新时间" /></el-table></el-dialog>
     <el-dialog v-model="adjustPoolVisible" title="调整 周红包" width="460px" append-to-body><el-form ref="adjustPoolFormRef" :model="adjustPoolForm" :rules="poolFormRules" label-width="100px"><el-form-item label="总金额" prop="totalAmount"><el-input-number v-model="adjustPoolForm.totalAmount" :min="0" :precision="2" /></el-form-item><el-form-item label="用户数" prop="userCount"><el-input-number v-model="adjustPoolForm.userCount" :min="0" /></el-form-item></el-form><template #footer><el-button @click="adjustPoolVisible = false">取消</el-button><el-button type="primary" :loading="store.actionLoading" @click="submitPoolAdjust">保存</el-button></template></el-dialog>
     <el-dialog v-model="adjustDailyVisible" title="调整每日红包" width="460px" append-to-body><el-form ref="adjustDailyFormRef" :model="adjustDailyForm" :rules="dailyFormRules" label-width="110px"><el-form-item label="每日金额" prop="dailyAmount"><el-input-number v-model="adjustDailyForm.dailyAmount" :min="0" :precision="2" /></el-form-item><el-form-item label="每日用户数" prop="dailyUserCount"><el-input-number v-model="adjustDailyForm.dailyUserCount" :min="0" /></el-form-item></el-form><template #footer><el-button @click="adjustDailyVisible = false">取消</el-button><el-button type="primary" :loading="store.actionLoading" @click="submitDailyAdjust">保存</el-button></template></el-dialog>
-    <el-dialog v-model="dailyUsersDialogVisible" :title="`累计用户明细（截至 ${dailyUsersAsOfDate}）`" width="760px" append-to-body><el-table :data="store.dailyUsers" v-loading="store.loading" border><el-table-column prop="userId" label="用户 ID" width="110" /><el-table-column prop="orderNo" label="订单号" min-width="180" /><el-table-column prop="poolDate" label="支付日" width="120" /><el-table-column label="贡献金额" width="130"><template #default="{ row }">{{ money(row.amount) }}</template></el-table-column><el-table-column label="应急抽取" width="130"><template #default="{ row }">{{ row.emergencyAmount == null ? '--' : money(row.emergencyAmount) }}</template></el-table-column><el-table-column label="状态" width="110"><template #default="{ row }">{{ normalizeLegacyWording(row.statusDesc) || '—' }}</template></el-table-column></el-table></el-dialog>
+    <!-- 预约暂停（2026-09-28）：停「还没建出」的池 —— 建池那一刻自动生效，该周一分不发 -->
+<el-dialog v-model="holdPlanVisible" title="预约暂停发放" width="560px" append-to-body>
+  <el-alert type="warning" :closable="false" show-icon title="预约只对「还没建出」的周池生效" description="建池那一刻自动暂停，该周红包一分不发、金额冻结在池内；需要发放时再到列表点「释放发放」，7 个批次会从释放日逐日补发。⚠️ 必须在建池日 00:00 之前完成预约。" />
+  <el-form label-width="120px" style="margin-top: 16px">
+    <el-form-item label="成交周起始日">
+      <el-date-picker v-model="holdPlanForm.poolStartDate" type="date" value-format="YYYY-MM-DD" placeholder="必须是周一" style="width: 100%" @change="previewHoldPlan" />
+    </el-form-item>
+    <el-form-item label="暂停原因">
+      <el-input v-model="holdPlanForm.reason" maxlength="60" placeholder="如：10-05 当周放假暂停收集" />
+    </el-form-item>
+  </el-form>
+  <div v-loading="holdPreviewLoading" class="hold-preview">
+    <template v-if="holdPreview">
+      <div class="hold-preview-row"><span>能否暂停</span><strong :class="holdPreview.canHold ? 'ok' : 'bad'">{{ holdPreview.canHold ? '可以' : '不可暂停' }}</strong></div>
+      <div class="hold-preview-row"><span>未发金额快照</span><strong>{{ holdPreview.heldAmount == null ? '—' : money(holdPreview.heldAmount) }}</strong></div>
+      <div v-if="holdPreview.blockers && holdPreview.blockers.length" class="hold-blockers">
+        <div v-for="(b, i) in holdPreview.blockers" :key="i" class="hold-blocker">{{ b }}</div>
+      </div>
+    </template>
+    <div v-else class="hold-preview-empty">填写成交周起始日后会自动预演（查看未发金额与阻断原因）</div>
+  </div>
+  <template #footer>
+    <el-button @click="holdPlanVisible = false">取消</el-button>
+    <el-button type="primary" :loading="holdPlanSubmitting" :disabled="holdPreview ? holdPreview.canHold === false : false" @click="submitHoldPlan">确认预约</el-button>
+  </template>
+</el-dialog>
+
+<!-- 释放发放（2026-09-28）：批次重排为 releaseDate + 0..+6 逐日补发 -->
+<el-dialog v-model="releaseVisible" title="释放发放" width="520px" append-to-body>
+  <el-alert type="info" :closable="false" show-icon title="释放后 7 个批次将从所选首日起逐日补发" :description="releaseTarget ? `当前暂停池：${releaseTarget.startDate} 至 ${releaseTarget.endDate}；未发金额快照 ${releaseTarget.heldAmount == null ? '—' : money(releaseTarget.heldAmount)}` : ''" />
+  <el-form label-width="120px" style="margin-top: 16px">
+    <el-form-item label="补发首日">
+      <el-date-picker v-model="releaseForm.releaseDate" type="date" value-format="YYYY-MM-DD" placeholder="默认今天" style="width: 100%" />
+    </el-form-item>
+  </el-form>
+  <template #footer>
+    <el-button @click="releaseVisible = false">取消</el-button>
+    <el-button type="warning" :loading="releaseSubmitting" @click="submitRelease">确认释放</el-button>
+  </template>
+</el-dialog>
+
+<!-- 预约中的暂停（待生效）：让运营一眼看到"已排上但还没生效" -->
+<div v-if="holdPlans.length" class="hold-plans">
+  <div class="hold-plans-title">预约暂停（待生效）</div>
+  <el-table :data="holdPlans" size="small" border>
+    <el-table-column prop="poolStartDate" label="成交周起始日" width="150" />
+    <el-table-column prop="reason" label="原因" min-width="180" show-overflow-tooltip />
+    <el-table-column prop="status" label="状态" width="110" />
+    <el-table-column label="操作" width="110"><template #default="{ row }"><el-button size="small" text type="danger" @click="cancelPlan(row)">取消</el-button></template></el-table-column>
+  </el-table>
+</div>
+<el-dialog v-model="dailyUsersDialogVisible" :title="`累计用户明细（截至 ${dailyUsersAsOfDate}）`" width="760px" append-to-body><el-table :data="store.dailyUsers" v-loading="store.loading" border><el-table-column prop="userId" label="用户 ID" width="110" /><el-table-column prop="orderNo" label="订单号" min-width="180" /><el-table-column prop="poolDate" label="支付日" width="120" /><el-table-column label="贡献金额" width="130"><template #default="{ row }">{{ money(row.amount) }}</template></el-table-column><el-table-column label="应急抽取" width="130"><template #default="{ row }">{{ row.emergencyAmount == null ? '--' : money(row.emergencyAmount) }}</template></el-table-column><el-table-column label="状态" width="110"><template #default="{ row }">{{ normalizeLegacyWording(row.statusDesc) || '—' }}</template></el-table-column></el-table></el-dialog>
   </section>
 </template>
 
 <style scoped>
+/* ===== 暂停发放 / 释放（2026-09-28）===== */
+.hold-reason { margin-top: 2px; color: #909399; font-size: 12px; }
+.hold-preview { margin-top: 8px; padding: 12px; border-radius: 6px; background: #f7f8fa; min-height: 68px; }
+.hold-preview-row { display: flex; justify-content: space-between; padding: 3px 0; color: #606266; font-size: 13px; }
+.hold-preview-row .ok { color: #67c23a; }
+.hold-preview-row .bad { color: #f56c6c; }
+.hold-blockers { margin-top: 8px; }
+.hold-blocker { padding: 6px 8px; margin-top: 4px; border-left: 3px solid #e6a23c; background: #fdf6ec; color: #b88230; font-size: 12px; line-height: 18px; }
+.hold-preview-empty { color: #909399; font-size: 12px; line-height: 20px; }
+.hold-plans { margin-top: 16px; padding: 12px 16px; border: 1px solid #f0e0c0; border-radius: 6px; background: #fffbf0; }
+.hold-plans-title { margin-bottom: 8px; color: #b88230; font-size: 13px; font-weight: 600; }
 .module-tabs { min-width: 0; }
 .module-tabs :deep(.el-tabs__content) { overflow: visible; }
 .operator-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
