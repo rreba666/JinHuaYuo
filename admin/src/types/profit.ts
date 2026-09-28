@@ -104,6 +104,25 @@ export interface SevenDayBonusPool {
   settleTime: string
   createTime: string
   updateTime: string
+  /**
+   * 暂停发放状态（2026-09-28 后端新增）：
+   * NONE=正常 / HELD=已暂停（该周一分不发、钱冻结在池里）/ RELEASED=已释放。
+   */
+  holdStatus?: string
+  /** 暂停时刻。 */
+  heldAt?: string | null
+  /** 暂停操作人（管理员 ID）。 */
+  heldBy?: number | null
+  /** 暂停原因（如「10-05 当周暂停收集」）。 */
+  holdReason?: string | null
+  /** 暂停时的未发金额快照（元）—— 对账用：与实际补发合计比对。 */
+  heldAmount?: number | null
+  /** 释放时刻。 */
+  releasedAt?: string | null
+  /** 释放操作人（管理员 ID）。 */
+  releasedBy?: number | null
+  /** 派生布尔：是否处于暂停中（后端下发，等价于 holdStatus === HELD）。 */
+  held?: boolean
 }
 
 export interface SevenDayBonusDetail {
@@ -423,4 +442,40 @@ export interface DividendRecordTestResult {
   page: number
   pageSize: number
   list: DividendRecordTestItem[]
+}
+
+
+/** 「暂停发放」预演结果（`GET /api/admin/profit/pool/hold-preview`）。 */
+export interface HoldPreview {
+  /** 当前暂停状态：NONE / HELD / RELEASED。 */
+  holdStatus?: string
+  /** 是否已暂停。 */
+  held?: boolean
+  /** **能否暂停**：false 时看 `blockers` 的原因。 */
+  canHold?: boolean
+  /** 暂停时的未发金额快照（元）。 */
+  heldAmount?: number
+  /** 受影响批次数（暂停会挡住几个批次的发放）。 */
+  affectedBatchCount?: number
+  /**
+   * 阻断原因（不可暂停时才有内容）。
+   * 典型：该池已开始发放 / 历史池不支持 / 已处于暂停状态。
+   */
+  blockers?: string[]
+}
+
+/** 预约暂停记录（`DividendPoolHoldPlan`）。 */
+export interface DividendPoolHoldPlan {
+  id: string
+  /** 成交周起始日（周一，`yyyy-MM-dd`）。 */
+  poolStartDate: string
+  /** 预约状态。 */
+  status?: string
+  /** 预约原因。 */
+  reason?: string | null
+  /** 创建人（管理员 ID）。 */
+  createdBy?: number | null
+  /** 生效时刻（建池时自动应用）。 */
+  appliedAt?: string | null
+  createTime?: string
 }

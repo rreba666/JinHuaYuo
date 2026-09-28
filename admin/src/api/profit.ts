@@ -1,5 +1,5 @@
 import { request } from './request'
-import type { AdminDividendSlot, BonusInjectDTO, DailyContributionUser, DividendContribution, DividendContributionPage, DividendPacket, DividendPacketDetail, DividendRecordTestItem, DividendRecordTestResult, DividendSlotTestItem, DividendSlotTestResult, LeaderboardPeriod, OldLayerOneShotCommitDTO, OldLayerOneShotVO, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, ProfitLeaderboard, ProfitLeaderboardRow, ProfitResponse, PromotionBinding, PromotionBindingPage, PromotionBindingQuery, PromotionPage, PendingPromotionRecord, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
+import type { HoldPreview, DividendPoolHoldPlan, AdminDividendSlot, BonusInjectDTO, DailyContributionUser, DividendContribution, DividendContributionPage, DividendPacket, DividendPacketDetail, DividendRecordTestItem, DividendRecordTestResult, DividendSlotTestItem, DividendSlotTestResult, LeaderboardPeriod, OldLayerOneShotCommitDTO, OldLayerOneShotVO, ProfitAdjustDailyDTO, ProfitAdjustPoolDTO, ProfitLeaderboard, ProfitLeaderboardRow, ProfitResponse, PromotionBinding, PromotionBindingPage, PromotionBindingQuery, PromotionPage, PendingPromotionRecord, SevenDayBonusDetail, SevenDayBonusPool, UserDividendLimit, WalletTestResult } from '@/types/profit'
 
 function unwrap<T>(response: { data: ProfitResponse<T> }, fallback: string): T {
   const result = response.data
@@ -387,4 +387,51 @@ export async function getDividendSlotTestResult(token: string): Promise<Dividend
 
 export async function getDividendRecordTestResult(token: string): Promise<DividendRecordTestResult> {
   return normalizeRecordTest(await getUserTestData<unknown>(token, '/api/wallet/dividend-records', { page: 1, pageSize: 20 }))
+}
+
+
+// ===== 暂停发放 / 释放（2026-09-28 后端新增，权限：超管 / 财务）=====
+// 场景：放假等原因需要让某一周「红包一分不发、钱冻结在池里」，节后点「释放」按 releaseDate + 0..+6 逐日补发。
+// ⚠️ 关键口径：预约必须在**建池之前**完成（建池那一刻自动生效），晚了只能对已建出的池用「立即暂停」。
+
+/**
+ * 预览「暂停发放」（只读预演）：返回能否暂停、未发金额快照、受影响批次数与阻断原因。
+ * 两个入参**二选一**：`poolId`（池已建出时）/ `poolStartDate`（成交周**起始日**，必须是周一）。
+ */
+export async function getPoolHoldPreview(params: { poolId?: string; poolStartDate?: string }): Promise<HoldPreview> {
+  const query: string[] = []
+  if (params.poolId) query.push(`poolId=${encodeURIComponent(params.poolId)}`)
+  if (params.poolStartDate) query.push(`poolStartDate=${encodeURIComponent(params.poolStartDate)}`)
+  const data = unwrap(await request.get<ProfitResponse<unknown>>(`/api/admin/profit/pool/hold-preview?${query.join('&')}`), '暂停预览失败')
+  return (data || {}) as HoldPreview
+}
+
+/** 预约暂停某一周（池**还没建出**时用；建池那一刻自动置 HELD ⇒ 该周一分不发）。 */
+export async function createPoolHoldPlan(payload: { poolStartDate: string; reason?: string }): Promise<void> {
+  unwrap(await request.post<ProfitResponse<null>>('/api/admin/profit/pool/hold-plan', payload), '预约暂停失败')
+}
+
+/** 取消预约暂停（尚未生效的预约）。 */
+export async function cancelPoolHoldPlan(planId: string): Promise<void> {
+  unwrap(await request.post<ProfitResponse<null>>(`/api/admin/profit/pool/hold-plan/${encodeURIComponent(planId)}/cancel`), '取消预约失败')
+}
+
+/** 预约暂停记录列表。 */
+export async function getPoolHoldPlans(): Promise<DividendPoolHoldPlan[]> {
+  const data = unwrap(await request.get<ProfitResponse<unknown>>('/api/admin/profit/pool/hold-plans'), '预约列表查询失败')
+  const list = Array.isArray(data) ? data : ((data as { list?: unknown[] } | null)?.list || [])
+  return list.map((row) => {
+    const item = (row || {}) as DividendPoolHoldPlan
+    return { ...item, id: String(item.id ?? '') }
+  })
+}
+
+/** 立即暂停（池**已建出**且一分未发时用；已开始发放的池会被后端拒绝）。 */
+export async function holdPool(poolId: string, payload: { reason?: string } = {}): Promise<void> {
+  unwrap(await request.post<ProfitResponse<null>>(`/api/admin/profit/pool/${encodeURIComponent(poolId)}/hold`, payload), '暂停发放失败')
+}
+
+/** 释放发放：7 个批次重排为 `releaseDate + 0..+6` 逐日补发；不传 `releaseDate` = 今天。 */
+export async function releasePool(poolId: string, payload: { releaseDate?: string } = {}): Promise<void> {
+  unwrap(await request.post<ProfitResponse<null>>(`/api/admin/profit/pool/${encodeURIComponent(poolId)}/release`, payload), '释放发放失败')
 }
