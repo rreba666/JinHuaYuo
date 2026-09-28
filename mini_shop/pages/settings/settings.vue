@@ -37,7 +37,12 @@ async function loadProfile(): Promise<void> {
   try {
     user.value = await getUserProfile()
     nicknameInput.value = user.value?.nickname || ''
-  } catch { user.value = null }
+  } catch (error) {
+    // ⚠️ 不要静默吞掉资料请求失败（2026-09-28）：失败仍按游客渲染，但**控制台必须留痕**，
+    // 否则「显示默认头像/昵称」与「字段没返回」现象完全一样，排查只能靠猜。
+    console.warn('[settings] 用户资料加载失败，已按游客渲染：', error)
+    user.value = null
+  }
 }
 
 /** 加载实名认证状态。 */

@@ -99,7 +99,11 @@ onLoad(async (options) => {
   // 商品详情是公开接口，先启动商品请求，避免用户资料接口阻塞游客首屏。
   const productRequest = getProductDetail(String(options.id))
   const profileRequest = isLoggedIn()
-    ? getUserProfile().catch(() => null)
+    ? getUserProfile().catch((error) => {
+      // ⚠️ 同上：资料失败不阻断商品详情（按游客渲染），但必须留痕（2026-09-28）
+      console.warn('[goods-detail] 用户资料加载失败，已按游客渲染：', error)
+      return null
+    })
     : Promise.resolve(null)
   try {
     product.value = await productRequest

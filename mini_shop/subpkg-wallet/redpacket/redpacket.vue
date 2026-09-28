@@ -274,7 +274,13 @@ async function ensureUser(): Promise<void> {
     loginGuideVisible.value = true
     return
   }
-  try { user.value = await getUserProfile() } catch { user.value = null }
+  try {
+    user.value = await getUserProfile()
+  } catch (error) {
+    // ⚠️ 同上：失败仍按游客渲染，但必须留痕（2026-09-28），否则无法区分「显示默认」与「字段没返回」
+    console.warn('[redpacket] 用户资料加载失败，已按游客渲染：', error)
+    user.value = null
+  }
 }
 
 onMounted(() => {
