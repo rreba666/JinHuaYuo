@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { resolveMediaUrl } from '@/utils/media'
 import { onShow, onUnload } from '@dcloudio/uni-app'
 import { getRealnameStatus, type RealnameStatus } from '@/api/realname'
 import { applyTransferAuth, getTransferAuthStatus, type TransferAuthState } from '@/api/transfer-auth'
@@ -858,7 +859,7 @@ onUnload(() => {
             </button>
           </view>
           <view v-if="recipient" class="recipient-card">
-            <image v-if="recipient.avatarUrl" class="recipient-avatar" :src="recipient.avatarUrl" mode="aspectFill" />
+            <image v-if="recipient.avatarUrl" class="recipient-avatar" :src="resolveMediaUrl(recipient.avatarUrl)" mode="aspectFill" />
             <view v-else class="recipient-avatar placeholder" />
             <view class="recipient-info">
               <text class="recipient-name">{{ recipient.nickname }}</text>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { resolveMediaUrl } from '@/utils/media'
 import { onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import { getPromotionLeaderboard, type LeaderboardPeriod, type LeaderboardRow, type PromotionLeaderboard } from '@/api/promotion'
 import { isLoggedIn } from '@/utils/auth'
@@ -221,7 +222,7 @@ onMounted(() => {
         <template v-for="(item, index) in podium" :key="index">
           <view v-if="item" class="podium-avatar" :class="'podium-avatar-' + (index + 1)">
             <!-- 没上传头像就不渲染图片，仅留容器灰底（不做默认头像兜底） -->
-            <image v-if="item.avatarUrl" class="podium-avatar-img" :src="item.avatarUrl" mode="aspectFill" />
+            <image v-if="item.avatarUrl" class="podium-avatar-img" :src="resolveMediaUrl(item.avatarUrl)" mode="aspectFill" />
           </view>
           <image v-if="item" class="podium-badge" :class="'podium-badge-' + (index + 1)" :src="badgeSrc(index)" mode="aspectFit" />
         </template>
@@ -238,7 +239,7 @@ onMounted(() => {
           <view v-for="row in rows" :key="row.promoterUserId + '-' + row.rank" class="list-row" :class="{ me: row.isMe }">
             <view class="row-left">
               <text class="row-rank">{{ row.rank }}</text>
-              <image v-if="row.avatarUrl" class="row-avatar" :src="row.avatarUrl" mode="aspectFill" />
+              <image v-if="row.avatarUrl" class="row-avatar" :src="resolveMediaUrl(row.avatarUrl)" mode="aspectFill" />
               <view v-else class="row-avatar" />
               <text class="row-name">{{ displayName(row) }}</text>
               <text v-if="row.isMe" class="row-me">我</text>
