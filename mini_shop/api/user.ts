@@ -254,6 +254,28 @@ export interface DividendSlotList {
   availablePurchase: number
   totalPurchases: number
   slots: DividendSlot[]
+  /**
+   * **本周红包暂停发放提示**（2026-09-28 后端新增）。
+   * ⚠️ **非暂停周为 `null`**（缺失同理）⇒ 不显示提示条。
+   */
+  pauseNotice?: PauseNotice | null
+}
+
+/**
+ * 暂停发放提示（后端 `PauseNotice`）。
+ *
+ * 用途：运营因**放假**等原因预约暂停某一周的红包发放时，C 端据此显示一条通知，
+ * 让用户知道「本周红包暂停、节后顺延补发」，避免误以为漏发。
+ */
+export interface PauseNotice {
+  /** 暂停的池 ID。 */
+  poolId: number
+  /** 暂停池的成交周起始日（`yyyy-MM-dd`）。 */
+  weekStart: string
+  /** 暂停池的成交周结束日（`yyyy-MM-dd`）。 */
+  weekEnd: string
+  /** 展示文案（后端可配，例：`本周红包暂停发放，将在恢复后按原计划补发`）。 */
+  text: string
 }
 
 /** 查询红包槽位列表（红包来源）。 */

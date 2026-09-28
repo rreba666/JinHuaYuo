@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { convertWallet, getDividendRecords, getSpecialSubsidies, getWalletInfo, getUserProfile, getWithdrawRules, type DividendRecord, type SpecialSubsidyRecord, type UserProfile, type WalletInfo, type WithdrawRules } from '@/api/user'
+import { getDividendSlots, type PauseNotice } from '@/api/user'
 import { isLoggedIn, isRegisteredUser } from '@/utils/auth'
 import { ApiRequestError } from '@/utils/request'
 import { normalizeLegacyWording } from '@/utils/wording'
@@ -16,6 +17,20 @@ import { buildLockedRemainderHint, buildQuotaHint, pickWithdrawQuota, quotaWithd
 /** promotion 模块守卫：停用则拦截平台红包（深链防护）。 */
 const { moduleEnabled: promotionEnabled, loadModuleConfig: loadPromotionModule } = useModuleGuard('promotion')
 
+/**
+ * 本周红包暂停发放提示（2026-09-28 后端新增，来自 `/api/wallet/dividend-slots` 的 `pauseNotice`）。
+ * ⚠️ **非暂停周为 null / 缺失** ⇒ 不渲染通知条。
+ * 场景：运营因**放假**预约暂停某一周，用户看到通知后知道"红包补贴会顺延补发"，不会误以为漏发。
+ */
+const pauseNotice = ref<PauseNotice | null>(null)
+/** 通知正文：后端 `text` 可配；缺失/为空时用兜底（放假顺延口径）。⚠️ 必须过后端旧词归一化。 */
+const pauseNoticeText = computed(() => normalizeLegacyWording(pauseNotice.value?.text || '') || '本周红包补贴暂停发放，将在节后顺延补发')
+/** 暂停周的成交周区间（起~止），供通知条第二行展示；缺任一日期则不展示。 */
+const pauseNoticeRange = computed(() => {
+  const notice = pauseNotice.value
+  if (!notice?.weekStart || !notice?.weekEnd) return ''
+  return `${notice.weekStart} ~ ${notice.weekEnd}`
+})
 const menuTop = ref(0)
 const menuHeight = ref(32)
 const wallet = ref<WalletInfo | null>(null)
@@ -138,6 +153,22 @@ function formatTime(value: string | null | undefined): string {
 }
 
 /** 加载钱包与红包流水（逐笔）。 */
+/**
+ * 拉取「本周是否暂停发放」的通知。
+ * ⚠️ 失败**不置 loadError**：它只是一条提示，接口挂了不该把整页判成"红包数据加载失败"。
+ * 返回 null（非暂停周）时通知条自动消失。
+ */
+async function loadPauseNotice(): Promise<void> {
+  try {
+    const result = await getDividendSlots()
+    pauseNotice.value = result?.pauseNotice || null
+  } catch (error) {
+    // 静默降级为"无通知"，但留痕便于排查（与资料失败留痕同一口径）
+    console.warn('[redpacket] 暂停发放通知拉取失败，本轮不显示通知条：', error)
+    pauseNotice.value = null
+  }
+}
+
 async function loadData(): Promise<void> {
   loading.value = true
   loadError.value = ''
@@ -147,6 +178,9 @@ async function loadData(): Promise<void> {
 
     // 提现额度与钱包一起刷新（可转 / 锁定中，见 utils/withdraw-quota.ts）；不阻塞主数据加载
     void loadWithdrawRules()
+    // 暂停发放通知（放假顺延）：同样不阻塞主数据，失败只降级为不显示通知条
+    void loadPauseNotice()
+    // 暂停发放通知（放假顺延）：同样不阻塞主数据，失败只降级为不显示
 
     let failed = false
     try {
@@ -311,6 +345,16 @@ onShow(() => { void refreshData() })
           <text class="heading-title">平台红包</text>
         </view>
 
+        <!-- 放假通知（2026-09-28）：暂停周才出现；用户据此知道红包补贴会顺延补发。
+             ⚠️ 文案统一走 computed（小程序模板对复杂表达式支持有限）。 -->
+        <view v-if="pauseNotice" class="pause-notice">
+          <view class="pause-notice-head">
+            <text class="pause-notice-badge">放假通知</text>
+            <text class="pause-notice-range" v-if="pauseNoticeRange">{{ pauseNoticeRange }}</text>
+          </view>
+          <text class="pause-notice-text">{{ pauseNoticeText }}</text>
+        </view>
+
         <view class="packet-card">
           <image class="packet-bg" src="/static/bg/红包页背景.jpg" mode="aspectFill" />
           <text class="packet-amount">{{ formatPoints(bonusAmount) }}</text>
@@ -373,6 +417,12 @@ onShow(() => { void refreshData() })
 </template>
 
 <style>
+/* 放假通知条（红包暂停顺延）：黄色细条，**不弹窗**，仅在暂停周出现 */
+.pause-notice { margin: 4rpx 0 16rpx; padding: 18rpx 22rpx; border: 1rpx solid #ffe1a6; border-radius: 16rpx; background: #fff8e6; }
+.pause-notice-head { display: flex; align-items: center; }
+.pause-notice-badge { flex-shrink: 0; margin-right: 12rpx; padding: 2rpx 12rpx; border-radius: 8rpx; background: #ff9f0a; color: #fff; font-size: 22rpx; line-height: 32rpx; }
+.pause-notice-range { color: #b07d33; font-size: 22rpx; }
+.pause-notice-text { display: block; margin-top: 10rpx; color: #a15c00; font-size: 24rpx; line-height: 36rpx; }
 .page { height: 100vh; overflow: hidden; background: #fff; color: #000; font-family: '苹方-简', 'PingFang SC', sans-serif; font-weight: 600; }
 .nav { position: fixed; left: 0; right: 0; z-index: 20; display: flex; align-items: center; padding-left: 40rpx; background: #fff; box-sizing: border-box; }
 .back-button { width: 40rpx; height: 40rpx; }
