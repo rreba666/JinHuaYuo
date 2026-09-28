@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getUserProfile, getWalletInfo, updateUserProfile, type UserProfile, type WalletInfo } from '@/api/user'
+import { resolveMediaUrl } from '@/utils/media'
 import { clearAuth, getAuth, isLoggedIn, isRegisteredUser } from '@/utils/auth'
 import { getPromotionCode } from '@/api/promotion'
 import { getAnnouncementList, type Announcement } from '@/api/announcement'
@@ -181,7 +182,15 @@ async function loadData(): Promise<void> {
     incomeReady.value = true
     return
   }
-  try { user.value = await getUserProfile() } catch { user.value = null /* 资料失败按游客处理 */ }
+  // ⚠️ 不要静默吞掉资料接口的错误（2026-09-28）：原来失败就直接把 user 置 null ⇒
+  // 页面显示"默认头像 + 我的姓名微信名"，而**控制台没有任何线索**，
+  // 用户看到的现象与"字段没返回"完全一样，排查只能靠猜。
+  try {
+    user.value = await getUserProfile()
+  } catch (error) {
+    console.warn('[mine] 用户资料加载失败，已按游客渲染：', error)
+    user.value = null
+  }
   if (!registeredUser.value) {
     wallet.value = null
     peptideAccount.value = null
@@ -576,7 +585,8 @@ onShow(() => { void refreshData() })
         <image class="hero-bg" src="/static/bg/个人bg.jpg" mode="aspectFill" />
         <view class="profile-row">
           <view class="u-avatar" @click="handleProfileTap">
-            <image v-if="user?.avatarUrl" class="u-avatar-image" :src="user.avatarUrl" mode="aspectFill" />
+            <!-- ⚠️ 过一层 resolveMediaUrl：后端可能回相对路径（2026-09-28 修"头像一直显示默认"） -->
+            <image v-if="user?.avatarUrl" class="u-avatar-image" :src="resolveMediaUrl(user.avatarUrl)" mode="aspectFill" />
           </view>
           <view class="u-info" @click="handleProfileTap">
             <text class="u-name">{{ user?.nickname || '我的姓名微信名' }}</text>

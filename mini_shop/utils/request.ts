@@ -36,7 +36,11 @@ function readEnvValue(source: string, key: string): string {
 }
 
 const envSource = import.meta.env.MODE === 'production' ? productionEnv : developmentEnv
-const API_BASE_URL = readEnvValue(envSource, 'VITE_API_BASE_URL').replace(/\/+$/, '')
+/**
+ * 后端基础地址（去掉尾部斜杠）。
+ * ⚠️ 导出供 `utils/media.ts` 把相对媒体地址拼成绝对地址用（2026-09-28：个人资料头像不显示就是缺这层解析）。
+ */
+export const API_BASE_URL = readEnvValue(envSource, 'VITE_API_BASE_URL').replace(/\/+$/, '')
 
 /** 品牌标识（X-App-Key）：读 VITE_APP_KEY，小写 trim；未配置时默认 jinhua（与后端默认品牌一致）。 */
 const APP_KEY = (readEnvValue(envSource, 'VITE_APP_KEY') || 'jinhua').trim().toLowerCase()

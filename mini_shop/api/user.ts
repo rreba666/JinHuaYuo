@@ -1,4 +1,5 @@
 import { request } from '@/utils/request'
+import { resolveMediaUrl } from '@/utils/media'
 
 /** 后端用户身份值，兼容 OpenAPI 枚举的数字和字符串序列化。 */
 export type UserIdentity = 0 | 1 | '0' | '1'
@@ -74,7 +75,13 @@ export interface WithdrawPageResult {
 
 /** 获取当前登录用户信息 */
 export function getUserProfile(): Promise<UserProfile> {
-  return request<UserProfile>({ url: '/api/user/profile', method: 'GET' })
+  // ⚠️ 必须过一层 `resolveMediaUrl`：后端 `avatarUrl` 可能是以 `/` 开头的**相对路径**，
+  // 而上传头像时提交的是**完整 URL** ⇒ 不解析就会出现
+  // 「库里/后台都有头像，小程序却显示默认，重新上传一次才显示」（2026-09-28 修）。
+  return request<UserProfile>({ url: '/api/user/profile', method: 'GET' }).then((profile) => ({
+    ...profile,
+    avatarUrl: resolveMediaUrl(profile?.avatarUrl),
+  }))
 }
 
 /** 获取用户钱包信息 */
@@ -195,7 +202,12 @@ export function transferWallet(data: BalanceTransferDTO): Promise<void> {
 
 /** 修改用户信息 */
 export function updateUserProfile(data: Partial<UserProfile>): Promise<UserProfile> {
-  return request<UserProfile>({ url: '/api/user/profile', method: 'PUT', data })
+  // ⚠️ 与 getUserProfile 同口径解析：上传头像后若后端回的是相对路径，不解析会立刻变成裂图，
+  // 而用户会以为"上传没生效"（2026-09-28）。
+  return request<UserProfile>({ url: '/api/user/profile', method: 'PUT', data }).then((profile) => ({
+    ...profile,
+    avatarUrl: resolveMediaUrl(profile?.avatarUrl),
+  }))
 }
 
 /** 提交指定类型的钱包提现申请，后端要求金额最低 1，且每次申请必须携带幂等键。 */
