@@ -43,6 +43,11 @@ const walletNoticeSeen = ref(hasWalletNoticeSeen())
 const realnameVisible = ref(false)
 const realnameVerified = ref(false)
 const realnameChecking = ref(false)
+/**
+ * 最近一次拿到的**实名状态**（含 A 方案的 `hasBankCard`，2026-10-06）。
+ * ⚠️ 仅用于**提前**判断"已实名但没卡号"；**未取到时为 `null`** ⇒ 一律按"不拦"处理（见 `hasBankCardMissing`）。
+ */
+const realnameStatus = ref<RealnameStatus | null>(null)
 const pendingAction = ref<'withdraw' | 'transfer' | null>(null)
 const pendingWithdrawAmount = ref<number | null>(null)
 /** 当前提现申请的幂等键和请求指纹，网络重试时必须复用。 */
@@ -145,6 +150,19 @@ const withdrawAmountHint = computed(() => buildQuotaHint(withdrawQuota.value))
  * ⇒ **零钱提现才走后台配置的规则**。
  */
 const isBankWithdraw = computed(() => withdrawOption.value === 'BANK_CARD')
+/**
+ * 「**已实名、但银行卡提现取不到卡号**」—— A 方案（2026-10-06）的**提前**拦截条件。
+ *
+ * 背景：B 方案（后端）在取不到卡号时返回 `8601`，但用户是"填完金额 → 点提交 → 才被拦"。
+ * A 方案让前端在**选银行卡提现/提交前**就知道要先去补卡。
+ *
+ * ⚠️⚠️ **只能用 `=== false`**：后端 `hasBankCard` 字段**尚未上线**
+ * （后端文档《绑卡与提现卡号-前端说明-20261006》§四：已预留位置、约 15 分钟），
+ * 老接口不返回它 ⇒ `undefined` **必须放行**。
+ * 若写成 `!hasBankCard` / `hasBankCard !== true`，会把**所有**用户误判成"没有卡号"而**拦在提现门外**。
+ * （契约 `withdraw-bankcard-precheck.contract.ps1` 有反向断言锁这条。）
+ */
+const hasBankCardMissing = computed(() => realnameStatus.value?.hasBankCard === false)
 /**
  * 当前收款方式的**单笔限额**（元）—— 2026-09-27 起改为**读后端配置**，不再前端写死：
  * - 微信零钱 → `wechatSingleLimit`（微信「商家转账」默认单笔 **200** 元；后端已在**申请阶段**前置校验，超限返回 `7008`）；
@@ -371,9 +389,12 @@ async function ensureRegisteredAccess(): Promise<boolean> {
 async function loadRealnameStatus(): Promise<void> {
   try {
     const status = await getRealnameStatus()
+    realnameStatus.value = status
     realnameVerified.value = status.verified
   } catch {
     // 查询失败时按未实名处理，避免错误放行提现。
+    // ⚠️ `realnameStatus` 一并置空：宁可走"未实名"这条已有的正常路径，也不要拿旧状态拦人。
+    realnameStatus.value = null
     realnameVerified.value = false
   }
 }
@@ -556,7 +577,17 @@ function showWalletActionError(error: unknown, fallback: string): void {
 }
 
 async function ensureRealnameReady(action: 'withdraw' | 'transfer'): Promise<boolean> {
-  if (realnameVerified.value) return true
+  // ⚠️ 2026-10-06（A 方案）：**已实名但银行卡提现没卡号**时提前拦，直接弹实名补充弹层。
+  //    弹层在银行卡提现时 `bankInfoRequired=true` ⇒ 卡号 + 银行预留手机号必填 ⇒ 用户当场就能补上。
+  //    ⚠️ 判定用 `hasBankCardMissing`（内部是 `=== false`）：字段没上线时**不拦**。
+  if (realnameVerified.value) {
+    if (action === 'withdraw' && isBankWithdraw.value && hasBankCardMissing.value) {
+      pendingAction.value = action
+      realnameVisible.value = true
+      return false
+    }
+    return true
+  }
   if (realnameChecking.value) return false
 
   realnameChecking.value = true
@@ -599,6 +630,14 @@ async function executeWithdraw(amount: number): Promise<void> {
     uni.showToast({ title: '提现申请已提交，待审核', icon: 'success' })
   } catch (error) {
     if (isApiRequestError(error) && error.code === 8601) {
+      // ⚠️ 8601 有**两种**含义（后端刻意复用，见后端文档《绑卡与提现卡号-前端说明-20261006》§三.2）：
+      //    ① 未实名认证；② **已实名但银行卡提现取不到卡号**。
+      //    ⇒ 这里把 `hasBankCard` 明确置 false：补填完成后 `handleRealnameVerified` 会置回 true，
+      //      避免"A 方案提前校验"与"B 方案服务端兜底"互相打架。
+      realnameStatus.value = {
+        ...(realnameStatus.value || { verified: true, maskedName: null, maskedCertNo: null }),
+        hasBankCard: false,
+      }
       // 未实名认证 → 引导实名
       realnameVerified.value = false
       pendingAction.value = 'withdraw'
@@ -710,6 +749,14 @@ async function handleTransfer(): Promise<void> {
 }
 
 async function handleRealnameVerified(status: RealnameStatus): Promise<void> {
+  // ⚠️ 2026-10-06：后端自本版起在 `POST /api/realname/verify` 的响应里**真的返回** `hasBankCard`
+  //    （契约 `RealnameVerifyVO`）⇒ **优先采信后端值**。
+  //    只有后端**没返回**该字段时（老版本 jar / 字段未上线），才退化成本地推断：
+  //    银行卡提现的弹层是 `bankInfoRequired=true`（卡号必填）⇒ 能走到这里说明卡号确实填了。
+  //    ⚠️ 否则会出现"刚补完卡、又被提前校验拦一次"。
+  realnameStatus.value = status.hasBankCard !== undefined
+    ? status
+    : (status.verified && isBankWithdraw.value ? { ...status, hasBankCard: true } : status)
   realnameVerified.value = status.verified
   if (!status.verified) {
     uni.showToast({ title: '实名认证未完成，请核对信息后重试', icon: 'none' })
@@ -720,8 +767,13 @@ async function handleRealnameVerified(status: RealnameStatus): Promise<void> {
   const action = pendingAction.value
   pendingAction.value = null
 
+  // ⚠️ 2026-10-06（A 方案）：补填完成后**自动续做**那笔提现。
+  //    原先只清空金额就 `return` ⇒ 用户要**重新输入金额再点一次**（体验差）。
+  //    ⚠️ 先把金额取出来再清空：`executeWithdraw` 失败时不会再回到这里，避免递归。
   if (action === 'withdraw' && pendingWithdrawAmount.value != null) {
+    const retryAmount = pendingWithdrawAmount.value
     pendingWithdrawAmount.value = null
+    await executeWithdraw(retryAmount)
     return
   }
   if (action === 'transfer' && pendingTransfer.value) {
