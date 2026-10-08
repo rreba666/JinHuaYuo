@@ -33,6 +33,33 @@ function sourceText(row: Withdrawal): string { return normalizeLegacyWording(row
 function recordSourceText(row: WithdrawRecord): string { return normalizeLegacyWording(row.typeDesc) || ({ PROMOTION: '推广金提现', BONUS: '红包提现', BALANCE: '余额提现' } as Record<string, string>)[row.type] || row.type || '未知来源' }
 function methodText(row: Withdrawal): string { return normalizeLegacyWording(row.withdrawMethodDesc) || (row.withdrawMethod === 'BANK_CARD' ? '银行卡' : row.withdrawMethod === 'WECHAT_BALANCE' ? '微信零钱' : '未知方式') }
 function methodHint(row: Withdrawal): string { return row.withdrawMethod === 'BANK_CARD' ? '审核通过后由财务人工银行转账，到账后还需手动确认。' : '审核通过后进入微信零钱处理流程，审核通过不代表已到账。' }
+/**
+ * 是否「**人工结单**」（2026-10-06 新增）。
+ *
+ * 场景：微信零钱提现**转账失败**（如"用户姓名与收款微信实名不一致"）后会被置为 `STUCK`，
+ * 运营在异常页点「手动确认成功」直接结单（线下已打款）⇒ 状态变 `SUCCESS`，
+ * ⚠️ 但 **`wx_transfer_bill_no` 为空** ⇒ 这笔**没有任何微信侧流水**，财务对账时**核对不上**。
+ *
+ * ⇒ 判据（三者同时成立）：**微信零钱** + **SUCCESS** + **无微信转账单号**。
+ * ⚠️ 不能只看 `wxTransferBillNo` 为空：`STUCK` / `FAILED` / 银行卡提现都会为空，那些是**正常**的。
+ */
+function isManualSettled(row: Withdrawal): boolean {
+  return row.withdrawMethod === 'WECHAT_BALANCE'
+    && row.status === 'SUCCESS'
+    && !String(row.wxTransferBillNo || '').trim()
+}
+/**
+ * 「手动确认成功」前的确认文案（**按通道区分**，2026-10-06）。
+ *
+ * ⚠️ 零钱提现**没有卡号可核对** ⇒ 原来那句「核对收款账户卡号与实际打款卡一致」对它**不适用**，
+ * 必须换成"请在微信里确认已实际转账"这类**通道相关**的提示。
+ */
+function manualSuccessHint(row: Withdrawal): string {
+  if (row.withdrawMethod === 'BANK_CARD') {
+    return '请确认已向该银行卡<strong>实际转账</strong>（线下转账成功后系统不会有银行流水，须留存凭证）。'
+  }
+  return '⚠️ 微信零钱提现请先在<strong>微信里确认已向该用户实际转账</strong>（本操作只是把单据收尾，不会发起任何打款）。'
+}
 /** HTML 转义：卡号/姓名来自接口与用户输入，拼进确认框前必须转义，避免被当成标签解析。 */
 function escapeHtml(value: string): string { return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>)[char] || char) }
 /** 银行卡提现的收款信息（列表列展示用；后端未返回卡号时明确提示，避免财务盲转）。 */
@@ -73,14 +100,33 @@ function rejectWithdraw(row: Withdrawal): void { openReason('拒绝提现', (rea
 async function retry(row: Withdrawal): Promise<void> { try { await ElMessageBox.confirm(`确认重试查询 ${row.withdrawNo} 的微信打款结果吗？`, '重试打款查询', { type: 'warning' }); await store.retry(row.withdrawNo); ElMessage.success('已提交重试') } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '重试失败') } }
 async function manualSuccess(row: Withdrawal): Promise<void> {
   const account = bankAccountConfirmHtml(row)
+  // ⚠️ 2026-10-06：先**强制**填「打款凭证/说明」，再确认（避免"点一下就结单"、事后无从对账）。
+  //    ⚠️ 后端 `manual-success` 接口**只接受单号、不接受 reason** ⇒ 该说明**不会入库**，
+  //    仅用于**强制操作人停一下、并让凭证出现在成功提示里**（便于截图留痕）。
+  //    ⚠️ 若日后要让凭证**真正留痕**，需要后端在接口上加 `reason` 参数 —— 当前**不做**，前端不强求。
+  let voucher = ''
+  try {
+    const input = await ElMessageBox.prompt(
+      `${escapeHtml(`请填写本次「${methodText(row)}」的手工打款凭证或说明（必填，用于事后对账）：`)}`,
+      '填写打款凭证',
+      {
+        confirmButtonText: '下一步',
+        cancelButtonText: '取消',
+        inputPlaceholder: '如：已通过微信转账至用户微信（转账单号 xxx）/ 已银行转账到卡尾号 0128',
+        inputValidator: (value: string) => (String(value || '').trim().length >= 4 ? true : '请至少填写 4 个字，便于事后核对'),
+        type: 'warning',
+      },
+    )
+    voucher = String(input.value || '').trim()
+  } catch (error) { return }
   try {
     await ElMessageBox.confirm(
-      `${escapeHtml(`确认提现 ${row.withdrawNo} 已按${methodText(row)}实际完成转账吗？`)}${account ? `<br/><br/>${account}` : ''}`,
+      `${escapeHtml(`确认提现 ${row.withdrawNo} 已实际完成打款吗？`)}<br/><br/>${manualSuccessHint(row)}<br/><br/>凭证：${escapeHtml(voucher)}${account ? `<br/><br/>${account}` : ''}`,
       '手动确认成功',
       { type: 'warning', dangerouslyUseHTMLString: true },
     )
     await store.manualSuccess(row.withdrawNo)
-    ElMessage.success('已手动确认提现成功')
+    ElMessage.success(`已手动确认提现成功（凭证：${voucher}）`)
   } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '确认失败') }
 }
 function manualFail(row: Withdrawal): void { openReason('手动确认失败', (reason) => store.manualFail(row.withdrawNo, reason)) }
@@ -263,7 +309,7 @@ function exportRecords(): void {
     ElMessage.warning('当前没有可导出的记录')
     return
   }
-  const header = ['提现单号', '申请时间', '用户ID', '手机号', '扣款来源', '收款方式', '申请金额', '手续费', '实际到账', '状态', '完成时间', '失败原因', '微信转账单号', '审核人', '审核时间', '实名姓名', '脱敏身份证', '银行卡快照']
+  const header = ['提现单号', '申请时间', '用户ID', '手机号', '扣款来源', '收款方式', '申请金额', '手续费', '实际到账', '状态', '是否人工结单', '完成时间', '失败原因', '微信转账单号', '审核人', '审核时间', '实名姓名', '脱敏身份证', '银行卡快照']
   const rows = records.value.map((item) => [
     item.withdrawNo,
     item.createdAt,
@@ -275,6 +321,8 @@ function exportRecords(): void {
     Number(item.feeAmount || 0).toFixed(2),
     Number(item.netAmount || 0).toFixed(2),
     recordStatusText(item),
+    // ⚠️ 2026-10-06：单独一列标出「人工结单（无微信流水）」，导出对账时能一眼看出哪些单没有微信侧凭证。
+    isManualSettled(item) ? '是（无微信流水）' : '',
     item.finishedAt || '',
     normalizeLegacyWording(item.failReason),
     item.wxTransferBillNo || '',
@@ -308,7 +356,7 @@ watch(activeTab, (tab) => {
     <div class="page-heading"><div><h1>提现审核</h1><p>审核用户提现申请、处理微信打款异常；「提现交易记录」页签可查全部提现单用于对账。</p></div><el-button :loading="store.loading" @click="load"><el-icon><Refresh /></el-icon>刷新</el-button></div>
     <el-tabs v-model="activeTab">
       <el-tab-pane label="待审核提现" name="pending"><el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>待审核提现</strong><span class="toolbar-count">共 {{ store.pendingTotal }} 条</span><span class="toolbar-hint">银行卡提现请在「收款账户」列核对卡号后再点通过</span></div></div><DataTable :data="store.pendingWithdrawals" :loading="store.loading" :total="store.pendingTotal" :page="store.page" :page-size="store.size" empty-text="暂无待审核提现" @page-change="pageChange" @size-change="sizeChange"><el-table-column prop="id" label="记录 ID" width="110" /><el-table-column prop="withdrawNo" label="提现单号" min-width="220" /><el-table-column prop="userId" label="用户 ID" width="110" /><el-table-column label="手机号" width="130"><template #default="{ row }">{{ row.phone || '—' }}</template></el-table-column><el-table-column label="扣款来源" width="110"><template #default="{ row }">{{ sourceText(row) }}</template></el-table-column><el-table-column label="收款账户" min-width="250"><template #default="{ row }"><div class="pay-account"><span>{{ methodText(row) }}</span><span v-if="row.withdrawMethod === 'BANK_CARD'" class="pay-card">{{ bankCardText(row) }}<el-button v-if="row.bankCardSnapshot" link type="primary" :icon="CopyDocument" @click="copyRecordField(row.bankCardSnapshot, '银行卡号')">复制</el-button></span></div></template></el-table-column><el-table-column label="申请金额（冻结）" width="145"><template #default="{ row }">{{ money(row.amount) }}</template></el-table-column><el-table-column label="手续费" width="110"><template #default="{ row }">{{ money(row.feeAmount) }}</template></el-table-column><el-table-column label="预计到账" width="125"><template #default="{ row }">{{ money(row.netAmount) }}</template></el-table-column><el-table-column label="状态" min-width="170"><template #default="{ row }"><el-tag :type="statusType(row.status)">{{ statusText(row.status, row.statusDesc) }}</el-tag></template></el-table-column><el-table-column prop="createdAt" label="申请时间" min-width="180" /><el-table-column label="操作" width="220" fixed="right"><template #default="{ row }"><div class="operator-actions"><el-button size="small" type="success" :loading="store.actionLoading" @click="approveWithdraw(row)"><el-icon><CircleCheck /></el-icon>通过</el-button><el-button size="small" type="danger" :loading="store.actionLoading" @click="rejectWithdraw(row)"><el-icon><CircleClose /></el-icon>拒绝</el-button></div></template></el-table-column></DataTable></el-card></el-tab-pane>
-      <el-tab-pane label="异常提现" name="stuck"><el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>异常提现</strong><span class="toolbar-count">共 {{ store.stuckTotal }} 条</span><span class="toolbar-hint">手动成功前请核对「收款账户」卡号与实际打款卡一致</span></div></div><DataTable :data="store.stuckWithdrawals" :loading="store.loading" :total="store.stuckTotal" :page="store.page" :page-size="store.size" empty-text="暂无异常提现" @page-change="pageChange" @size-change="sizeChange"><el-table-column prop="id" label="记录 ID" width="110" /><el-table-column prop="withdrawNo" label="提现单号" min-width="220" /><el-table-column prop="userId" label="用户 ID" width="110" /><el-table-column label="手机号" width="130"><template #default="{ row }">{{ row.phone || '—' }}</template></el-table-column><el-table-column label="扣款来源" width="110"><template #default="{ row }">{{ sourceText(row) }}</template></el-table-column><el-table-column label="收款账户" min-width="250"><template #default="{ row }"><div class="pay-account"><span>{{ methodText(row) }}</span><span v-if="row.withdrawMethod === 'BANK_CARD'" class="pay-card">{{ bankCardText(row) }}<el-button v-if="row.bankCardSnapshot" link type="primary" :icon="CopyDocument" @click="copyRecordField(row.bankCardSnapshot, '银行卡号')">复制</el-button></span></div></template></el-table-column><el-table-column label="申请金额（冻结）" width="145"><template #default="{ row }">{{ money(row.amount) }}</template></el-table-column><el-table-column label="手续费" width="110"><template #default="{ row }">{{ money(row.feeAmount) }}</template></el-table-column><el-table-column label="预计到账" width="125"><template #default="{ row }">{{ money(row.netAmount) }}</template></el-table-column><el-table-column label="状态" min-width="170"><template #default="{ row }"><el-tag :type="statusType(row.status)"><el-icon><Warning /></el-icon>{{ statusText(row.status, row.statusDesc) }}</el-tag></template></el-table-column><el-table-column label="失败/异常原因" min-width="190"><template #default="{ row }">{{ normalizeLegacyWording(row.failReason) || '—' }}</template></el-table-column><el-table-column prop="createdAt" label="申请时间" min-width="180" /><el-table-column prop="finishedAt" label="完成时间" min-width="170" /><el-table-column label="操作" width="330" fixed="right"><template #default="{ row }"><div class="operator-actions"><el-button size="small" type="primary" :loading="store.actionLoading" @click="retry(row)"><el-icon><Refresh /></el-icon>重试</el-button><el-button size="small" type="success" :loading="store.actionLoading" @click="manualSuccess(row)">手动成功</el-button><el-button size="small" type="danger" :loading="store.actionLoading" @click="manualFail(row)">手动失败</el-button></div></template></el-table-column></DataTable></el-card></el-tab-pane>
+      <el-tab-pane label="异常提现" name="stuck"><el-card shadow="never" class="content-card"><div class="toolbar"><div><strong>异常提现</strong><span class="toolbar-count">共 {{ store.stuckTotal }} 条</span><span class="toolbar-hint">手动成功前务必先在微信/银行侧确认已实际打款；⚠️ 零钱提现没有卡号可核对，请先确认用户收款微信实名与平台实名一致（否则微信会以「用户姓名与收款微信实名不一致」拒付）</span></div></div><DataTable :data="store.stuckWithdrawals" :loading="store.loading" :total="store.stuckTotal" :page="store.page" :page-size="store.size" empty-text="暂无异常提现" @page-change="pageChange" @size-change="sizeChange"><el-table-column prop="id" label="记录 ID" width="110" /><el-table-column prop="withdrawNo" label="提现单号" min-width="220" /><el-table-column prop="userId" label="用户 ID" width="110" /><el-table-column label="手机号" width="130"><template #default="{ row }">{{ row.phone || '—' }}</template></el-table-column><el-table-column label="扣款来源" width="110"><template #default="{ row }">{{ sourceText(row) }}</template></el-table-column><el-table-column label="收款账户" min-width="250"><template #default="{ row }"><div class="pay-account"><span>{{ methodText(row) }}</span><span v-if="row.withdrawMethod === 'BANK_CARD'" class="pay-card">{{ bankCardText(row) }}<el-button v-if="row.bankCardSnapshot" link type="primary" :icon="CopyDocument" @click="copyRecordField(row.bankCardSnapshot, '银行卡号')">复制</el-button></span></div></template></el-table-column><el-table-column label="申请金额（冻结）" width="145"><template #default="{ row }">{{ money(row.amount) }}</template></el-table-column><el-table-column label="手续费" width="110"><template #default="{ row }">{{ money(row.feeAmount) }}</template></el-table-column><el-table-column label="预计到账" width="125"><template #default="{ row }">{{ money(row.netAmount) }}</template></el-table-column><el-table-column label="状态" min-width="170"><template #default="{ row }"><el-tag :type="statusType(row.status)"><el-icon><Warning /></el-icon>{{ statusText(row.status, row.statusDesc) }}</el-tag></template></el-table-column><el-table-column label="失败/异常原因" min-width="190"><template #default="{ row }">{{ normalizeLegacyWording(row.failReason) || '—' }}</template></el-table-column><el-table-column prop="createdAt" label="申请时间" min-width="180" /><el-table-column prop="finishedAt" label="完成时间" min-width="170" /><el-table-column label="操作" width="330" fixed="right"><template #default="{ row }"><div class="operator-actions"><el-button size="small" type="primary" :loading="store.actionLoading" @click="retry(row)"><el-icon><Refresh /></el-icon>重试</el-button><el-button size="small" type="success" :loading="store.actionLoading" @click="manualSuccess(row)">手动成功</el-button><el-button size="small" type="danger" :loading="store.actionLoading" @click="manualFail(row)">手动失败</el-button></div></template></el-table-column></DataTable></el-card></el-tab-pane>
       <!-- 提现交易记录：全量提现单（所有状态），面向后台对账；数据源 GET /api/admin/withdraw/records -->
       <el-tab-pane label="提现交易记录" name="records">
         <el-card shadow="never" class="content-card">
@@ -368,7 +416,7 @@ watch(activeTab, (tab) => {
             <el-table-column label="申请金额" width="120"><template #default="{ row }">{{ money(row.amount) }}</template></el-table-column>
             <el-table-column label="手续费" width="100"><template #default="{ row }">{{ money(row.feeAmount) }}</template></el-table-column>
             <el-table-column label="实际到账" width="120"><template #default="{ row }">{{ money(row.netAmount) }}</template></el-table-column>
-            <el-table-column label="状态" width="120"><template #default="{ row }"><el-tag :type="recordStatusType(row.status)">{{ recordStatusText(row) }}</el-tag></template></el-table-column>
+            <el-table-column label="状态" width="200"><template #default="{ row }"><el-tag :type="recordStatusType(row.status)">{{ recordStatusText(row) }}</el-tag><el-tag v-if="isManualSettled(row)" type="warning" size="small" class="manual-settled-tag" title="微信打款未成功，由运营手动确认结单 ⇒ 无微信转账流水，财务对账需人工核对">人工结单</el-tag></template></el-table-column>
             <el-table-column label="完成时间" min-width="170"><template #default="{ row }">{{ row.finishedAt || '未完成' }}</template></el-table-column>
             <el-table-column label="微信转账单号" min-width="220">
               <template #default="{ row }">
@@ -436,5 +484,7 @@ watch(activeTab, (tab) => {
 .pay-card { color: var(--el-color-primary); word-break: break-all; }
 .toolbar-hint { margin-left: 12px; color: var(--el-text-color-secondary); font-size: 12px; }
 .records-alert { margin-bottom: 12px; }
+/* 「人工结单」标记：与状态 tag 并排，提示这笔没有微信转账流水（2026-10-06 新增）。 */
+.manual-settled-tag { margin-left: 6px; cursor: help; }
 .content-card :deep(.el-form-item) { margin-bottom: 12px; }
 </style>
